@@ -49,7 +49,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       .disabled-panel { opacity: 0.68; pointer-events: none; }
       .fit-inline-output { margin-top: 12px; }
       .fit-capture-note { color: #4b5563; margin-top: 6px; }
-      pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; }
+      pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-space: pre; word-break: normal; word-wrap: normal; overflow-x: auto; max-width: 100%; }
     ")),
       shiny::tags$script(shiny::HTML("
         $(document).on('click', '.arg-help', function(event) {
@@ -2491,7 +2491,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
           sep = "\n"
         ))
       }
-      paste(utils::capture.output(summary(fit)), collapse = "\n")
+      paste(capture_output_wide(summary(fit)), collapse = "\n")
     })
 
     guidance_block <- function(title, status, next_step) {
@@ -2550,10 +2550,16 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       )
     })
 
+    capture_output_wide <- function(expr, width = 240L) {
+      old <- options(width = width)
+      on.exit(options(old), add = TRUE)
+      utils::capture.output(expr)
+    }
+
     fit_summary_text <- function() {
       fit <- active_fit()
       if (is.null(fit)) return("No fit available.")
-      paste(utils::capture.output(summary(fit)), collapse = "\n")
+      paste(capture_output_wide(summary(fit)), collapse = "\n")
     }
 
     fit_summary_matrices_text <- function() {
@@ -2563,7 +2569,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         return("ctsem::ctSummaryMatrices() is not available in the loaded ctsem version.")
       }
       result <- tryCatch(
-        utils::capture.output(getExportedValue("ctsem", "ctSummaryMatrices")(fit)),
+        capture_output_wide(getExportedValue("ctsem", "ctSummaryMatrices")(fit)),
         error = function(e) paste("ctSummaryMatrices failed:", conditionMessage(e))
       )
       paste(result, collapse = "\n")
