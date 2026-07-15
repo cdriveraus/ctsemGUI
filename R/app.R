@@ -1453,7 +1453,18 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
             return()
           }
           if (isTRUE(directed)) {
-            graphics::arrows(from_xy$x, from_xy$y, to_xy$x, to_xy$y, length = 0.08, col = col)
+            dx <- to_xy$x - from_xy$x
+            dy <- to_xy$y - from_xy$y
+            distance <- sqrt(dx^2 + dy^2)
+            if (is.finite(distance) && distance > 0) {
+              node_radius <- 0.18
+              start_x <- from_xy$x + node_radius * dx / distance
+              start_y <- from_xy$y + node_radius * dy / distance
+              end_x <- to_xy$x - node_radius * dx / distance
+              end_y <- to_xy$y - node_radius * dy / distance
+              graphics::arrows(start_x, start_y, end_x, end_y,
+                length = 0.1, angle = 22, code = 2, col = col, lwd = 1.6)
+            }
           } else {
             graphics::segments(from_xy$x, from_xy$y, to_xy$x, to_xy$y, col = col, lwd = 1.6)
           }

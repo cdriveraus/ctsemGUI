@@ -112,6 +112,7 @@ test_that("graph extraction separates drift, diffusion, measurement, and trend e
   expect_true(nrow(diffusion) > 0)
   expect_false(any(diffusion$directed))
   expect_true(all(measurement$element == "LAMBDA"))
+  expect_true(all(measurement$directed))
   expect_true(any(grepl("_trend", trend$from) | grepl("_trend", trend$to)))
 })
 
