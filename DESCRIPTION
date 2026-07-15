@@ -1,0 +1,25 @@
+Package: ctsemgui
+Type: Package
+Title: GUI-Oriented Model Specification Helpers for ctsem
+Version: 0.0.1
+Authors@R: person("Charles", "Driver", role = c("aut", "cre"), email = "charles.driver2@uzh.ch")
+Author: Charles Driver [aut, cre]
+Maintainer: Charles Driver <charles.driver2@uzh.ch>
+Description: Provides a small GUI-neutral model specification layer for ctsem.
+    The first pass supports matrix-based model editing, structured validation,
+    conversion to ctsem model objects, reproducible code export, and a minimal
+    Shiny interface built on the same functions.
+License: GPL-3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends:
+    R (>= 4.2.0)
+Imports:
+    utils
+Suggests:
+    shiny,
+    testthat (>= 3.0.0)
+Enhances:
+    ctsem
+Config/testthat/edition: 3
