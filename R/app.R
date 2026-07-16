@@ -229,7 +229,6 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
                 shiny::checkboxInput("fit_optimize", arg_label("optimize", "help_fit_optimize", "ctFit argument: optimize"), value = TRUE),
                 shiny::checkboxInput("fit_priors", arg_label("priors", "help_fit_priors", "ctFit argument: priors"), value = TRUE),
                 shiny::numericInput("fit_cores", arg_label("cores", "help_fit_cores", "ctFit argument: cores"), value = 1, min = 1, step = 1),
-                shiny::uiOutput("fit_iter_control"),
                 shiny::textAreaInput("fit_extra_args", arg_label("Extra ctFit arguments", "help_ctFit", "Full ctFit help"), value = "", height = "70px"),
                 shiny::textInput("fit_save_name", "Fit name", value = "fit1"),
                 shiny::actionButton("run_fit", "Fit model", class = "btn-primary"),
@@ -315,10 +314,10 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
               shiny::div(
                 class = "control-grid",
                 shiny::uiOutput("kalman_default_controls"),
-                shiny::textInput("kalman_remove_obs", arg_label("removeObs", "help_kalman_removeObs", "ctKalman argument: removeObs"), value = "FALSE"),
-                shiny::textInput("kalman_vec", arg_label("kalmanvec", "help_kalmanvec", "plot.ctKalmanDF argument: kalmanvec"), value = "y,yprior"),
-                shiny::textInput("kalman_error_vec", arg_label("errorvec", "help_errorvec", "plot.ctKalmanDF argument: errorvec"), value = "auto"),
-                shiny::textAreaInput("kalman_extra_args", arg_label("Extra ctKalman arguments", "help_ctKalman", "Full ctKalman help"), value = "", height = "70px"),
+                shiny::textInput("kalman_remove_obs", arg_label("removeObs", "help_kalman_removeObs", "ctPredict argument: removeObs"), value = "FALSE"),
+                shiny::textInput("kalman_vec", arg_label("kalmanvec", "help_kalmanvec", "Prediction plot argument: kalmanvec"), value = "y,yprior"),
+                shiny::textInput("kalman_error_vec", arg_label("errorvec", "help_errorvec", "Prediction plot argument: errorvec"), value = "auto"),
+                shiny::textAreaInput("kalman_extra_args", arg_label("Extra ctPredict arguments", "help_ctPredict", "Full ctPredict help"), value = "", height = "70px"),
                 shiny::actionButton("run_kalman", "Run prediction plots", class = "btn-primary")
               )
             ),
@@ -389,21 +388,6 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         )
       ),
       shiny::tabPanel(
-        "Checking",
-        shiny::tabsetPanel(
-          id = "checking_tabs",
-          shiny::tabPanel("Data readiness", shiny::tableOutput("check_data_table")),
-          shiny::tabPanel("Model specification", shiny::tableOutput("check_model_table")),
-          shiny::tabPanel("Fit review", shiny::verbatimTextOutput("check_fit_review")),
-          shiny::tabPanel("Prediction checks", shiny::uiOutput("check_prediction_guidance")),
-          shiny::tabPanel("Residual checks", shiny::uiOutput("check_residual_guidance")),
-          shiny::tabPanel("Posterior predictive", shiny::uiOutput("check_postpred_guidance")),
-          shiny::tabPanel("Lagged covariance", shiny::uiOutput("check_cov_guidance")),
-          shiny::tabPanel("Dynamics", shiny::uiOutput("check_dynamics_guidance")),
-          shiny::tabPanel("TI moderation", shiny::uiOutput("check_tipred_guidance"))
-        )
-      ),
-      shiny::tabPanel(
         "Output",
         shiny::tabsetPanel(
           shiny::tabPanel("Fit Summary", shiny::verbatimTextOutput("fit_summary")),
@@ -436,6 +420,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     tipred_effects_result <- shiny::reactiveVal(NULL)
     tipred_effects_log <- shiny::reactiveVal("No TI predictor effects plot has been run.")
     fit_registry <- shiny::reactiveVal(list())
+    output_code_snippets <- shiny::reactiveVal(list())
     diagnostics_status <- shiny::reactiveVal("No fit diagnostics have been run.")
     matrix_status <- shiny::reactiveVal("Matrix edits update the current model spec.")
 
@@ -463,7 +448,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         raw_visuals = "Use these plots to inspect trajectories, variable relationships, time gaps, and missingness before fitting.",
         model_visuals = "These plots show what the current model structure implies before any fit is run.",
         fit_registry = "Save fitted models here to compare several candidate specifications.",
-        kalman = "Prediction plots compare observed data with model predictions or smoothed latent states using ctKalman.",
+        kalman = "Prediction plots compare observed data with model predictions or smoothed latent states using ctPredict.",
         postpred = "Posterior predictive plots compare observed data patterns against data generated from the fitted model.",
         acf = "Residual autocorrelation helps detect predictable structure left unexplained by the model.",
         dynamics = "Discrete parameter plots show model-implied impulse responses and dynamic propagation.",
@@ -492,7 +477,6 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     shiny::observeEvent(input$help_fit_optimize, show_ctsem_help("ctFit", "optimize"))
     shiny::observeEvent(input$help_fit_priors, show_ctsem_help("ctFit", "priors"))
     shiny::observeEvent(input$help_fit_cores, show_ctsem_help("ctFit", "cores"))
-    shiny::observeEvent(input$help_fit_iter, show_ctsem_help("ctFit", "iter"))
     shiny::observeEvent(input$help_gui_time_model, {
       shiny::showModal(shiny::modalDialog(
         title = "Time model",
@@ -521,11 +505,11 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     shiny::observeEvent(input$help_ctFitCovCheck, show_ctsem_help("ctFitCovCheck"))
     shiny::observeEvent(input$help_cov_lags, show_ctsem_help("ctFitCovCheck", "lags"))
     shiny::observeEvent(input$help_cov_cor, show_ctsem_help("ctFitCovCheck", "cor"))
-    shiny::observeEvent(input$help_ctKalman, show_ctsem_help("ctKalman"))
-    shiny::observeEvent(input$help_kalman_subjects, show_ctsem_help("ctKalman", "subjects"))
-    shiny::observeEvent(input$help_kalman_timerange, show_ctsem_help("ctKalman", "timerange"))
-    shiny::observeEvent(input$help_kalman_timestep, show_ctsem_help("ctKalman", "timestep"))
-    shiny::observeEvent(input$help_kalman_removeObs, show_ctsem_help("ctKalman", "removeObs"))
+    shiny::observeEvent(input$help_ctPredict, show_ctsem_help("ctPredict"))
+    shiny::observeEvent(input$help_kalman_subjects, show_ctsem_help("ctPredict", "subjects"))
+    shiny::observeEvent(input$help_kalman_timerange, show_ctsem_help("ctPredict", "timerange"))
+    shiny::observeEvent(input$help_kalman_timestep, show_ctsem_help("ctPredict", "timestep"))
+    shiny::observeEvent(input$help_kalman_removeObs, show_ctsem_help("ctPredict", "removeObs"))
     shiny::observeEvent(input$help_kalmanvec, show_ctsem_help("plot.ctKalmanDF", "kalmanvec"))
     shiny::observeEvent(input$help_errorvec, show_ctsem_help("plot.ctKalmanDF", "errorvec"))
     shiny::observeEvent(input$help_ctPostPredPlots, show_ctsem_help("ctPostPredPlots"))
@@ -1394,9 +1378,9 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
 
     output$kalman_default_controls <- shiny::renderUI({
       shiny::tagList(
-        shiny::textInput("kalman_subjects", arg_label("subjects", "help_kalman_subjects", "ctKalman argument: subjects"), value = ""),
-        shiny::textInput("kalman_timerange", arg_label("timerange", "help_kalman_timerange", "ctKalman argument: timerange"), value = ""),
-        shiny::textInput("kalman_timestep", arg_label("timestep", "help_kalman_timestep", "ctKalman argument: timestep"), value = "")
+        shiny::textInput("kalman_subjects", arg_label("subjects", "help_kalman_subjects", "ctPredict argument: subjects"), value = ""),
+        shiny::textInput("kalman_timerange", arg_label("timerange", "help_kalman_timerange", "ctPredict argument: timerange"), value = ""),
+        shiny::textInput("kalman_timestep", arg_label("timestep", "help_kalman_timestep", "ctPredict argument: timestep"), value = "")
       )
     })
 
@@ -1426,6 +1410,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$model_visual_plot <- shiny::renderPlot({
       spec <- active_spec()
       view <- input$model_visual_type %||% "Temporal dynamics graph"
+      record_output_code("model_visual", model_visual_code_snippet())
       if (view %in% c("Temporal dynamics graph", "System noise graph", "Measurement graph", "Trend structure graph")) {
         element <- switch(view,
           `Temporal dynamics graph` = "drift",
@@ -1508,24 +1493,24 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
 
     code_value <- function(x) paste(ctgui_deparse(x), collapse = "\n")
 
-    workflow_code <- shiny::reactive({
+    optional_arg_line <- function(name, text, comma = TRUE) {
+      if (is.null(text) || !nzchar(trimws(text))) return(character())
+      paste0("  ", name, " = ", code_value(parse_optional_expression(text)), if (comma) "," else "")
+    }
+
+    set_output_code_snippet <- function(key, lines) {
+      snippets <- output_code_snippets()
+      snippets[[key]] <- paste(lines, collapse = "\n")
+      output_code_snippets(snippets)
+    }
+
+    record_output_code <- function(key, lines) {
+      shiny::isolate(set_output_code_snippet(key, lines))
+    }
+
+    base_output_code <- shiny::reactive({
       data <- current_data()
       data_name <- current_data_name()
-      optional_arg_line <- function(name, text, comma = TRUE) {
-        if (is.null(text) || !nzchar(trimws(text))) return(character())
-        paste0("  ", name, " = ", code_value(parse_optional_expression(text)), if (comma) "," else "")
-      }
-      kalman_optional_lines <- c(
-        optional_arg_line("subjects", input$kalman_subjects),
-        optional_arg_line("timerange", input$kalman_timerange),
-        optional_arg_line("timestep", input$kalman_timestep),
-        optional_arg_line("removeObs", input$kalman_remove_obs)
-      )
-      dynamic_optional_lines <- c(
-        optional_arg_line("subjects", input$dynamic_subjects),
-        optional_arg_line("times", input$dynamic_times),
-        optional_arg_line("nsamples", input$dynamic_samples)
-      )
       lines <- c(
         "# Model specification",
         paste0("# Explanations shown in the GUI: ", code_value(isTRUE(input$show_explanations))),
@@ -1563,21 +1548,11 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       } else {
         lines <- c(lines, "# No data is currently active.")
       }
+      lines
+    })
 
-      lines <- c(lines,
-        "",
-        "# Raw data plot",
-        paste0("# Plot type: ", code_value(input$raw_plot_type %||% "Subject trajectories")),
-        paste0("# Time column: ", code_value(input$raw_plot_time %||% active_spec()$time)),
-        paste0("# Plotted variables: ", code_value(input$raw_plot_vars %||% active_spec()$manifest_names[1L])),
-        paste0("# Subject ID column: ", code_value(input$raw_plot_subject %||% active_spec()$id)),
-        paste0("# Colour variable: ", code_value(input$raw_plot_colour %||% active_spec()$id)),
-        "",
-        "# Pre-fit model visuals",
-        paste0("# Model visual type: ", code_value(input$model_visual_type %||% "Temporal dynamics graph")),
-        "# Graph views are structural summaries of DRIFT, DIFFUSION, and LAMBDA.",
-        "# Generated trajectory previews replace free labels with simple numeric values.",
-        "",
+    fit_code_snippet <- function() {
+      c(
         "# Fit",
         "fit <- ctsem::ctFit(",
         "  datalong = data,",
@@ -1585,22 +1560,92 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         paste0("  optimize = ", code_value(input$fit_optimize), ","),
         paste0("  priors = ", code_value(input$fit_priors), ","),
         paste0("  cores = ", code_value(input$fit_cores), ","),
-        paste0("  iter = ", code_value(if (isTRUE(input$fit_optimize)) 1000 else input$fit_iter), ","),
         "  plot = FALSE",
         ")",
         "",
-        "# Save/compare fits",
-        paste0("# Current fit save name in the GUI: ", code_value(input$fit_save_name %||% "fit1")),
-        "# Save named fit objects in a list, e.g. fits[[\"fit1\"]] <- fit",
-        "",
+        "# Output",
+        "summary(fit)",
+        "ctsem::ctSummaryMatrices(fit)"
+      )
+    }
+
+    summary_code_snippet <- function() {
+      c(
+        "# Fit summary",
+        "summary(fit)"
+      )
+    }
+
+    summary_matrices_code_snippet <- function() {
+      c(
+        "# Fit summary matrices",
+        "ctsem::ctSummaryMatrices(fit)"
+      )
+    }
+
+    fit_pars_code_snippet <- function() {
+      c(
+        "# Model parameter table",
+        "model$pars"
+      )
+    }
+
+    fit_comparison_code_snippet <- function() {
+      c(
+        "# Fit comparison",
+        "# Save candidate fits in a named list, then compare likelihood criteria when available.",
+        "fits <- list(fit1 = fit)",
+        "fit_stats <- lapply(fits, function(x) {",
+        "  ll <- x$stanfit$transformedparsfull$ll",
+        "  npars <- length(x$stanfit$rawest)",
+        "  nobs <- length(x$stanfit$transformedparsfull$llrow[1, ])",
+        "  data.frame(",
+        "    logLik = as.numeric(ll)[1],",
+        "    npars = npars,",
+        "    nobs = nobs,",
+        "    AIC = 2 * npars - 2 * as.numeric(ll)[1],",
+        "    BIC = log(nobs) * npars - 2 * as.numeric(ll)[1]",
+        "  )",
+        "})",
+        "do.call(rbind, fit_stats)"
+      )
+    }
+
+    raw_plot_code_snippet <- function() {
+      c(
+        "# Data visualisation",
+        paste0("# Plot type: ", code_value(input$raw_plot_type %||% "Subject trajectories")),
+        paste0("# Time column: ", code_value(input$raw_plot_time %||% active_spec()$time)),
+        paste0("# Plotted variables: ", code_value(input$raw_plot_vars %||% active_spec()$manifest_names[1L])),
+        paste0("# Subject ID column: ", code_value(input$raw_plot_subject %||% active_spec()$id)),
+        paste0("# Colour variable: ", code_value(input$raw_plot_colour %||% "(plotted variable)")),
+        "# Use the Data > Visuals settings above to reproduce the current GUI plot."
+      )
+    }
+
+    model_visual_code_snippet <- function() {
+      c(
+        "# Model visualisation",
+        paste0("# Visual type: ", code_value(input$model_visual_type %||% "Temporal dynamics graph")),
+        "# The GUI graph is extracted from the active model matrices.",
+        "# Temporal dynamics use DRIFT, system-noise paths use DIFFUSION, and measurement paths use LAMBDA."
+      )
+    }
+
+    generate_from_fit_code_snippet <- function() {
+      c(
         "# Generate from fit for diagnostics",
         "fit <- ctsem::ctGenerateFromFit(",
         "  fit = fit,",
         paste0("  nsamples = ", code_value(input$fit_gen_samples), ","),
         paste0("  fullposterior = ", code_value(input$fit_gen_fullposterior), ","),
         paste0("  cores = ", code_value(input$fit_gen_cores)),
-        ")",
-        "",
+        ")"
+      )
+    }
+
+    cov_check_code_snippet <- function() {
+      c(
         "# Covariance check",
         paste0("cov_lags <- ", input$cov_lags %||% "0:3"),
         "cov_check <- ctsem::ctFitCovCheck(",
@@ -1615,22 +1660,42 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         "  maxlag = max(cov_lags),",
         paste0("  cor = ", code_value(input$cov_cor)),
         ")",
-        "lapply(cov_check_plots, print)",
-        "",
-        "# Prediction plots using ctKalman",
-        "kalman <- ctsem::ctKalman(",
+        "lapply(cov_check_plots, print)"
+      )
+    }
+
+    kalman_code_snippet <- function() {
+      kalman_optional_lines <- c(
+        optional_arg_line("subjects", input$kalman_subjects),
+        optional_arg_line("timerange", input$kalman_timerange),
+        optional_arg_line("timestep", input$kalman_timestep),
+        optional_arg_line("removeObs", input$kalman_remove_obs)
+      )
+      c(
+        "# Prediction plots using ctPredict",
+        "prediction <- ctsem::ctPredict(",
         "  fit = fit,",
         kalman_optional_lines,
         "  plot = FALSE",
         ")",
-        "plot(kalman)",
-        paste0("# Prediction plot vectors: kalmanvec = ", code_value(parse_text_vector(input$kalman_vec, c("y", "yprior"))),
-          ", errorvec = ", code_value(parse_text_vector(input$kalman_error_vec, "auto"))),
-        "",
+        "plot(",
+        "  prediction,",
+        paste0("  kalmanvec = ", code_value(parse_text_vector(input$kalman_vec, c("y", "yprior"))), ","),
+        paste0("  errorvec = ", code_value(parse_text_vector(input$kalman_error_vec, "auto"))),
+        ")"
+      )
+    }
+
+    postpred_code_snippet <- function() {
+      c(
         "# Posterior predictive checks",
         "postpred_plots <- ctsem::ctPostPredPlots(fit)",
-        "lapply(postpred_plots, print)",
-        "",
+        "lapply(postpred_plots, print)"
+      )
+    }
+
+    residual_acf_code_snippet <- function() {
+      c(
         "# Residual autocorrelation",
         "residual_acf <- ctsem::ctACFresiduals(",
         "  fit,",
@@ -1638,11 +1703,20 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         paste0("  nboot = ", code_value(input$acf_boot), ","),
         "  plot = FALSE",
         ")",
-        "print(ctsem::plotctACF(residual_acf))",
-        "",
+        "print(ctsem::plotctACF(residual_acf))"
+      )
+    }
+
+    dynamics_code_snippet <- function() {
+      dynamic_optional_lines <- c(
+        optional_arg_line("subjects", input$dynamic_subjects),
+        optional_arg_line("times", input$dynamic_times),
+        optional_arg_line("nsamples", input$dynamic_samples)
+      )
+      c(
         "# Dynamics / impulse-response style plot",
         "dynamics <- ctsem::ctDiscretePars(",
-        "  fit,",
+        "  ctstanfitobj = fit,",
         dynamic_optional_lines,
         paste0("  observational = ", code_value(input$dynamic_observational), ","),
         "  plot = TRUE,",
@@ -1652,20 +1726,49 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
           paste0("# Apply y limits post hoc when the returned plot object supports it: ylim = ",
             code_value(parse_optional_expression(input$dynamic_ylim)))
         },
-        "print(dynamics)",
-        "",
-        "# Summaries",
-        "summary(fit)",
-        "ctsem::ctSummaryMatrices(fit)",
-        "fit$model$pars",
-        "",
-        "# Fit comparison",
-        "# Compare saved fit objects with logLik/AIC/BIC when available."
+        "print(dynamics)"
       )
+    }
+
+    tipred_code_snippet <- function() {
+      tipreds <- parse_keyword_or_expression(input$tipred_effects_preds, keywords = "all")
+      subject <- parse_optional_expression(input$tipred_effects_subject)
+      timestep <- parse_keyword_or_expression(input$tipred_effects_timestep, keywords = "auto")
+      tipvalues <- parse_optional_expression(input$tipred_effects_tipvalues)
+      args <- c(
+        "  sf = fit",
+        if (!is_omitted_arg(tipreds)) paste0("  tipreds = ", code_value(tipreds)),
+        if (!is_omitted_arg(subject)) paste0("  subject = ", code_value(subject)),
+        if (!is_omitted_arg(timestep)) paste0("  timestep = ", code_value(timestep)),
+        if (!is_omitted_arg(tipvalues)) paste0("  TIPvalues = ", code_value(tipvalues))
+      )
+      if (length(args) > 1L) args[-length(args)] <- paste0(args[-length(args)], ",")
+      c(
+        "# TI predictor effects",
+        "tip_plots <- ctsem::ctPredictTIP(",
+        args,
+        ")",
+        "# tip_plots$Process and tip_plots$Dynamics contain the returned plot groups."
+      )
+    }
+
+    workflow_code <- shiny::reactive({
+      snippets <- output_code_snippets()
+      lines <- base_output_code()
+      if (length(snippets)) {
+        lines <- c(lines, "", "# Actions run in the GUI")
+        for (key in names(snippets)) lines <- c(lines, "", snippets[[key]])
+      } else {
+        lines <- c(lines, "", "# Fit or run diagnostics in the GUI to add reproducible action code here.")
+      }
       paste(lines, collapse = "\n")
     })
 
-    output$code_output <- shiny::renderText(workflow_code())
+    model_code <- shiny::reactive({
+      paste(c("# Model specification", ctgui_export_code(active_spec())), collapse = "\n")
+    })
+
+    output$code_output <- shiny::renderText(model_code())
     output$output_code <- shiny::renderText(workflow_code())
 
     output$pars_table <- shiny::renderTable({
@@ -1674,35 +1777,54 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       utils::head(pars, 30L)
     }, rownames = FALSE)
 
-    output$fit_iter_control <- shiny::renderUI({
-      if (isTRUE(input$fit_optimize %||% TRUE)) {
-        shiny::tagList(
-          shiny::numericInput("fit_iter_disabled", arg_label("iter", "help_fit_iter", "ctFit argument: iter"), value = input$fit_iter %||% 1000, min = 10, step = 100),
-          shiny::tags$p(class = "help-note", "Iterations are only used when optimize is disabled.")
-        )
-      } else {
-        shiny::tagList(
-          shiny::numericInput("fit_iter", arg_label("iter", "help_fit_iter", "ctFit argument: iter"), value = input$fit_iter %||% 1000, min = 10, step = 100),
-          shiny::tags$p(class = "warning-note", "Sampling can take a long time and is not recommended for routine GUI use.")
-        )
-      }
-    })
-
     output$output_pars <- shiny::renderTable({
       pars <- active_spec()$pars
       if (is.null(pars)) return(data.frame(message = "No model pars available"))
+      record_output_code("model_pars", fit_pars_code_snippet())
       pars
     }, rownames = FALSE)
+
+    numeric_scalar <- function(x) {
+      out <- suppressWarnings(as.numeric(x))
+      if (!length(out) || all(is.na(out))) return(NA_real_)
+      out[1L]
+    }
+
+    fit_comparison_stats <- function(fit) {
+      loglik <- tryCatch(numeric_scalar(fit$stanfit$transformedparsfull$ll), error = function(e) NA_real_)
+      logposterior <- tryCatch(numeric_scalar(fit$stanfit$optimfit$value), error = function(e) NA_real_)
+      npars <- tryCatch(length(fit$stanfit$rawest), error = function(e) NA_integer_)
+      nobs <- tryCatch(length(fit$stanfit$transformedparsfull$llrow[1, ]), error = function(e) NA_integer_)
+
+      if (is.na(loglik)) {
+        summary_fit <- tryCatch(summary(fit), error = function(e) NULL)
+        if (!is.null(summary_fit)) {
+          loglik <- numeric_scalar(summary_fit$loglik)
+          logposterior <- numeric_scalar(summary_fit$logposterior)
+          npars <- suppressWarnings(as.integer(numeric_scalar(summary_fit$npars)))
+        }
+      }
+
+      aic <- if (!is.na(loglik) && !is.na(npars)) 2 * npars - 2 * loglik else NA_real_
+      bic <- if (!is.na(loglik) && !is.na(npars) && !is.na(nobs) && nobs > 0) log(nobs) * npars - 2 * loglik else NA_real_
+      note <- if (is.na(loglik)) {
+        "Likelihood unavailable in this fit object"
+      } else if (is.na(bic)) {
+        "BIC unavailable because observation count was not found"
+      } else {
+        ""
+      }
+      list(loglik = loglik, logposterior = logposterior, npars = npars, nobs = nobs, aic = aic, bic = bic, note = note)
+    }
 
     output$fit_comparison <- shiny::renderTable({
       registry <- fit_registry()
       if (length(registry) == 0L) return(data.frame(message = "No saved fits. Save current fits from the Fit tab."))
+      record_output_code("fit_comparison", fit_comparison_code_snippet())
       do.call(rbind, lapply(names(registry), function(name) {
         fit <- registry[[name]]
         model_base <- fit$modelbase %||% fit$model %||% fit$ctstanmodelbase %||% fit$ctstanmodel
-        loglik <- tryCatch(as.numeric(stats::logLik(fit)), error = function(e) NA_real_)
-        aic <- tryCatch(stats::AIC(fit), error = function(e) NA_real_)
-        bic <- tryCatch(stats::BIC(fit), error = function(e) NA_real_)
+        stats <- fit_comparison_stats(fit)
         data.frame(
           fit = name,
           class = paste(class(fit), collapse = ", "),
@@ -1710,10 +1832,13 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
           latents = length(model_base$latentNames %||% character()),
           TDpreds = length(model_base$TDpredNames %||% character()),
           TIpreds = length(model_base$TIpredNames %||% character()),
-          logLik = loglik,
-          AIC = aic,
-          BIC = bic,
-          notes = if (all(is.na(c(loglik, aic, bic)))) "Likelihood criteria unavailable for this fit object" else "",
+          logLik = stats$loglik,
+          logPosterior = stats$logposterior,
+          npars = stats$npars,
+          nobs = stats$nobs,
+          AIC = stats$aic,
+          BIC = stats$bic,
+          notes = stats$note,
           row.names = NULL
         )
       }))
@@ -1902,6 +2027,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$raw_plot <- shiny::renderPlot({
       data <- current_data()
       if (is.null(data) || is.null(input$raw_plot_type)) return(invisible(NULL))
+      record_output_code("raw_plot", raw_plot_code_snippet())
       if (identical(input$raw_plot_type, "Missingness")) {
         miss <- vapply(data, function(x) mean(is.na(x)), numeric(1L))
         graphics::barplot(miss, las = 2, ylab = "Proportion missing", col = "grey70")
@@ -2016,7 +2142,6 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
             optimize = input$fit_optimize,
             priors = input$fit_priors,
             cores = input$fit_cores,
-            iter = if (isTRUE(input$fit_optimize)) 1000 else input$fit_iter,
             plot = FALSE
           )
           args <- append_extra_args(args, input$fit_extra_args)
@@ -2040,6 +2165,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       fit_status_value(paste("Fit available:", paste(class(result$value), collapse = ", ")))
       fit_messages(if (length(result$messages)) paste(result$messages, collapse = "\n") else "Fit complete.")
       fit_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
+      record_output_code("fit", fit_code_snippet())
       shiny::showNotification("Fit complete", type = "message")
     })
 
@@ -2111,6 +2237,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       }
       generated_fit(out$value$generated)
       diagnostics_status(paste(c("Fit-generated data available.", out$messages, out$warnings), collapse = "\n"))
+      record_output_code("generate_from_fit", generate_from_fit_code_snippet())
     })
 
     shiny::observeEvent(input$run_cov_check, {
@@ -2148,6 +2275,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       }
       cov_check(out$value)
       cov_check_log(paste(c("ctFitCovCheck complete.", out$messages, out$warnings), collapse = "\n"))
+      record_output_code("cov_check", cov_check_code_snippet())
     })
 
     shiny::observeEvent(input$run_kalman, {
@@ -2160,9 +2288,9 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       timerange <- parse_optional_expression(input$kalman_timerange)
       timestep <- parse_optional_expression(input$kalman_timestep)
       remove_obs <- parse_optional_expression(input$kalman_remove_obs)
-      diagnostics_status("Running prediction plots with ctKalman...")
+      diagnostics_status("Running prediction plots with ctPredict...")
       out <- NULL
-      shiny::withProgress(message = "Running ctKalman", value = 0.2, {
+      shiny::withProgress(message = "Running ctPredict", value = 0.2, {
         out <- capture_conditions({
           args <- list(fit = fit, plot = FALSE)
           if (!is_omitted_arg(subjects)) args$subjects <- subjects
@@ -2170,9 +2298,9 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
           if (!is_omitted_arg(timestep)) args$timestep <- timestep
           if (!is_omitted_arg(remove_obs)) args$removeObs <- remove_obs
           args <- append_extra_args(args, input$kalman_extra_args)
-          do.call(getExportedValue("ctsem", "ctKalman"), args)
+          do.call(getExportedValue("ctsem", "ctPredict"), args)
         })
-        shiny::incProgress(0.8, detail = "ctKalman returned")
+        shiny::incProgress(0.8, detail = "ctPredict returned")
       })
       if (inherits(out$value, "error")) {
         diagnostics_status(conditionMessage(out$value))
@@ -2180,7 +2308,8 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         return()
       }
       kalman_result(out$value)
-      diagnostics_status(paste(c("Prediction plot data available from ctKalman.", out$messages, out$warnings), collapse = "\n"))
+      diagnostics_status(paste(c("Prediction plot data available from ctPredict.", out$messages, out$warnings), collapse = "\n"))
+      record_output_code("kalman", kalman_code_snippet())
     })
 
     shiny::observeEvent(input$run_postpred, {
@@ -2204,6 +2333,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       }
       postpred_result(out$value)
       postpred_log(paste(c("ctPostPredPlots complete.", out$messages, out$warnings), collapse = "\n"))
+      record_output_code("postpred", postpred_code_snippet())
     })
 
     shiny::observeEvent(input$run_residual_acf, {
@@ -2230,6 +2360,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       }
       residual_acf(out$value)
       residual_acf_log(paste(c("ctACFresiduals complete.", out$messages, out$warnings), collapse = "\n"))
+      record_output_code("residual_acf", residual_acf_code_snippet())
     })
 
     shiny::observeEvent(input$run_dynamics, {
@@ -2262,6 +2393,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       }
       dynamics_result(out$value)
       dynamics_log(paste(c("ctDiscretePars complete.", out$messages, out$warnings), collapse = "\n"))
+      record_output_code("dynamics", dynamics_code_snippet())
     })
 
     shiny::observeEvent(input$run_tipred_effects, {
@@ -2298,6 +2430,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       }
       tipred_effects_result(out$value)
       tipred_effects_log(paste(c("ctPredictTIP complete.", out$messages, out$warnings), collapse = "\n"))
+      record_output_code("tipred", tipred_code_snippet())
     })
 
     output$diagnostics_status <- shiny::renderText(diagnostics_status())
@@ -2330,6 +2463,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       if (is.null(plots)) return(shiny::helpText("Run ctFitCovCheck to show plots."))
       if (inherits(plots, "error")) return(shiny::helpText(conditionMessage(plots)))
       if (length(plots) == 0L) return(shiny::helpText("ctFitCovCheckPlot returned no plots."))
+      record_output_code("cov_check", cov_check_code_snippet())
       ids <- paste0("cov_check_plot_", seq_along(plots))
       shiny::tagList(lapply(seq_along(plots), function(i) {
         plot_title <- names(plots)[i]
@@ -2356,6 +2490,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$kalman_plot <- shiny::renderPlot({
       out <- kalman_result()
       if (is.null(out)) return(invisible(NULL))
+      record_output_code("kalman", kalman_code_snippet())
       kalmanvec <- parse_text_vector(input$kalman_vec, c("y", "yprior"))
       errorvec <- parse_text_vector(input$kalman_error_vec, "auto")
       plot_result <- try(plot(out, kalmanvec = kalmanvec, errorvec = errorvec), silent = TRUE)
@@ -2372,6 +2507,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       if (is.null(plots)) return(shiny::helpText("Run ctPostPredPlots to show plots."))
       if (inherits(plots, "ggplot")) plots <- list(`Posterior predictive` = plots)
       if (!is.list(plots) || length(plots) == 0L) return(shiny::helpText("ctPostPredPlots returned no plots."))
+      record_output_code("postpred", postpred_code_snippet())
       ids <- paste0("postpred_plot_", seq_along(plots))
       shiny::tagList(lapply(seq_along(plots), function(i) {
         local({
@@ -2397,6 +2533,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$residual_acf_plot <- shiny::renderPlot({
       out <- residual_acf()
       if (is.null(out)) return(invisible(NULL))
+      record_output_code("residual_acf", residual_acf_code_snippet())
       plot_result <- try(getExportedValue("ctsem", "plotctACF")(out), silent = TRUE)
       if (inherits(plot_result, "try-error")) {
         graphics::plot.new()
@@ -2411,6 +2548,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$dynamics_plot <- shiny::renderPlot({
       out <- dynamics_result()
       if (is.null(out)) return(invisible(NULL))
+      record_output_code("dynamics", dynamics_code_snippet())
       ylim <- parse_optional_expression(input$dynamic_ylim)
       if (!is_omitted_arg(ylim) && inherits(out, "ggplot")) {
         out <- out + getExportedValue("ggplot2", "coord_cartesian")(ylim = ylim)
@@ -2423,6 +2561,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$tipred_effects_plots <- shiny::renderUI({
       plots <- tipred_effects_result()
       if (is.null(plots)) return(shiny::helpText("Run ctPredictTIP to show trajectory and dynamics plots."))
+      record_output_code("tipred", tipred_code_snippet())
       flatten_plots <- function(x, prefix = character()) {
         if (inherits(x, "ggplot") || inherits(x, "recordedplot") || is.function(x)) {
           label <- paste(prefix[nzchar(prefix)], collapse = " / ")
@@ -2472,84 +2611,6 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
 
     output$tipred_effects_log <- shiny::renderText(tipred_effects_log())
 
-    output$check_data_table <- shiny::renderTable({
-      data <- current_data()
-      if (is.null(data)) {
-        return(data.frame(severity = "info", field = "data", message = "Load or generate data before checking readiness"))
-      }
-      ctgui_validate_data(active_spec(), data)
-    }, rownames = FALSE)
-
-    output$check_model_table <- shiny::renderTable(ctgui_validate(active_spec()), rownames = FALSE)
-
-    output$check_fit_review <- shiny::renderText({
-      fit <- active_fit()
-      if (is.null(fit)) {
-        return(paste(
-          "No fit available.",
-          "Fit the model before reviewing convergence, warnings, parameter summaries, and random-effect output.",
-          sep = "\n"
-        ))
-      }
-      paste(capture_output_wide(summary(fit)), collapse = "\n")
-    })
-
-    guidance_block <- function(title, status, next_step) {
-      shiny::tagList(
-        shiny::tags$h4(title),
-        shiny::tags$p(status),
-        shiny::tags$p(next_step)
-      )
-    }
-
-    output$check_prediction_guidance <- shiny::renderUI({
-      guidance_block(
-        "Prediction checks",
-        if (is.null(kalman_result())) "No ctKalman prediction result is available." else "ctKalman prediction result is available.",
-        "Use Diagnostics > Prediction plots to compare observed values, prior predictions, and smoothed latent states."
-      )
-    })
-
-    output$check_residual_guidance <- shiny::renderUI({
-      guidance_block(
-        "Residual checks",
-        residual_acf_log(),
-        "Use Diagnostics > Residual ACF to check whether one-step residuals still contain predictable temporal structure."
-      )
-    })
-
-    output$check_postpred_guidance <- shiny::renderUI({
-      guidance_block(
-        "Posterior predictive checks",
-        postpred_log(),
-        "Use Diagnostics > Generate From Fit and Post Predictive to compare empirical distributions and trajectories with model-generated data."
-      )
-    })
-
-    output$check_cov_guidance <- shiny::renderUI({
-      guidance_block(
-        "Lagged covariance checks",
-        cov_check_log(),
-        "Use Diagnostics > Covariance Check after generating from the fit to compare empirical and model-implied lagged correlations."
-      )
-    })
-
-    output$check_dynamics_guidance <- shiny::renderUI({
-      guidance_block(
-        "Dynamics checks",
-        dynamics_log(),
-        "Use Diagnostics > Dynamics to inspect impulse-response behavior, including observational shocks when system-noise correlations matter."
-      )
-    })
-
-    output$check_tipred_guidance <- shiny::renderUI({
-      guidance_block(
-        "TI moderation checks",
-        tipred_effects_log(),
-        "Use Diagnostics > TI moderation when the model has time-independent predictors and specific parameter moderation."
-      )
-    })
-
     capture_output_wide <- function(expr, width = 240L) {
       old <- options(width = width)
       on.exit(options(old), add = TRUE)
@@ -2559,6 +2620,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     fit_summary_text <- function() {
       fit <- active_fit()
       if (is.null(fit)) return("No fit available.")
+      record_output_code("summary", summary_code_snippet())
       paste(capture_output_wide(summary(fit)), collapse = "\n")
     }
 
@@ -2572,6 +2634,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         capture_output_wide(getExportedValue("ctsem", "ctSummaryMatrices")(fit)),
         error = function(e) paste("ctSummaryMatrices failed:", conditionMessage(e))
       )
+      record_output_code("summary_matrices", summary_matrices_code_snippet())
       paste(result, collapse = "\n")
     }
 
