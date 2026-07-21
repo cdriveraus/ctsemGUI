@@ -32,6 +32,10 @@ ctgui_launch_app()
 
 This starts a local Shiny app in your R session.
 
+`ctgui_launch_app()` is the package's supported public API. Model-building,
+matrix-editing, validation, and conversion helpers are implementation details
+used by the app rather than functions intended for external scripts.
+
 ## What The GUI Does
 
 The app is organised around the usual `ctsem` workflow:

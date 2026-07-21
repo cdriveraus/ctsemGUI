@@ -111,3 +111,44 @@ test_that("latex equations are produced from ctsem", {
   expect_type(latex, "character")
   expect_match(latex, "DRIFT", fixed = TRUE)
 })
+
+test_that("annotated TI parameter settings survive matrix round trips", {
+  skip_if_not_installed("ctsem")
+
+  spec <- ctgui_spec(
+    latent_names = "eta", manifest_names = "Y",
+    tipred_names = c("age", "group"), tipredDefault = FALSE
+  )
+  spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta", label = "auto_eta||TRUE||age")
+  expect_equal(ctgui_matrix(spec, "DRIFT")[1, 1], "auto_eta")
+  model <- ctgui_to_ctsem_model(spec)
+  drift <- model$pars[model$pars$matrix == "DRIFT", , drop = FALSE]
+  expect_equal(as.character(drift$param[1]), "auto_eta")
+  expect_true(isTRUE(drift$indvarying[1]))
+  expect_true(isTRUE(drift$age_effect[1]))
+  expect_false(isTRUE(drift$group_effect[1]))
+
+  restored <- ctgui_spec_from_model(model)
+  metadata <- restored$parameter_metadata[restored$parameter_metadata$matrix == "DRIFT", , drop = FALSE]
+  expect_true(isTRUE(metadata$age_effect[1]))
+})
+
+test_that("parameter metadata retains all selected-cell settings", {
+  spec <- ctgui_spec(
+    latent_names = "eta", manifest_names = "Y",
+    tipred_names = c("age", "group"), tipredDefault = FALSE
+  )
+  spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta", label = "auto_eta")
+  spec <- ctgui_set_parameter_metadata(
+    spec, "DRIFT", "eta", "eta",
+    transform = "exp(param)", indvarying = TRUE, sdscale = 0.75,
+    tipred_effects = "age"
+  )
+  metadata <- spec$parameter_metadata[spec$parameter_metadata$matrix == "DRIFT", , drop = FALSE]
+
+  expect_equal(metadata$transform[1], "exp(param)")
+  expect_true(isTRUE(metadata$indvarying[1]))
+  expect_equal(metadata$sdscale[1], 0.75)
+  expect_true(isTRUE(metadata$age_effect[1]))
+  expect_false(isTRUE(metadata$group_effect[1]))
+})

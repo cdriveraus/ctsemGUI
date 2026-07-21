@@ -18,7 +18,6 @@
 #'   `ctgui_structures()` and `ctgui_measurements()` return data frames.
 #'   `ctgui_validate_data()` returns a validation data frame.
 #'   `ctgui_graph_edges()` returns graph edge data for one model element.
-#' @export
 ctgui_build_matrices <- function(spec,
     structure = c("dynamic_var", "linear_growth", "dynamic_var_trend"),
     options = list()) {
@@ -96,7 +95,6 @@ ctgui_build_matrices <- function(spec,
 }
 
 #' @rdname ctgui_build_matrices
-#' @export
 ctgui_build_measurement_matrices <- function(spec,
     measurement = c("single_indicator", "marker", "fixed_loadings"),
     options = list()) {
@@ -141,7 +139,6 @@ ctgui_build_measurement_matrices <- function(spec,
   ctgui_sync_model_from_matrices(spec)
 }
 
-#' @export
 ctgui_build_model <- function(structure = c("dynamic_var", "linear_growth", "dynamic_var_trend"),
     measurement = c("single_indicator", "marker", "fixed_loadings"),
     names = list(),
@@ -238,7 +235,6 @@ ctgui_build_model <- function(structure = c("dynamic_var", "linear_growth", "dyn
 }
 
 #' @rdname ctgui_build_model
-#' @export
 ctgui_structures <- function() {
   data.frame(
     id = c("linear_growth", "dynamic_var", "dynamic_var_trend"),
@@ -253,7 +249,6 @@ ctgui_structures <- function() {
 }
 
 #' @rdname ctgui_build_model
-#' @export
 ctgui_measurements <- function() {
   data.frame(
     id = c("single_indicator", "marker", "fixed_loadings"),
@@ -270,7 +265,6 @@ ctgui_measurements <- function() {
 #' @rdname ctgui_build_model
 #' @param spec A `ctsemgui_spec`.
 #' @param data A data frame to check against the model specification.
-#' @export
 ctgui_validate_data <- function(spec, data) {
   ctgui_check_spec(spec)
   messages <- list()
@@ -335,7 +329,6 @@ ctgui_validate_data <- function(spec, data) {
 #' @rdname ctgui_build_model
 #' @param element Graph element: `"drift"`, `"diffusion"`, `"measurement"`, or
 #'   `"trend"`.
-#' @export
 ctgui_graph_edges <- function(spec, element = c("drift", "diffusion", "measurement", "trend")) {
   ctgui_check_spec(spec)
   element <- match.arg(element)

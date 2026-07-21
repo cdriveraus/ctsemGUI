@@ -2,9 +2,9 @@
 \alias{ctsemgui-package}
 \alias{ctsemgui}
 \docType{package}
-\title{GUI-Oriented Model Specification Helpers for ctsem}
+\title{Shiny Application for ctsem Model Workflows}
 \description{
-Provides a small GUI-neutral model specification layer for ctsem. The first
-pass supports matrix-based model editing, structured validation, conversion to
-ctsem model objects, reproducible code export, and a minimal Shiny interface.
+Provides a Shiny application for specifying, fitting, diagnosing, and exporting
+continuous-time structural equation models with ctsem. Internal helpers support
+the application but are not part of its public API.
 }

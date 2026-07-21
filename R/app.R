@@ -1,19 +1,47 @@
-#' @rdname ctgui_spec
+#' Launch ctsemgui
+#'
+#' Launch the ctsemgui Shiny application.
+#'
 #' @param launch.browser Passed to `shiny::runApp()`.
 #' @param ... Additional arguments passed to `shiny::runApp()`.
 #' @export
-ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive(), ...) {
+utils::globalVariables(c("label", "loop", "label_pos", "label_size", "node_type", "edge_colour", "edge_linetype"))
+
+ctgui_launch_app <- function(launch.browser = interactive(), ...) {
   if (!requireNamespace("shiny", quietly = TRUE)) {
     stop("The shiny package is required to launch the ctsemgui app", call. = FALSE)
   }
 
+  spec <- ctgui_spec()
   current_spec <- shiny::reactiveVal(spec)
+  help_catalog <- ctgui_help_catalog()
+
+  plot_export_controls <- function(id, height = 420) {
+    shiny::div(class = "plot-export",
+      shiny::numericInput(paste0(id, "_export_width"), "Width (px)", value = 700, min = 100, step = 10),
+      shiny::numericInput(paste0(id, "_export_height"), "Height (px)", value = height, min = 100, step = 10),
+      shiny::numericInput(paste0(id, "_export_dpi"), "DPI", value = 96, min = 36, step = 12),
+      shiny::downloadButton(paste0(id, "_png"), "PNG"),
+      shiny::downloadButton(paste0(id, "_pdf"), "PDF")
+    )
+  }
+
+  help_link <- function(help_id) {
+    help <- help_catalog[[help_id]]
+    if (is.null(help)) stop("No help entry found for ", help_id, call. = FALSE)
+    tooltip <- ctgui_help_tooltip(help)
+    shiny::actionLink(help_id, "?", class = "arg-help", title = tooltip,
+      `aria-label` = paste("Help:", tooltip)
+    )
+  }
 
   arg_label <- function(label, help_id, title = NULL) {
-    if (is.null(title)) title <- paste("Show help for", label)
+    help <- help_catalog[[help_id]]
+    if (is.null(help)) stop("No help entry found for ", help_id, call. = FALSE)
+    tooltip <- ctgui_help_tooltip(help)
     shiny::tagList(
-      shiny::span(label, title = title),
-      shiny::actionLink(help_id, "?", class = "arg-help", title = title)
+      shiny::span(label, title = tooltip),
+      help_link(help_id)
     )
   }
 
@@ -39,6 +67,20 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       .matrix-editor table { width: auto; max-width: 100%; }
       .matrix-editor th, .matrix-editor td { padding: 4px 6px; vertical-align: middle; }
       .matrix-editor input { min-width: 9em; max-width: 18em; }
+      .matrix-cell { min-width: 10em; }
+      .matrix-cell .form-group { margin-bottom: 3px; }
+      .matrix-cell-metadata { min-height: 56px; color: #4b5563; font-size: 10px; line-height: 14px; }
+      .matrix-cell-metadata div { white-space: nowrap; }
+      .matrix-cell-inspector { margin-top: 14px; padding: 12px; border: 1px solid #bfdbfe; border-radius: 6px; background: #f8fbff; }
+      .matrix-cell-inspector h5 { margin-top: 0; }
+      .matrix-network { min-height: 280px; border-top: 1px solid #e5e7eb; margin-top: 14px; padding-top: 12px; }
+      .matrix-network-layout { display: flex; align-items: flex-start; gap: 18px; }
+      .matrix-network-controls { flex: 0 0 220px; padding: 4px 12px 4px 0; border-right: 1px solid #e5e7eb; }
+      .matrix-network-controls .form-group { margin-bottom: 10px; }
+      .matrix-network-plot { flex: 1 1 420px; min-width: 0; }
+      @media (max-width: 760px) { .matrix-network-layout { display: block; } .matrix-network-controls { border-right: 0; border-bottom: 1px solid #e5e7eb; padding: 0 0 12px; margin-bottom: 12px; } }
+      .plot-export { display: flex; gap: 6px; align-items: end; flex-wrap: wrap; margin: 8px 0; }
+      .plot-export .form-group { margin-bottom: 0; width: 86px; }
       .matrix-inactive { background: #f3f4f6; color: #6b7280; }
       .matrix-inactive input { background: #f3f4f6; color: #6b7280; border-color: #d1d5db; }
       .pars-editor textarea { font-family: Consolas, monospace; }
@@ -60,10 +102,50 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
             Shiny.setInputValue('tab_commit_nonce', Math.random(), {priority: 'event'});
           }
         });
+        $(document).on('focusin click', '.matrix-cell input[type=\"text\"]', function() {
+          var cell = $(this).closest('.matrix-cell');
+          if (window.Shiny && cell.length) {
+            Shiny.setInputValue('matrix_selected_cell', {
+              matrix: cell.data('matrix'), row: cell.data('row'), col: cell.data('col')
+            }, {priority: 'event'});
+          }
+        });
+        // Matrix text edits are saved on blur/change.  This is especially
+        // important when a fixed numeric value becomes a new free label: the
+        // server must create its metadata row before the inspector can render.
+        $(document).on('change', '.matrix-cell input[type=\"text\"]', function() {
+          var cell = $(this).closest('.matrix-cell');
+          if (window.Shiny && cell.length) {
+            Shiny.setInputValue('matrix_selected_cell', {
+              matrix: cell.data('matrix'), row: cell.data('row'), col: cell.data('col')
+            }, {priority: 'event'});
+            window.setTimeout(function() {
+              Shiny.setInputValue('matrix_commit_nonce', Math.random(), {priority: 'event'});
+            }, 0);
+          }
+        });
+        var matrixMetadataTimer;
+        $(document).on('change', '.matrix-cell-inspector input, .matrix-cell-inspector select', function() {
+          clearTimeout(matrixMetadataTimer);
+          matrixMetadataTimer = setTimeout(function() {
+            if (window.Shiny) Shiny.setInputValue('matrix_metadata_commit', Math.random(), {priority: 'event'});
+          }, 100);
+        });
         $(function() {
           var workflow = $('#workflow');
           var dataTab = workflow.children('ul.nav').find('a[data-value=\"Data\"]').parent();
           if (dataTab.length) dataTab.prependTo(workflow.children('ul.nav'));
+        });
+        $(document).on('click', '#run_fit', function() {
+          $('input, select, textarea, button').not('#run_fit').prop('disabled', true);
+          $('#run_fit').prop('disabled', true).text('Fitting...');
+        });
+        if (window.Shiny) Shiny.addCustomMessageHandler('ctgui-fit-finished', function(message) {
+          $('input, select, textarea, button').prop('disabled', false);
+          $('#run_fit').text('Fit model');
+          if (message.beep) {
+            try { var context = new (window.AudioContext || window.webkitAudioContext)(); var oscillator = context.createOscillator(); oscillator.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .15); } catch (e) {}
+          }
         });
       "))
     ),
@@ -97,7 +179,8 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
                 shiny::textInput("tdpred_names", "Time dependent predictors", paste(spec$tdpred_names, collapse = ", ")),
                 shiny::textInput("tipred_names", "Time independent predictors", paste(spec$tipred_names, collapse = ", "))
               ),
-              shiny::uiOutput("manifest_type_controls")
+              shiny::uiOutput("manifest_type_controls"),
+              shiny::uiOutput("tipred_network")
             ),
             shiny::div(
               class = "control-band",
@@ -119,7 +202,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
             shiny::tabsetPanel(
               id = "matrix_group",
               type = "pills",
-              shiny::tabPanel("Process", shiny::uiOutput("matrix_process_editor")),
+              shiny::tabPanel("Dynamics", shiny::uiOutput("matrix_dynamics_editor")),
               shiny::tabPanel("Measurement", shiny::uiOutput("matrix_measurement_editor")),
               shiny::tabPanel("Initial", shiny::uiOutput("matrix_initial_editor")),
               shiny::tabPanel("Predictors", shiny::uiOutput("matrix_predictor_editor")),
@@ -144,15 +227,6 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
               shiny::tags$summary("LaTeX source"),
               shiny::verbatimTextOutput("equation_source")
             )
-          ),
-          shiny::tabPanel(
-            "Model Visuals",
-            shiny::div(
-              class = "control-band",
-              shiny::uiOutput("explain_model_visuals"),
-              shiny::uiOutput("model_visual_controls")
-            ),
-            shiny::plotOutput("model_visual_plot", height = 460)
           ),
           shiny::tabPanel("Validation", shiny::tableOutput("validation_table")),
           shiny::tabPanel("Code", shiny::verbatimTextOutput("code_output")),
@@ -182,6 +256,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
             "Generate",
             shiny::div(
               class = "control-band",
+              shiny::tags$p(class = "help-note", "This is the data-generation workflow. TDPREDMEANS and TDPREDVAR are used here to describe generated time-dependent predictors; they are not fitted model parameters. Fitted TD predictor effects belong in TDPREDEFFECT under Model > Matrices > Predictors."),
               shiny::div(
                 class = "control-grid",
                 shiny::numericInput("gen_subjects", "Generated subjects", value = 20, min = 1, step = 1),
@@ -209,10 +284,11 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
             "Visuals",
             shiny::div(
               class = "control-band",
-              shiny::uiOutput("explain_raw_visuals"),
+            shiny::uiOutput("explain_raw_visuals"),
               shiny::uiOutput("raw_plot_controls")
             ),
-            shiny::plotOutput("raw_plot", height = 420)
+            shiny::plotOutput("raw_plot", height = 420),
+            plot_export_controls("raw_plot", 420)
           )
         )
       ),
@@ -230,6 +306,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
                 shiny::checkboxInput("fit_priors", arg_label("priors", "help_fit_priors", "ctFit argument: priors"), value = TRUE),
                 shiny::numericInput("fit_cores", arg_label("cores", "help_fit_cores", "ctFit argument: cores"), value = 1, min = 1, step = 1),
                 shiny::textAreaInput("fit_extra_args", arg_label("Extra ctFit arguments", "help_ctFit", "Full ctFit help"), value = "", height = "70px"),
+                shiny::checkboxInput("fit_completion_beep", "Play a sound when fitting finishes", value = FALSE),
                 shiny::textInput("fit_save_name", "Fit name", value = "fit1"),
                 shiny::actionButton("run_fit", "Fit model", class = "btn-primary"),
                 shiny::actionButton("save_fit", "Save current fit")
@@ -244,6 +321,21 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
               shiny::verbatimTextOutput("fit_log_inline"),
               shiny::tags$h4("Warnings"),
               shiny::verbatimTextOutput("fit_warnings_inline")
+            ),
+            shiny::div(
+              class = "control-band",
+              shiny::tags$h4("R session and RDS files"),
+              shiny::tags$p(class = "help-note", "Return the raw ctsem model or fit to the R session, or save/load it as an .rds file. The model is created with ctsem::ctModel()."),
+              shiny::div(class = "control-grid",
+                shiny::textInput("model_object_name", "Model object name in R", value = "model"),
+                shiny::actionButton("assign_model", "Return model to R"),
+                shiny::downloadButton("download_model_rds", "Save model RDS"),
+                shiny::fileInput("load_model_rds", "Load model RDS", accept = ".rds"),
+                shiny::textInput("fit_object_name", "Fit object name in R", value = "fit"),
+                shiny::actionButton("assign_fit", "Return fit to R"),
+                shiny::downloadButton("download_fit_rds", "Save fit RDS"),
+                shiny::fileInput("load_fit_rds", "Load fit RDS", accept = ".rds")
+              )
             )
           ),
           shiny::tabPanel(
@@ -321,14 +413,14 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
                 shiny::actionButton("run_kalman", "Run prediction plots", class = "btn-primary")
               )
             ),
-            shiny::plotOutput("kalman_plot", height = 460)
+            shiny::plotOutput("kalman_plot", height = 460), plot_export_controls("kalman_plot", 460)
           ),
           shiny::tabPanel(
             "Post Predictive",
             shiny::div(
               class = "control-band",
               shiny::uiOutput("explain_postpred"),
-              shiny::tags$p("ctPostPredPlots", shiny::actionLink("help_ctPostPredPlots", "?", class = "arg-help", title = "Full ctPostPredPlots help")),
+              shiny::tags$p("ctPostPredPlots", help_link("help_ctPostPredPlots")),
               shiny::actionButton("run_postpred", "Run ctPostPredPlots", class = "btn-primary")
             ),
             shiny::uiOutput("postpred_plots"),
@@ -347,7 +439,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
                 shiny::actionButton("run_residual_acf", "Run residual ACF", class = "btn-primary")
               )
             ),
-            shiny::plotOutput("residual_acf_plot", height = 460),
+            shiny::plotOutput("residual_acf_plot", height = 460), plot_export_controls("residual_acf_plot", 460),
             shiny::verbatimTextOutput("residual_acf_log")
           ),
           shiny::tabPanel(
@@ -366,7 +458,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
                 shiny::actionButton("run_dynamics", "Plot dynamics", class = "btn-primary")
               )
             ),
-            shiny::plotOutput("dynamics_plot", height = 460),
+            shiny::plotOutput("dynamics_plot", height = 460), plot_export_controls("dynamics_plot", 460),
             shiny::verbatimTextOutput("dynamics_log")
           ),
           shiny::tabPanel(
@@ -404,6 +496,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     current_data <- shiny::reactiveVal(NULL)
     current_data_name <- shiny::reactiveVal("No data selected")
     current_fit <- shiny::reactiveVal(NULL)
+    fit_busy <- shiny::reactiveVal(FALSE)
     fit_messages <- shiny::reactiveVal("No fit has been run.")
     fit_warnings <- shiny::reactiveVal("No warnings.")
     fit_status_value <- shiny::reactiveVal("No fit available.")
@@ -423,6 +516,23 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output_code_snippets <- shiny::reactiveVal(list())
     diagnostics_status <- shiny::reactiveVal("No fit diagnostics have been run.")
     matrix_status <- shiny::reactiveVal("Matrix edits update the current model spec.")
+    plot_cache <- shiny::reactiveValues()
+
+    register_plot_export <- function(id) {
+      save_plot <- function(file, type) {
+        plot <- plot_cache[[id]]
+        if (is.null(plot)) stop("Render the plot before exporting it")
+        width <- input[[paste0(id, "_export_width")]] %||% 700
+        height <- input[[paste0(id, "_export_height")]] %||% 420
+        dpi <- input[[paste0(id, "_export_dpi")]] %||% 96
+        if (identical(type, "png")) grDevices::png(file, width = width, height = height, res = dpi) else grDevices::pdf(file, width = width / dpi, height = height / dpi)
+        on.exit(grDevices::dev.off(), add = TRUE)
+        grDevices::replayPlot(plot)
+      }
+      output[[paste0(id, "_png")]] <- shiny::downloadHandler(filename = function() paste0(id, ".png"), content = function(file) save_plot(file, "png"))
+      output[[paste0(id, "_pdf")]] <- shiny::downloadHandler(filename = function() paste0(id, ".pdf"), content = function(file) save_plot(file, "pdf"))
+    }
+    lapply(c("raw_plot", "kalman_plot", "residual_acf_plot", "dynamics_plot"), register_plot_export)
 
     parse_names <- function(x) {
       x <- unlist(strsplit(x, ",", fixed = TRUE), use.names = FALSE)
@@ -473,59 +583,24 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$explain_acf <- shiny::renderUI(explain_ui("acf"))
     output$explain_dynamics <- shiny::renderUI(explain_ui("dynamics"))
 
-    shiny::observeEvent(input$help_ctFit, show_ctsem_help("ctFit"))
-    shiny::observeEvent(input$help_fit_optimize, show_ctsem_help("ctFit", "optimize"))
-    shiny::observeEvent(input$help_fit_priors, show_ctsem_help("ctFit", "priors"))
-    shiny::observeEvent(input$help_fit_cores, show_ctsem_help("ctFit", "cores"))
-    shiny::observeEvent(input$help_gui_time_model, {
+    show_help <- function(help) {
+      text <- help$text %||% ctgui_ctsem_help_text(help$topic, help$param %||% NULL)
+      title <- help$title %||% if (is.null(help$param)) paste0("ctsem::", help$topic) else paste(help$topic, "-", help$param)
       shiny::showModal(shiny::modalDialog(
-        title = "Time model",
-        "Choose continuous time for irregular intervals or when the model should represent dynamics between observations. Choose discrete time when the model should use the observation step as the time unit.",
-        easyClose = TRUE
+        title = title,
+        if (!is.null(help$topic)) shiny::tags$pre(style = "white-space: pre-wrap;", text) else text,
+        size = if (!is.null(help$topic)) "l" else "m",
+        easyClose = TRUE,
+        footer = shiny::modalButton("Close")
       ))
-    })
-    shiny::observeEvent(input$help_gui_generation_defaults, {
-      shiny::showModal(shiny::modalDialog(
-        title = "Generation preview values",
-        "ctGenerate needs numeric matrices. When this is checked, ctsemgui replaces free parameter labels with simple preview values: negative self-drift, positive variances/noise, identity loadings where appropriate, and zero elsewhere. These values are for previewing data shape only, not for inference.",
-        easyClose = TRUE
-      ))
-    })
-    shiny::observeEvent(input$help_gui_logdtsd, {
-      shiny::showModal(shiny::modalDialog(
-        title = "Generated logdtsd",
-        "sd of log timeintervals.",
-        easyClose = TRUE
-      ))
-    })
-    shiny::observeEvent(input$help_ctGenerateFromFit, show_ctsem_help("ctGenerateFromFit"))
-    shiny::observeEvent(input$help_fit_gen_nsamples, show_ctsem_help("ctGenerateFromFit", "nsamples"))
-    shiny::observeEvent(input$help_fit_gen_cores, show_ctsem_help("ctGenerateFromFit", "cores"))
-    shiny::observeEvent(input$help_fit_gen_fullposterior, show_ctsem_help("ctGenerateFromFit", "fullposterior"))
-    shiny::observeEvent(input$help_ctFitCovCheck, show_ctsem_help("ctFitCovCheck"))
-    shiny::observeEvent(input$help_cov_lags, show_ctsem_help("ctFitCovCheck", "lags"))
-    shiny::observeEvent(input$help_cov_cor, show_ctsem_help("ctFitCovCheck", "cor"))
-    shiny::observeEvent(input$help_ctPredict, show_ctsem_help("ctPredict"))
-    shiny::observeEvent(input$help_kalman_subjects, show_ctsem_help("ctPredict", "subjects"))
-    shiny::observeEvent(input$help_kalman_timerange, show_ctsem_help("ctPredict", "timerange"))
-    shiny::observeEvent(input$help_kalman_timestep, show_ctsem_help("ctPredict", "timestep"))
-    shiny::observeEvent(input$help_kalman_removeObs, show_ctsem_help("ctPredict", "removeObs"))
-    shiny::observeEvent(input$help_kalmanvec, show_ctsem_help("plot.ctKalmanDF", "kalmanvec"))
-    shiny::observeEvent(input$help_errorvec, show_ctsem_help("plot.ctKalmanDF", "errorvec"))
-    shiny::observeEvent(input$help_ctPostPredPlots, show_ctsem_help("ctPostPredPlots"))
-    shiny::observeEvent(input$help_ctACFresiduals, show_ctsem_help("ctACFresiduals"))
-    shiny::observeEvent(input$help_acf_varnames, show_ctsem_help("ctACFresiduals", "varnames"))
-    shiny::observeEvent(input$help_acf_nboot, show_ctsem_help("ctACFresiduals", "nboot"))
-    shiny::observeEvent(input$help_ctDiscretePars, show_ctsem_help("ctDiscretePars"))
-    shiny::observeEvent(input$help_dynamic_subjects, show_ctsem_help("ctDiscretePars", "subjects"))
-    shiny::observeEvent(input$help_dynamic_times, show_ctsem_help("ctDiscretePars", "times"))
-    shiny::observeEvent(input$help_dynamic_nsamples, show_ctsem_help("ctDiscretePars", "nsamples"))
-    shiny::observeEvent(input$help_dynamic_observational, show_ctsem_help("ctDiscretePars", "observational"))
-    shiny::observeEvent(input$help_ctPredictTIP, show_ctsem_help("ctPredictTIP"))
-    shiny::observeEvent(input$help_tipred_tipreds, show_ctsem_help("ctPredictTIP", "tipreds"))
-    shiny::observeEvent(input$help_tipred_subject, show_ctsem_help("ctPredictTIP", "subject"))
-    shiny::observeEvent(input$help_tipred_timestep, show_ctsem_help("ctPredictTIP", "timestep"))
-    shiny::observeEvent(input$help_tipred_tipvalues, show_ctsem_help("ctPredictTIP", "TIPvalues"))
+    }
+    register_help <- function(help_id) {
+      local({
+        id <- help_id
+        shiny::observeEvent(input[[id]], show_help(help_catalog[[id]]), ignoreInit = TRUE)
+      })
+    }
+    lapply(names(help_catalog), register_help)
 
     manifest_type_values <- function(manifest_names = parse_names(input$manifest_names)) {
       current <- current_spec()$manifest_type
@@ -615,54 +690,6 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       c(args, extra)
     }
 
-    ctsem_help_text <- function(topic, param = NULL) {
-      rd_db <- tryCatch(tools::Rd_db("ctsem"), error = function(e) e)
-      if (inherits(rd_db, "error")) return(paste("No ctsem help found for", topic))
-      topic_file <- paste0(topic, ".Rd")
-      if (!topic_file %in% names(rd_db)) return(paste("No ctsem help found for", topic))
-      text <- tryCatch(
-        utils::capture.output(tools::Rd2txt(rd_db[[topic_file]])),
-        error = function(e) paste("Could not load help:", conditionMessage(e))
-      )
-      clean_rd_text <- function(lines) {
-        backspace <- rawToChar(as.raw(8))
-        lines <- gsub("\033\\[[0-9;]*m", "", lines, perl = TRUE)
-        for (i in seq_len(4L)) {
-          lines <- gsub(paste0(".?", backspace), "", lines, perl = TRUE)
-        }
-        lines <- gsub("\r", "", lines, fixed = TRUE)
-        lines <- lines[!grepl("^\\s*([_=\\-]\\s*){3,}\\s*$", lines)]
-        lines <- gsub("\\s+$", "", lines)
-        keep <- logical(length(lines))
-        blank_run <- 0L
-        for (i in seq_along(lines)) {
-          is_blank <- !nzchar(lines[i])
-          blank_run <- if (is_blank) blank_run + 1L else 0L
-          keep[i] <- blank_run <= 2L
-        }
-        lines[keep]
-      }
-      text <- clean_rd_text(text)
-      if (is.null(param)) return(paste(text, collapse = "\n"))
-      escaped_param <- gsub("([.|()\\^{}+$*?\\[\\]\\\\])", "\\\\\\1", param)
-      start <- grep(paste0("^\\s*", escaped_param, ":"), text)
-      if (!length(start)) return(paste("No argument help found for", param, "in", topic))
-      next_arg <- grep("^\\s*[[:alnum:]_.]+:", text)
-      next_arg <- next_arg[next_arg > start[1L]]
-      end <- if (length(next_arg)) next_arg[1L] - 1L else min(length(text), start[1L] + 8L)
-      paste(text[start[1L]:end], collapse = "\n")
-    }
-
-    show_ctsem_help <- function(topic, param = NULL) {
-      shiny::showModal(shiny::modalDialog(
-        title = if (is.null(param)) paste("ctsem::", topic, sep = "") else paste(topic, "-", param),
-        shiny::tags$pre(style = "white-space: pre-wrap;", ctsem_help_text(topic, param)),
-        size = "l",
-        easyClose = TRUE,
-        footer = shiny::modalButton("Close")
-      ))
-    }
-
     progress_like_message <- function(text) {
       text <- trimws(text)
       if (!nzchar(text)) return(FALSE)
@@ -733,6 +760,63 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       current_fit()
     }
 
+    valid_object_name <- function(x) length(x) == 1L && grepl("^[.A-Za-z][.A-Za-z0-9_]*$", x)
+    assign_r_object <- function(object, name, label) {
+      name <- trimws(name %||% "")
+      if (!valid_object_name(name)) {
+        shiny::showNotification(paste("Use a valid R object name for", label), type = "error")
+        return(FALSE)
+      }
+      if (exists(name, envir = .GlobalEnv, inherits = FALSE)) {
+        shiny::showNotification(paste("Replaced existing R object", name), type = "warning")
+      }
+      assign(name, object, envir = .GlobalEnv)
+      shiny::showNotification(paste("Returned", label, "as", name), type = "message")
+      TRUE
+    }
+
+    is_ctsem_model <- function(x) !is.null(x$pars) && !is.null(x$latentNames) && !is.null(x$manifestNames)
+    is_ctsem_fit <- function(x) is.list(x) && (!is.null(x$stanfit) || !is.null(x$model) || !is.null(x$ctstanmodel))
+
+    output$download_model_rds <- shiny::downloadHandler(
+      filename = function() "ctsem-model.rds",
+      content = function(file) saveRDS(ctgui_to_ctsem_model(active_spec(), silent = TRUE), file)
+    )
+    output$download_fit_rds <- shiny::downloadHandler(
+      filename = function() "ctsem-fit.rds",
+      content = function(file) {
+        fit <- active_fit(); if (is.null(fit)) stop("No current fit to save")
+        saveRDS(fit, file)
+      }
+    )
+    shiny::observeEvent(input$assign_model, {
+      model <- tryCatch(ctgui_to_ctsem_model(active_spec(), silent = TRUE), error = function(e) e)
+      if (inherits(model, "error")) shiny::showNotification(conditionMessage(model), type = "error") else assign_r_object(model, input$model_object_name, "ctModel object")
+    })
+    shiny::observeEvent(input$assign_fit, {
+      fit <- active_fit()
+      if (is.null(fit)) shiny::showNotification("No fit is available to return", type = "error") else assign_r_object(fit, input$fit_object_name, "fit object")
+    })
+    shiny::observeEvent(input$load_model_rds, {
+      path <- input$load_model_rds$datapath; if (is.null(path)) return()
+      model <- tryCatch(readRDS(path), error = function(e) e)
+      if (inherits(model, "error") || !is_ctsem_model(model)) {
+        shiny::showNotification(if (inherits(model, "error")) conditionMessage(model) else "The RDS does not contain a ctsem model", type = "error"); return()
+      }
+      loaded <- tryCatch(ctgui_spec_from_model(model), error = function(e) e)
+      if (inherits(loaded, "error")) shiny::showNotification(conditionMessage(loaded), type = "error") else {
+        current_spec(loaded); current_fit(NULL); clear_diagnostics(); fit_status_value("Loaded ctsem model from RDS."); shiny::showNotification("Loaded model RDS", type = "message")
+      }
+    })
+    shiny::observeEvent(input$load_fit_rds, {
+      path <- input$load_fit_rds$datapath; if (is.null(path)) return()
+      fit <- tryCatch(readRDS(path), error = function(e) e)
+      if (inherits(fit, "error") || !is_ctsem_fit(fit)) {
+        shiny::showNotification(if (inherits(fit, "error")) conditionMessage(fit) else "The RDS does not contain a ctsem fit", type = "error"); return()
+      }
+      current_fit(fit); fit_status_value("Loaded fit from RDS."); shiny::showNotification("Loaded fit RDS", type = "message")
+    })
+
     clear_diagnostics <- function() {
       generated_fit(NULL)
       cov_check(NULL)
@@ -773,6 +857,76 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         shiny::selectInput("data_time", "Time column from active data",
           choices = names, selected = if (spec$time %in% names) spec$time else names[1L])
       )
+    })
+
+    output$tipred_network <- shiny::renderUI({
+      spec <- active_spec()
+      if (!length(spec$tipred_names)) return(shiny::helpText("Add time-independent predictors to show their subject-level correlations and moderated parameters."))
+      shiny::div(class = "control-band",
+        shiny::tags$h4("Time-independent predictor network"),
+        shiny::tags$p(class = "help-note", "Undirected edges are Pearson correlations between the first available value for each subject. Directed arrows show which free model parameters are moderated by each predictor."),
+        shiny::plotOutput("tipred_network_plot", height = 320),
+        shiny::textOutput("tipred_network_status")
+      )
+    })
+
+    tipred_subject_data <- function(data, spec) {
+      if (is.null(data) || !length(spec$tipred_names) || !spec$id %in% names(data)) return(NULL)
+      present <- intersect(spec$tipred_names, names(data))
+      if (!length(present)) return(NULL)
+      first <- data[!duplicated(data[[spec$id]]), c(spec$id, present), drop = FALSE]
+      variation <- vapply(present, function(name) {
+        any(vapply(split(data[[name]], data[[spec$id]]), function(x) length(unique(x[!is.na(x)])) > 1L, logical(1L)))
+      }, logical(1L))
+      list(values = first, varying = names(variation)[variation], missing = setdiff(spec$tipred_names, present))
+    }
+
+    output$tipred_network_status <- shiny::renderText({
+      info <- tipred_subject_data(current_data(), active_spec())
+      if (is.null(info)) return("Load data with the selected ID column and TI predictors to calculate correlations.")
+      notes <- character()
+      if (length(info$missing)) notes <- c(notes, paste("Missing from data:", paste(info$missing, collapse = ", ")))
+      if (length(info$varying)) notes <- c(notes, paste("These selected TI predictors vary within subject; correlations use each subject's first row:", paste(info$varying, collapse = ", ")))
+      if (!length(notes)) "" else paste(notes, collapse = " ")
+    })
+
+    output$tipred_network_plot <- shiny::renderPlot({
+      spec <- active_spec(); info <- tipred_subject_data(current_data(), spec)
+      metadata <- spec$parameter_metadata
+      predictors <- spec$tipred_names
+      targets <- character()
+      if (!is.null(metadata) && nrow(metadata)) for (tipred in predictors) {
+        field <- paste0(tipred, "_effect")
+        if (field %in% names(metadata)) targets <- c(targets, paste(metadata$matrix[metadata[[field]]], metadata$row[metadata[[field]]], metadata$col[metadata[[field]]], sep = ":"))
+      }
+      nodes <- unique(c(predictors, targets))
+      graphics::plot.new()
+      if (!length(nodes)) { graphics::text(.5, .5, "No TI predictor effects are selected yet."); return(invisible(NULL)) }
+      theta <- seq(0, 2*pi, length.out = length(nodes) + 1L)[-length(nodes) - 1L]
+      coords <- data.frame(name = nodes, x = cos(theta), y = sin(theta))
+      graphics::plot.window(xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5), asp = 1)
+      if (!is.null(info) && length(predictors) > 1L) {
+        numeric <- predictors[vapply(predictors, function(x) x %in% names(info$values) && is.numeric(info$values[[x]]), logical(1L))]
+        if (length(numeric) > 1L) {
+          cor <- stats::cor(info$values[numeric], use = "pairwise.complete.obs")
+          for (r in 2:length(numeric)) for (c in seq_len(r - 1L)) if (is.finite(cor[r, c])) {
+            a <- coords[coords$name == numeric[r], ]; b <- coords[coords$name == numeric[c], ]
+            graphics::segments(a$x, a$y, b$x, b$y, col = grDevices::adjustcolor("#7c3aed", .45), lwd = 1 + 2 * abs(cor[r,c]))
+            graphics::text((a$x+b$x)/2, (a$y+b$y)/2, sprintf("r = %.2f", cor[r,c]), cex = .65, col = "#5b21b6", pos = 3)
+          }
+        }
+      }
+      if (!is.null(metadata) && nrow(metadata)) for (tipred in predictors) {
+        field <- paste0(tipred, "_effect"); if (!field %in% names(metadata)) next
+        for (i in which(metadata[[field]])) {
+          target <- paste(metadata$matrix[i], metadata$row[i], metadata$col[i], sep = ":")
+          a <- coords[coords$name == tipred, ]; b <- coords[coords$name == target, ]; dx <- b$x-a$x; dy <- b$y-a$y; d <- sqrt(dx^2+dy^2)
+          if (d > 0) graphics::arrows(a$x+.16*dx/d, a$y+.16*dy/d, b$x-.16*dx/d, b$y-.16*dy/d, length=.08, col="#0f766e", lwd=1.6)
+        }
+      }
+      is_pred <- nodes %in% predictors
+      graphics::points(coords$x, coords$y, pch = 21, bg = ifelse(is_pred, "#dbeafe", "#dcfce7"), cex = 3.2)
+      graphics::text(coords$x, coords$y, nodes, cex = .72)
     })
 
     output$manifest_type_controls <- shiny::renderUI({
@@ -977,8 +1131,8 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
 
     matrix_group_names <- function(spec, group = input$matrix_group) {
       present <- ctgui_matrix_names(spec)
-      desired <- switch(group %||% "Process",
-        Process = c("DRIFT", "CINT", "DIFFUSION"),
+      desired <- switch(group %||% "Dynamics",
+        Dynamics = c("DRIFT", "CINT", "DIFFUSION"),
         Measurement = c("LAMBDA", "MANIFESTMEANS", "MANIFESTVAR"),
         Initial = c("T0MEANS", "T0VAR"),
         Predictors = c("TDPREDEFFECT", "TDPREDMEANS", "TDPREDVAR"),
@@ -998,8 +1152,8 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         T0MEANS = "Initial latent means at the start of each subject series.",
         T0VAR = "Lower triangular initial-state covariance matrix. Diagonal entries are initial standard deviations; lower off-diagonals set unconstrained initial-state correlations.",
         TDPREDEFFECT = "Effects of time-dependent predictors on latent processes. Rows are latent processes, columns are TD predictors.",
-        TDPREDMEANS = "Means used for time-dependent predictor distributions when the model needs them.",
-        TDPREDVAR = "Covariance structure used for time-dependent predictor distributions when the model needs it.",
+        TDPREDMEANS = "Data generation only: means for simulated time-dependent predictors. This matrix is not estimated when fitting a model.",
+        TDPREDVAR = "Data generation only: covariance structure for simulated time-dependent predictors. This matrix is not estimated when fitting a model.",
         ""
       )
     }
@@ -1018,6 +1172,234 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       rownames(t0means)[!vapply(values, fixed_matrix_value, logical(1L))]
     }
 
+    matrix_metadata <- function(spec, matrix_name, row_name, col_name) {
+      metadata <- spec$parameter_metadata
+      if (is.null(metadata) || !nrow(metadata)) return(NULL)
+      found <- metadata[metadata$matrix == matrix_name & metadata$row == row_name & metadata$col == col_name, , drop = FALSE]
+      if (!nrow(found)) NULL else found[1L, , drop = FALSE]
+    }
+
+    matrix_meta_id <- function(matrix_name, row, col, field) {
+      paste0("matrix_meta_", matrix_id_part(matrix_name), "_", row, "_", col, "_", field)
+    }
+
+    active_matrix_cell <- function(value) !fixed_matrix_value(value)
+
+    matrix_network_id <- function(matrix_name, field) {
+      paste0("matrix_network_", matrix_id_part(matrix_name), "_", field)
+    }
+
+    matrix_network_controls <- function(matrix_name) {
+      shiny::div(
+        class = "matrix-network-controls",
+        shiny::sliderInput(matrix_network_id(matrix_name, "spread"), "Node spacing", min = 0.4, max = 4.5, value = 1.5, step = 0.1),
+        shiny::sliderInput(matrix_network_id(matrix_name, "general_scale"), "General scale", min = 0.35, max = 3.5, value = 1, step = 0.05),
+        shiny::sliderInput(matrix_network_id(matrix_name, "text_scale"), "Text scale", min = 0.35, max = 3.5, value = 1, step = 0.05),
+        shiny::sliderInput(matrix_network_id(matrix_name, "label_offset"), "Path-label offset", min = 0, max = 1.2, value = 0.18, step = 0.02),
+        shiny::checkboxInput(matrix_network_id(matrix_name, "self_effects"), "Show self-effect arrows", value = TRUE)
+      )
+    }
+
+    matrix_network_options <- function(matrix_name) {
+      list(
+        spread = input[[matrix_network_id(matrix_name, "spread")]] %||% 1.5,
+        general_scale = input[[matrix_network_id(matrix_name, "general_scale")]] %||% 1,
+        text_scale = input[[matrix_network_id(matrix_name, "text_scale")]] %||% 1,
+        label_offset = input[[matrix_network_id(matrix_name, "label_offset")]] %||% 0.18,
+        self_effects = isTRUE(input[[matrix_network_id(matrix_name, "self_effects")]] %||% TRUE)
+      )
+    }
+
+    network_matrix_cell_active <- function(value) {
+      value <- trimws(as.character(value %||% ""))
+      if (!nzchar(value) || grepl("\\|\\|\\s*FALSE\\s*$", value, ignore.case = TRUE)) return(FALSE)
+      numeric_value <- suppressWarnings(as.numeric(value))
+      if (!is.na(numeric_value)) return(!isTRUE(all.equal(numeric_value, 0)))
+      TRUE
+    }
+
+    draw_matrix_network <- function(spec, matrix_name, options = matrix_network_options(matrix_name)) {
+      mat <- ctgui_matrix(spec, matrix_name)
+      covariance <- matrix_name %in% c("T0VAR", "DIFFUSION", "MANIFESTVAR", "TDPREDVAR")
+      edges <- data.frame(from = character(), to = character(), label = character(), loop = logical(), fixed = logical(), stringsAsFactors = FALSE)
+      for (r in seq_len(nrow(mat))) for (c in seq_len(ncol(mat))) {
+        value <- as.character(mat[r, c])
+        if (!network_matrix_cell_active(value) || (covariance && c > r)) next
+        from <- if (matrix_name == "LAMBDA") colnames(mat)[c] else if (matrix_name %in% c("CINT", "T0MEANS", "MANIFESTMEANS", "TDPREDMEANS")) "constant" else colnames(mat)[c]
+        to <- rownames(mat)[r]
+        loop <- identical(from, to)
+        if (loop && !isTRUE(options$self_effects)) next
+        fixed <- !is.na(suppressWarnings(as.numeric(trimws(value))))
+        edges <- rbind(edges, data.frame(from = from, to = to,
+          label = strsplit(value, "|", fixed = TRUE)[[1L]][1L], loop = loop, fixed = fixed, stringsAsFactors = FALSE))
+      }
+      if (!nrow(edges)) {
+        return(ggplot2::ggplot() + ggplot2::annotate("text", x = 0, y = 0, label = "No active paths in this matrix") + ggplot2::theme_void())
+      }
+      pair_key <- vapply(seq_len(nrow(edges)), function(i) paste(sort(c(edges$from[i], edges$to[i])), collapse = "\r"), character(1L))
+      edges$label_pos <- 0.5
+      for (key in unique(pair_key[!edges$loop])) {
+        index <- which(pair_key == key & !edges$loop)
+        if (length(index) > 1L) edges$label_pos[index] <- seq(0.32, 0.68, length.out = length(index))
+      }
+      nodes <- unique(c(edges$from, edges$to))
+      sources <- unique(edges$from)
+      targets <- unique(edges$to)
+      bipartite <- length(setdiff(sources, targets)) > 0L && length(setdiff(targets, sources)) > 0L
+      if (bipartite) {
+        coords <- rbind(
+          data.frame(name = sources, x = rep(-options$spread, length(sources)), y = seq(1, -1, length.out = length(sources)) * options$spread),
+          data.frame(name = targets, x = rep(options$spread, length(targets)), y = seq(1, -1, length.out = length(targets)) * options$spread)
+        )
+        coords <- coords[!duplicated(coords$name), , drop = FALSE]
+      } else {
+        radius <- options$spread * (1 + 0.06 * max(0, length(nodes) - 4L))
+        theta <- seq(pi / 2, pi / 2 + 2 * pi, length.out = length(nodes) + 1L)[-length(nodes) - 1L]
+        coords <- data.frame(name = nodes, x = radius * cos(theta), y = radius * sin(theta))
+      }
+      coords$node_type <- if (identical(matrix_name, "LAMBDA")) {
+        ifelse(coords$name %in% colnames(mat), "latent", "observed")
+      } else "process"
+      arrow_end <- if (!covariance) grid::arrow(length = grid::unit(5 * options$general_scale, "mm"), type = "closed") else NULL
+      arrow_loop <- if (!covariance) grid::arrow(length = grid::unit(5 * options$general_scale, "mm"), type = "closed", ends = "both") else NULL
+      path_strength <- 0.5 + options$label_offset * 2.5
+      label_size <- max(2.5, 3.5 * options$text_scale)
+      # These values are edge attributes because ggraph evaluates edge
+      # aesthetics from the igraph object, not the local `edges` data frame.
+      edges$label_size <- label_size
+      edges$edge_colour <- ifelse(edges$fixed, "#94a3b8", if (covariance) "#7c3aed" else "#2563eb")
+      edges$edge_linetype <- ifelse(edges$fixed, "dashed", "solid")
+      graph <- igraph::graph_from_data_frame(
+        edges[, c("from", "to", "label", "loop", "fixed", "label_pos", "label_size", "edge_colour", "edge_linetype")],
+        directed = !covariance, vertices = coords
+      )
+      plot <- ggraph::ggraph(graph, layout = "manual", x = coords$x, y = coords$y) +
+        ggraph::geom_edge_fan(
+          ggplot2::aes(label = label, label_pos = label_pos, label_size = label_size, edge_colour = edge_colour, edge_linetype = edge_linetype, filter = !loop), arrow = arrow_end,
+          strength = path_strength, label_dodge = grid::unit(options$label_offset, "cm"),
+          edge_width = 0.8 * options$general_scale
+        ) +
+        ggraph::geom_edge_loop(
+          ggplot2::aes(label = label, label_size = label_size, edge_colour = edge_colour, edge_linetype = edge_linetype, filter = loop), arrow = arrow_loop,
+          label_dodge = grid::unit(options$label_offset, "cm"),
+          edge_width = 0.8 * options$general_scale
+        ) +
+        ggraph::scale_edge_colour_identity() +
+        ggraph::scale_edge_linetype_identity()
+      if (identical(matrix_name, "LAMBDA")) {
+        plot <- plot +
+          ggraph::geom_node_point(ggplot2::aes(filter = node_type == "latent"), shape = 21, size = 8 * options$general_scale, fill = "#dbeafe", colour = "#1d4ed8", stroke = 0.8) +
+          ggraph::geom_node_text(ggplot2::aes(label = name, filter = node_type == "latent"), size = label_size) +
+          ggraph::geom_node_label(ggplot2::aes(label = name, filter = node_type == "observed"), size = label_size, fill = "#f8fafc", colour = "#334155", label.size = 0.5)
+      } else {
+        plot <- plot +
+          ggraph::geom_node_point(shape = 21, size = 8 * options$general_scale, fill = "#dbeafe", colour = "#1d4ed8", stroke = 0.8) +
+          ggraph::geom_node_text(ggplot2::aes(label = name), size = label_size)
+      }
+      plot + ggplot2::coord_fixed(clip = "off") + ggplot2::theme_void() +
+        ggplot2::theme(plot.margin = ggplot2::margin(16, 32, 16, 32)) +
+        ggplot2::ggtitle(paste(matrix_name, if (covariance) "covariances" else "paths"))
+    }
+
+    matrix_metadata_badges <- function(spec, matrix_name, row_name, col_name) {
+      meta <- matrix_metadata(spec, matrix_name, row_name, col_name)
+      if (is.null(meta)) return(NULL)
+      tipreds <- spec$tipred_names[vapply(spec$tipred_names, function(tipred) {
+        field <- paste0(tipred, "_effect")
+        field %in% names(meta) && isTRUE(meta[[field]][1L])
+      }, logical(1L))]
+      scale <- suppressWarnings(as.numeric(meta$sdscale[1L]))
+      if (is.na(scale)) scale <- if (isTRUE(meta$sdscale[1L])) 1 else 0
+      shiny::div(
+        class = "matrix-cell-metadata",
+        shiny::div("Transform: ", if (nzchar(meta$transform[1L] %||% "")) meta$transform[1L] else "-"),
+        shiny::div("RandomEffects: ", if (isTRUE(meta$indvarying[1L])) "TRUE" else "FALSE"),
+        shiny::div("RandomEffectsScale: ", format(scale, trim = TRUE)),
+        shiny::div("Time Independent Predictors: ", if (length(tipreds)) paste(tipreds, collapse = ", ") else "-")
+      )
+    }
+
+    selected_matrix_cell <- shiny::reactive({
+      selected <- input$matrix_selected_cell
+      if (is.null(selected) || !is.list(selected)) return(NULL)
+      row <- suppressWarnings(as.integer(selected$row))
+      col <- suppressWarnings(as.integer(selected$col))
+      if (is.null(selected$matrix) || is.na(row) || is.na(col) || row < 1L || col < 1L) return(NULL)
+      list(matrix = as.character(selected$matrix), row = row, col = col)
+    })
+
+    matrix_cell_inspector <- function(matrix_name) {
+      selected <- selected_matrix_cell()
+      if (is.null(selected) || !identical(selected$matrix, matrix_name)) {
+        return(shiny::div(class = "matrix-cell-inspector", shiny::helpText("Select a free matrix cell to view and edit its parameter settings.")))
+      }
+      spec <- current_spec()
+      mat <- ctgui_matrix(spec, matrix_name)
+      if (selected$row > nrow(mat) || selected$col > ncol(mat)) return(NULL)
+      value <- input[[matrix_cell_id(matrix_name, selected$row, selected$col)]] %||% mat[selected$row, selected$col]
+      if (!active_matrix_cell(value)) {
+        return(shiny::div(class = "matrix-cell-inspector", shiny::helpText("Fixed numeric cells do not have parameter settings. Enter a free parameter label to edit RandomEffects, Transform, RandomEffectsScale, or Time Independent Predictors.")))
+      }
+      row_name <- rownames(mat)[selected$row]
+      col_name <- colnames(mat)[selected$col]
+      meta <- matrix_metadata(spec, matrix_name, row_name, col_name)
+      if (is.null(meta)) return(shiny::div(class = "matrix-cell-inspector", shiny::helpText("Apply the free parameter label before editing its settings.")))
+      tipreds <- spec$tipred_names[vapply(spec$tipred_names, function(tipred) {
+        field <- paste0(tipred, "_effect")
+        field %in% names(meta) && isTRUE(meta[[field]][1L])
+      }, logical(1L))]
+      random_effects_scale <- suppressWarnings(as.numeric(meta$sdscale[1L]))
+      if (is.na(random_effects_scale)) random_effects_scale <- 1
+      shiny::div(
+        class = "matrix-cell-inspector",
+        shiny::tags$h5("Cell Specific Details"),
+        shiny::tags$p(class = "help-note", paste0("Selected cell: ", matrix_name, " [", row_name, ", ", col_name, "]. Settings apply to the free parameter in this cell and are saved automatically.")),
+        shiny::div(class = "control-grid",
+          shiny::checkboxInput(matrix_meta_id(matrix_name, selected$row, selected$col, "indvarying"), arg_label("RandomEffects", "help_matrix_random_effects"), value = isTRUE(meta$indvarying[1L])),
+          shiny::textInput(matrix_meta_id(matrix_name, selected$row, selected$col, "transform"), arg_label("Transform", "help_matrix_transform"), value = meta$transform[1L] %||% ""),
+          shiny::numericInput(matrix_meta_id(matrix_name, selected$row, selected$col, "sdscale"), arg_label("RandomEffectsScale", "help_matrix_random_effects_scale"), value = random_effects_scale, step = 0.1),
+          if (length(spec$tipred_names)) shiny::selectizeInput(matrix_meta_id(matrix_name, selected$row, selected$col, "tipreds"), arg_label("Time Independent Predictors", "help_matrix_time_independent_predictors"), choices = spec$tipred_names, selected = tipreds, multiple = TRUE),
+          shiny::textInput(matrix_meta_id(matrix_name, selected$row, selected$col, "extra_pars"), "Additional PARS parameters", value = meta$extra_pars[1L] %||% "", placeholder = "e.g. nonlinear_a, nonlinear_b")
+        )
+      )
+    }
+
+    matrix_pars_details <- function(matrix_name) {
+      spec <- current_spec()
+      metadata <- spec$parameter_metadata
+      if (is.null(metadata) || !nrow(metadata) || !"extra_pars" %in% names(metadata)) return(NULL)
+      parent <- metadata[metadata$matrix == matrix_name, , drop = FALSE]
+      used <- ctgui_split_pars(parent$extra_pars)
+      if (!length(used)) return(NULL)
+      pars <- spec$matrices[["PARS"]]
+      if (is.null(pars)) return(NULL)
+      rows <- which(as.character(pars[, 1L, drop = TRUE]) %in% used)
+      if (!length(rows)) return(NULL)
+      cards <- lapply(rows, function(row) {
+        meta <- matrix_metadata(spec, "PARS", rownames(pars)[row], colnames(pars)[1L])
+        if (is.null(meta)) return(shiny::helpText(paste("Parameter", pars[row, 1L], "will be available after the next model update.")))
+        tipreds <- spec$tipred_names[vapply(spec$tipred_names, function(tipred) {
+          field <- paste0(tipred, "_effect")
+          field %in% names(meta) && isTRUE(meta[[field]][1L])
+        }, logical(1L))]
+        scale <- suppressWarnings(as.numeric(meta$sdscale[1L])); if (is.na(scale)) scale <- 1
+        shiny::div(class = "matrix-cell-inspector",
+          shiny::tags$h5(as.character(pars[row, 1L])),
+          shiny::div(class = "control-grid",
+            shiny::checkboxInput(matrix_meta_id("PARS", row, 1L, "indvarying"), "RandomEffects", value = isTRUE(meta$indvarying[1L])),
+            shiny::textInput(matrix_meta_id("PARS", row, 1L, "transform"), "Transform", value = meta$transform[1L] %||% ""),
+            shiny::numericInput(matrix_meta_id("PARS", row, 1L, "sdscale"), "RandomEffectsScale", value = scale, step = 0.1),
+            if (length(spec$tipred_names)) shiny::selectizeInput(matrix_meta_id("PARS", row, 1L, "tipreds"), "Time Independent Predictors", choices = spec$tipred_names, selected = tipreds, multiple = TRUE)
+          )
+        )
+      })
+      shiny::div(class = "matrix-pars-details",
+        shiny::tags$h5(paste("PARS parameters used by", matrix_name)),
+        shiny::tags$p(class = "matrix-note", "These additional free parameters are included once in the combined PARS vector. Their settings are saved automatically."),
+        cards
+      )
+    }
+
     matrix_editor_block <- function(spec, matrix_name) {
       mat <- ctgui_matrix(spec, matrix_name)
       inactive_names <- if (identical(matrix_name, "T0VAR")) indvarying_t0means(spec) else character()
@@ -1030,12 +1412,19 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
               (rownames(mat)[row] %in% inactive_names || colnames(mat)[col] %in% inactive_names)
             shiny::tags$td(
               class = if (inactive) "matrix-inactive" else NULL,
-              shiny::textInput(
-                matrix_cell_id(matrix_name, row, col),
-                label = NULL,
-                value = as.character(mat[row, col]),
-                width = "100%"
-              ) |> shiny::tagAppendAttributes(disabled = if (inactive) "disabled" else NULL)
+              shiny::div(
+                class = "matrix-cell",
+                `data-matrix` = matrix_name,
+                `data-row` = row,
+                `data-col` = col,
+                shiny::textInput(
+                  matrix_cell_id(matrix_name, row, col),
+                  label = NULL,
+                  value = as.character(mat[row, col]),
+                  width = "100%"
+                ) |> shiny::tagAppendAttributes(disabled = if (inactive) "disabled" else NULL),
+                if (!inactive && active_matrix_cell(mat[row, col])) matrix_metadata_badges(spec, matrix_name, rownames(mat)[row], colnames(mat)[col])
+              )
             )
           })
         )
@@ -1049,14 +1438,21 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
             paste("Inactive cells involve", paste(inactive_names, collapse = ", "),
               "because those T0MEANS entries are individual-varying. ctsem fixes the corresponding T0VAR rows and columns."))
         },
-        shiny::div(
-          class = "matrix-editor",
-          shiny::tags$table(class = "table table-condensed", shiny::tags$thead(header), shiny::tags$tbody(rows))
+        shiny::div(class = "matrix-editor", shiny::tags$table(class = "table table-condensed", shiny::tags$thead(header), shiny::tags$tbody(rows))),
+        shiny::uiOutput(paste0("matrix_cell_inspector_", matrix_id_part(matrix_name))),
+        shiny::uiOutput(paste0("matrix_pars_details_", matrix_id_part(matrix_name))),
+        shiny::div(class = "matrix-network",
+          shiny::tags$h5("Network diagram"),
+          shiny::div(class = "matrix-network-layout",
+            matrix_network_controls(matrix_name),
+            shiny::div(class = "matrix-network-plot", shiny::plotOutput(paste0("matrix_network_", matrix_id_part(matrix_name)), height = 380))
+          ),
+          plot_export_controls(paste0("matrix_network_", matrix_id_part(matrix_name)), 380)
         )
       )
     }
 
-    matrix_group_ui <- function(group) {
+    matrix_section_tabs <- function(group) {
       spec <- current_spec()
       names <- matrix_group_names(spec, group)
       if (length(names) == 0L) {
@@ -1065,15 +1461,36 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         }
         return(shiny::div(class = "matrix-block", shiny::helpText("No matrices are available for this model section.")))
       }
-      shiny::div(
-        lapply(names, function(matrix_name) matrix_editor_block(spec, matrix_name))
+      panels <- lapply(names, function(matrix_name) {
+        shiny::tabPanel(matrix_name, value = matrix_name, matrix_editor_block(spec, matrix_name))
+      })
+      do.call(
+        shiny::tabsetPanel,
+        c(list(id = paste0("matrix_", tolower(group), "_tabs"), type = "pills"), panels)
       )
     }
 
-    output$matrix_process_editor <- shiny::renderUI(matrix_group_ui("Process"))
-    output$matrix_measurement_editor <- shiny::renderUI(matrix_group_ui("Measurement"))
-    output$matrix_initial_editor <- shiny::renderUI(matrix_group_ui("Initial"))
-    output$matrix_predictor_editor <- shiny::renderUI(matrix_group_ui("Predictors"))
+    output$matrix_dynamics_editor <- shiny::renderUI(matrix_section_tabs("Dynamics"))
+    output$matrix_measurement_editor <- shiny::renderUI(matrix_section_tabs("Measurement"))
+    output$matrix_initial_editor <- shiny::renderUI(matrix_section_tabs("Initial"))
+    output$matrix_predictor_editor <- shiny::renderUI(matrix_section_tabs("Predictors"))
+
+    shiny::observe({
+      spec <- current_spec()
+      for (matrix_name in setdiff(ctgui_matrix_names(spec), "PARS")) local({
+        name <- matrix_name
+        output_id <- paste0("matrix_network_", matrix_id_part(name))
+        inspector_id <- paste0("matrix_cell_inspector_", matrix_id_part(name))
+        pars_details_id <- paste0("matrix_pars_details_", matrix_id_part(name))
+        register_plot_export(output_id)
+        output[[inspector_id]] <- shiny::renderUI(matrix_cell_inspector(name))
+        output[[pars_details_id]] <- shiny::renderUI(matrix_pars_details(name))
+        output[[output_id]] <- shiny::renderPlot({
+          on.exit({ plot_cache[[output_id]] <- grDevices::recordPlot() }, add = TRUE)
+          print(draw_matrix_network(active_spec(), name, matrix_network_options(name)))
+        }, height = 380)
+      })
+    })
 
     pars_vector <- function(spec) {
       pars <- spec$matrices[["PARS"]]
@@ -1163,8 +1580,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
 
     parse_pars_vector <- function(x) {
       if (is.null(x)) return(NULL)
-      values <- trimws(unlist(strsplit(x, "\r?\n"), use.names = FALSE))
-      values <- values[nzchar(values)]
+      values <- ctgui_split_pars(x)
       if (length(values) == 0L) return(NULL)
       matrix(values, ncol = 1L, dimnames = list(paste0("PARS", seq_along(values)), "PARS"))
     }
@@ -1206,6 +1622,33 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       out
     })
 
+    apply_matrix_metadata_inputs <- function(spec) {
+      names <- unique(c(matrix_group_names(spec), if (!is.null(spec$matrices[["PARS"]])) "PARS" else character()))
+      for (matrix_name in names) {
+        mat <- spec$matrices[[matrix_name]]
+        if (is.null(mat)) next
+        for (row in seq_len(nrow(mat))) for (col in seq_len(ncol(mat))) {
+          meta <- matrix_metadata(spec, matrix_name, rownames(mat)[row], colnames(mat)[col])
+          if (is.null(meta)) next
+          transform <- input[[matrix_meta_id(matrix_name, row, col, "transform")]]
+          indvarying <- input[[matrix_meta_id(matrix_name, row, col, "indvarying")]]
+          sdscale <- input[[matrix_meta_id(matrix_name, row, col, "sdscale")]]
+          tipreds <- input[[matrix_meta_id(matrix_name, row, col, "tipreds")]]
+          extra_pars <- input[[matrix_meta_id(matrix_name, row, col, "extra_pars")]]
+          if (is.null(transform)) transform <- meta$transform
+          if (is.null(indvarying)) indvarying <- meta$indvarying
+          if (is.null(sdscale)) sdscale <- meta$sdscale
+          if (is.null(tipreds)) {
+            tipreds <- spec$tipred_names[vapply(spec$tipred_names, function(tipred) isTRUE(meta[[paste0(tipred, "_effect")]]), logical(1L))]
+          }
+          if (is.null(extra_pars)) extra_pars <- meta$extra_pars %||% ""
+          spec <- ctgui_set_parameter_metadata(spec, matrix_name, rownames(mat)[row], colnames(mat)[col],
+            transform = transform, indvarying = indvarying, sdscale = sdscale, tipred_effects = tipreds, extra_pars = extra_pars)
+        }
+      }
+      spec
+    }
+
     active_spec <- shiny::reactive({
       spec <- current_spec()
       matrix_values <- matrix_input_values()
@@ -1219,7 +1662,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         updated <- tryCatch(set_spec_matrix(updated, matrix_name, value), error = function(e) e)
         if (inherits(updated, "error")) return(spec)
       }
-      updated
+      apply_matrix_metadata_inputs(updated)
     })
 
     apply_current_matrix <- function(show_notification = FALSE) {
@@ -1242,6 +1685,13 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         updated <- next_spec
         changed <- c(changed, matrix_name)
       }
+      metadata_updated <- tryCatch(apply_matrix_metadata_inputs(updated), error = function(e) e)
+      if (inherits(metadata_updated, "error")) {
+        matrix_status(conditionMessage(metadata_updated))
+        return(invisible(FALSE))
+      }
+      if (!identical(updated$parameter_metadata, metadata_updated$parameter_metadata)) changed <- unique(c(changed, "parameter options"))
+      updated <- metadata_updated
       if (length(changed) == 0L) return(invisible(FALSE))
       current_spec(updated)
       current_fit(NULL)
@@ -1253,6 +1703,10 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     }
 
     shiny::observeEvent(input$matrix_commit_nonce, {
+      apply_current_matrix(show_notification = FALSE)
+    })
+
+    shiny::observeEvent(input$matrix_metadata_commit, {
       apply_current_matrix(show_notification = FALSE)
     })
 
@@ -1593,21 +2047,9 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     fit_comparison_code_snippet <- function() {
       c(
         "# Fit comparison",
-        "# Save candidate fits in a named list, then compare likelihood criteria when available.",
+        "# Save candidate fits in a named list, then use ctsem summaries to compare them.",
         "fits <- list(fit1 = fit)",
-        "fit_stats <- lapply(fits, function(x) {",
-        "  ll <- x$stanfit$transformedparsfull$ll",
-        "  npars <- length(x$stanfit$rawest)",
-        "  nobs <- length(x$stanfit$transformedparsfull$llrow[1, ])",
-        "  data.frame(",
-        "    logLik = as.numeric(ll)[1],",
-        "    npars = npars,",
-        "    nobs = nobs,",
-        "    AIC = 2 * npars - 2 * as.numeric(ll)[1],",
-        "    BIC = log(nobs) * npars - 2 * as.numeric(ll)[1]",
-        "  )",
-        "})",
-        "do.call(rbind, fit_stats)"
+        "lapply(fits, summary)"
       )
     }
 
@@ -1716,7 +2158,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       c(
         "# Dynamics / impulse-response style plot",
         "dynamics <- ctsem::ctDiscretePars(",
-        "  ctstanfitobj = fit,",
+        "  fit = fit,",
         dynamic_optional_lines,
         paste0("  observational = ", code_value(input$dynamic_observational), ","),
         "  plot = TRUE,",
@@ -1827,7 +2269,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         stats <- fit_comparison_stats(fit)
         data.frame(
           fit = name,
-          class = paste(class(fit), collapse = ", "),
+          class = "ctsem fit",
           manifests = length(model_base$manifestNames %||% character()),
           latents = length(model_base$latentNames %||% character()),
           TDpreds = length(model_base$TDpredNames %||% character()),
@@ -2025,6 +2467,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     }
 
     output$raw_plot <- shiny::renderPlot({
+      on.exit({ plot_cache$raw_plot <- grDevices::recordPlot() }, add = TRUE)
       data <- current_data()
       if (is.null(data) || is.null(input$raw_plot_type)) return(invisible(NULL))
       record_output_code("raw_plot", raw_plot_code_snippet())
@@ -2120,12 +2563,15 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     })
 
     shiny::observeEvent(input$run_fit, {
+      if (isTRUE(fit_busy())) return()
       data <- current_data()
       if (is.null(data)) {
         shiny::showNotification("Load or generate data before fitting", type = "error")
         return()
       }
 
+      fit_busy(TRUE)
+      on.exit({ fit_busy(FALSE); session$sendCustomMessage("ctgui-fit-finished", list(beep = isTRUE(input$fit_completion_beep))) }, add = TRUE)
       current_fit(NULL)
       fit_status_value("Fitting...")
       fit_messages("Fitting...")
@@ -2162,7 +2608,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
 
       current_fit(result$value)
       clear_diagnostics()
-      fit_status_value(paste("Fit available:", paste(class(result$value), collapse = ", ")))
+      fit_status_value("Fit available (ctsem::ctFit result).")
       fit_messages(if (length(result$messages)) paste(result$messages, collapse = "\n") else "Fit complete.")
       fit_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
       record_output_code("fit", fit_code_snippet())
@@ -2376,8 +2822,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
       out <- NULL
       shiny::withProgress(message = "Plotting dynamics", value = 0.2, {
         out <- capture_conditions({
-          args <- list(fit, observational = input$dynamic_observational, plot = TRUE, cores = 1)
-          names(args)[1L] <- "ctstanfitobj"
+          args <- list(fit = fit, observational = input$dynamic_observational, plot = TRUE, cores = 1)
           if (!is_omitted_arg(subjects)) args$subjects <- subjects
           if (!is_omitted_arg(times)) args$times <- times
           if (!is_omitted_arg(nsamples)) args$nsamples <- nsamples
@@ -2471,7 +2916,9 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         local({
           plot_index <- i
           output_id <- ids[plot_index]
+          register_plot_export(output_id)
           output[[output_id]] <- shiny::renderPlot({
+            on.exit({ plot_cache[[output_id]] <- grDevices::recordPlot() }, add = TRUE)
             plot_list <- cov_check_plot_list()
             if (is.null(plot_list) || inherits(plot_list, "error")) return(invisible(NULL))
             print(plot_list[[plot_index]])
@@ -2480,7 +2927,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         shiny::div(
           class = "matrix-block",
           shiny::tags$h4(plot_title),
-          shiny::plotOutput(ids[i], height = 430)
+          shiny::plotOutput(ids[i], height = 430), plot_export_controls(ids[i], 430)
         )
       }))
     })
@@ -2488,6 +2935,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$cov_check_log <- shiny::renderText(cov_check_log())
 
     output$kalman_plot <- shiny::renderPlot({
+      on.exit({ plot_cache$kalman_plot <- grDevices::recordPlot() }, add = TRUE)
       out <- kalman_result()
       if (is.null(out)) return(invisible(NULL))
       record_output_code("kalman", kalman_code_snippet())
@@ -2513,7 +2961,9 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         local({
           plot_index <- i
           output_id <- ids[plot_index]
+          register_plot_export(output_id)
           output[[output_id]] <- shiny::renderPlot({
+            on.exit({ plot_cache[[output_id]] <- grDevices::recordPlot() }, add = TRUE)
             plot_list <- postpred_result()
             if (inherits(plot_list, "ggplot")) plot_list <- list(plot_list)
             if (is.null(plot_list) || length(plot_list) < plot_index) return(invisible(NULL))
@@ -2523,7 +2973,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
         shiny::div(
           class = "matrix-block",
           shiny::tags$h4(names(plots)[i] %||% paste("Plot", i)),
-          shiny::plotOutput(ids[i], height = 430)
+          shiny::plotOutput(ids[i], height = 430), plot_export_controls(ids[i], 430)
         )
       }))
     })
@@ -2531,6 +2981,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$postpred_log <- shiny::renderText(postpred_log())
 
     output$residual_acf_plot <- shiny::renderPlot({
+      on.exit({ plot_cache$residual_acf_plot <- grDevices::recordPlot() }, add = TRUE)
       out <- residual_acf()
       if (is.null(out)) return(invisible(NULL))
       record_output_code("residual_acf", residual_acf_code_snippet())
@@ -2546,6 +2997,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
     output$residual_acf_log <- shiny::renderText(residual_acf_log())
 
     output$dynamics_plot <- shiny::renderPlot({
+      on.exit({ plot_cache$dynamics_plot <- grDevices::recordPlot() }, add = TRUE)
       out <- dynamics_result()
       if (is.null(out)) return(invisible(NULL))
       record_output_code("dynamics", dynamics_code_snippet())
@@ -2585,7 +3037,9 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
           local({
             plot_index <- i
             output_id <- ids[i]
+            register_plot_export(output_id)
             output[[output_id]] <- shiny::renderPlot({
+              on.exit({ plot_cache[[output_id]] <- grDevices::recordPlot() }, add = TRUE)
               current <- tipred_effects_result()
               current_group <- if (is.list(current) && group_name %in% names(current)) current[[group_name]] else current
               current_flat <- flatten_plots(current_group)
@@ -2596,7 +3050,7 @@ ctgui_launch_app <- function(spec = ctgui_spec(), launch.browser = interactive()
           shiny::div(
             class = "matrix-block",
             shiny::tags$h4(names(flat)[i] %||% paste(group_name, "plot", i)),
-            shiny::plotOutput(ids[i], height = 430)
+            shiny::plotOutput(ids[i], height = 430), plot_export_controls(ids[i], 430)
           )
         }))
       }

@@ -21,7 +21,6 @@ ctgui_optional_matrices <- c("TDPREDEFFECT", "TDPREDMEANS", "TDPREDVAR", "PARS")
 #' @param tipredDefault Passed to `ctsem::ctModel()`.
 #'
 #' @return A `ctsemgui_spec` object.
-#' @export
 ctgui_spec <- function(latent_names = "eta1",
     manifest_names = "y1",
     type = c("ct", "dt"),
@@ -47,6 +46,7 @@ ctgui_spec <- function(latent_names = "eta1",
   base_matrices <- NULL
   model <- NULL
   pars <- NULL
+  parameter_metadata <- NULL
   source <- "fallback"
 
   if (ctgui_has_ctsem()) {
@@ -69,6 +69,7 @@ ctgui_spec <- function(latent_names = "eta1",
       manifest_names = manifest_names,
       tdpred_names = tdpred_names)
     pars <- model[["pars"]]
+    parameter_metadata <- ctgui_parameter_metadata_from_pars(pars, tipred_names, base_matrices)
     source <- "ctsem"
   } else {
     base_matrices <- ctgui_default_matrices(
@@ -87,7 +88,7 @@ ctgui_spec <- function(latent_names = "eta1",
   }
 
   spec <- list(
-    version = 1L,
+    version = 2L,
     type = type,
     id = id,
     time = time,
@@ -99,7 +100,11 @@ ctgui_spec <- function(latent_names = "eta1",
     tipred_names = tipred_names,
     tipredDefault = tipredDefault,
     matrices = base_matrices,
+    # Parameters entered beside a matrix cell are kept separately from the
+    # manually maintained PARS entries.  Their union is written to PARS.
+    matrix_extra_pars = character(),
     pars = pars,
+    parameter_metadata = parameter_metadata,
     model = model,
     source = source
   )
@@ -107,7 +112,6 @@ ctgui_spec <- function(latent_names = "eta1",
   spec
 }
 
-#' @export
 print.ctsemgui_spec <- function(x, ...) {
   cat("<ctsemgui_spec>\n")
   cat("  type: ", x$type, "\n", sep = "")
@@ -120,7 +124,6 @@ print.ctsemgui_spec <- function(x, ...) {
 
 #' @rdname ctgui_spec
 #' @param spec A `ctsemgui_spec` object.
-#' @export
 ctgui_validate <- function(spec) {
   ctgui_check_spec(spec)
   messages <- list()
@@ -244,7 +247,6 @@ ctgui_validate <- function(spec) {
 }
 
 #' @rdname ctgui_spec
-#' @export
 ctgui_matrix_names <- function(spec) {
   ctgui_check_spec(spec)
   names(ctgui_order_matrices(spec$matrices))
@@ -252,7 +254,6 @@ ctgui_matrix_names <- function(spec) {
 
 #' @rdname ctgui_spec
 #' @param matrix Matrix name.
-#' @export
 ctgui_matrix <- function(spec, matrix) {
   ctgui_check_spec(spec)
   matrix <- ctgui_match_matrix_name(spec, matrix)
@@ -261,7 +262,6 @@ ctgui_matrix <- function(spec, matrix) {
 
 #' @rdname ctgui_spec
 #' @param value A replacement matrix or a scalar matrix cell value.
-#' @export
 ctgui_set_matrix <- function(spec, matrix, value) {
   ctgui_check_spec(spec)
   matrix <- ctgui_match_matrix_name(spec, matrix)
@@ -288,7 +288,6 @@ ctgui_set_matrix <- function(spec, matrix, value) {
 #' @param label Free-parameter label for a matrix cell.
 #' @param free Logical; when `TRUE`, `label` or `value` is treated as a
 #'   parameter label.
-#' @export
 ctgui_set_matrix_value <- function(spec, matrix, row, col = 1, value = NULL,
     label = NULL, free = NULL) {
   ctgui_check_spec(spec)
@@ -328,7 +327,6 @@ ctgui_set_matrix_value <- function(spec, matrix, row, col = 1, value = NULL,
 
 #' @rdname ctgui_spec
 #' @param silent Passed to `ctsem::ctModel()`.
-#' @export
 ctgui_to_ctsem_model <- function(spec, silent = TRUE, tipredDefault = spec$tipredDefault) {
   ctgui_check_spec(spec)
   if (!ctgui_has_ctsem()) stop("ctsem must be installed to create a ctsem model", call. = FALSE)
@@ -351,18 +349,44 @@ ctgui_to_ctsem_model <- function(spec, silent = TRUE, tipredDefault = spec$tipre
     manifest_type = spec$manifest_type,
     tdpred_names = spec$tdpred_names,
     tipred_names = spec$tipred_names,
-    matrices = spec$matrices,
+    matrices = ctgui_matrices_with_metadata(spec),
     tipredDefault = tipredDefault,
     silent = silent
   )
 }
 
+#' Convert a raw ctsem model object into an editable GUI specification
+#'
+#' @param model A model created by `ctsem::ctModel()`.
+ctgui_spec_from_model <- function(model) {
+  if (is.null(model$pars) || is.null(model$latentNames) || is.null(model$manifestNames)) {
+    stop("RDS does not contain a ctsem model created by ctModel()", call. = FALSE)
+  }
+  matrices <- ctgui_ctsem_matrices(model)
+  spec <- ctgui_spec(
+    latent_names = model$latentNames,
+    manifest_names = model$manifestNames,
+    type = if (isTRUE(model$continuoustime)) "ct" else "dt",
+    id = model$subjectIDname %||% "id",
+    time = model$timeName %||% "time",
+    manifest_type = model$manifesttype %||% rep(0L, length(model$manifestNames)),
+    tdpred_names = model$TDpredNames %||% character(),
+    tipred_names = model$TIpredNames %||% character(),
+    matrices = matrices,
+    tipredDefault = TRUE
+  )
+  spec$model <- model
+  spec$pars <- model$pars
+  spec$parameter_metadata <- ctgui_parameter_metadata_from_pars(model$pars, spec$tipred_names, spec$matrices)
+  spec$source <- "ctsem-rds"
+  spec
+}
+
 #' @rdname ctgui_spec
 #' @param object_name Name used for the model object in exported code.
-#' @export
 ctgui_export_code <- function(spec, object_name = "model") {
   ctgui_check_spec(spec)
-  args <- ctgui_ctmodel_args(spec, matrices = spec$matrices, silent = FALSE)
+  args <- ctgui_ctmodel_args(spec, matrices = ctgui_matrices_with_metadata(spec), silent = FALSE)
   args$silent <- NULL
 
   lines <- c(
@@ -384,7 +408,6 @@ ctgui_export_code <- function(spec, object_name = "model") {
 
 #' @rdname ctgui_spec
 #' @param ... Additional arguments passed to the underlying ctsem function.
-#' @export
 ctgui_latex <- function(spec, ...) {
   ctgui_check_spec(spec)
   if (!ctgui_has_ctsem()) stop("ctsem must be installed to create model equations", call. = FALSE)
@@ -445,12 +468,11 @@ ctgui_latex_png <- function(spec, folder = tempdir(), filename = NULL, ...) {
 #' @param dtmean Mean time interval for generated data.
 #' @param logdtsd Log time interval standard deviation.
 #' @param wide Logical; passed to `ctsem::ctGenerate()`.
-#' @export
 ctgui_generate_data <- function(spec, n.subjects = 100, Tpoints = spec$Tpoints %||% 10,
     burnin = 0, dtmean = 1, logdtsd = 0, wide = FALSE, free_defaults = TRUE) {
   ctgui_check_spec(spec)
   if (!ctgui_has_ctsem()) stop("ctsem must be installed to generate data", call. = FALSE)
-  gen_matrices <- if (isTRUE(free_defaults)) ctgui_generation_matrices(spec) else spec$matrices
+  gen_matrices <- if (isTRUE(free_defaults)) ctgui_generation_matrices(spec) else ctgui_matrices_with_metadata(spec)
   ctgui_assert_generation_numeric(gen_matrices, free_defaults = free_defaults)
   model <- ctgui_new_ctsem_model(
     latent_names = spec$latent_names,
@@ -730,16 +752,226 @@ ctgui_apply_dimnames_to_one <- function(matrix_name, mat, latent_names, manifest
   mat
 }
 
+# The matrix labels returned by ctModelMatrices() deliberately omit the
+# per-parameter annotations stored in model$pars.  Keep those annotations in
+# the GUI specification and reapply them only when calling ctModel().
+ctgui_parameter_metadata_from_pars <- function(pars, tipred_names = character(), matrices = NULL) {
+  fields <- c("matrix", "row", "col", "param", "transform", "indvarying", "sdscale")
+  if (is.null(pars) || !is.data.frame(pars) || !all(fields %in% names(pars))) {
+    return(data.frame(matrix = character(), row = character(), col = character(),
+      param = character(), transform = character(), indvarying = logical(),
+      sdscale = numeric(), extra_pars = character(), stringsAsFactors = FALSE))
+  }
+  out <- pars[, fields, drop = FALSE]
+  out <- out[!is.na(out$param) & nzchar(as.character(out$param)), , drop = FALSE]
+  out$matrix <- as.character(out$matrix)
+  out$row <- as.character(out$row)
+  out$col <- as.character(out$col)
+  if (!is.null(matrices)) for (i in seq_len(nrow(out))) {
+    mat <- matrices[[out$matrix[i]]]
+    if (is.null(mat) || !is.matrix(mat)) next
+    row_index <- suppressWarnings(as.integer(out$row[i])); col_index <- suppressWarnings(as.integer(out$col[i]))
+    if (!is.na(row_index) && row_index >= 1L && row_index <= nrow(mat) && !is.null(rownames(mat))) out$row[i] <- rownames(mat)[row_index]
+    if (!is.na(col_index) && col_index >= 1L && col_index <= ncol(mat) && !is.null(colnames(mat))) out$col[i] <- colnames(mat)[col_index]
+  }
+  out$param <- as.character(out$param)
+  out$transform <- as.character(out$transform %||% "")
+  as_flag <- function(x) !is.na(x) & tolower(as.character(x)) %in% c("true", "t", "1")
+  as_sdscale <- function(x) {
+    values <- suppressWarnings(as.numeric(as.character(x)))
+    text <- tolower(trimws(as.character(x)))
+    values[is.na(values) & text %in% c("true", "t")] <- 1
+    values[is.na(values) & text %in% c("false", "f")] <- 0
+    values[is.na(values)] <- 1
+    values
+  }
+  out$indvarying <- as_flag(out$indvarying)
+  out$sdscale <- as_sdscale(out$sdscale)
+  out$extra_pars <- ""
+  for (tipred in tipred_names) {
+    field <- paste0(tipred, "_effect")
+    out[[field]] <- if (field %in% names(pars)) as.logical(pars[[field]][match(out$param, as.character(pars$param))]) else FALSE
+  }
+  rownames(out) <- NULL
+  out
+}
+
+ctgui_cell_key <- function(matrix, row, col) paste(matrix, row, col, sep = "\r")
+
+ctgui_split_pars <- function(x) {
+  values <- trimws(unlist(strsplit(paste(x %||% character(), collapse = ","), "[,\r\n]+"), use.names = FALSE))
+  unique(values[nzchar(values)])
+}
+
+ctgui_merge_extra_metadata <- function(metadata, previous) {
+  if (!"extra_pars" %in% names(metadata)) metadata$extra_pars <- ""
+  if (is.null(previous) || !nrow(previous) || !"extra_pars" %in% names(previous)) return(metadata)
+  index <- match(ctgui_cell_key(metadata$matrix, metadata$row, metadata$col),
+    ctgui_cell_key(previous$matrix, previous$row, previous$col))
+  keep <- !is.na(index)
+  metadata$extra_pars[keep] <- previous$extra_pars[index[keep]] %||% ""
+  metadata
+}
+
+ctgui_sync_extra_pars <- function(spec) {
+  metadata <- spec$parameter_metadata
+  extra <- if (!is.null(metadata) && nrow(metadata) && "extra_pars" %in% names(metadata)) {
+    ctgui_split_pars(metadata$extra_pars)
+  } else character()
+  previous <- spec$matrix_extra_pars %||% character()
+  current <- spec$matrices[["PARS"]]
+  current <- if (is.null(current)) character() else as.character(current[, 1L, drop = TRUE])
+  manual <- current[!(current %in% previous)]
+  values <- unique(c(ctgui_split_pars(manual), extra))
+  spec$matrix_extra_pars <- extra
+  if (length(values)) {
+    spec$matrices[["PARS"]] <- matrix(values, ncol = 1L,
+      dimnames = list(paste0("PARS", seq_along(values)), "PARS"))
+  } else {
+    spec$matrices[["PARS"]] <- NULL
+  }
+  spec$matrices <- ctgui_order_matrices(spec$matrices)
+  spec
+}
+
+ctgui_parse_parameter_cell <- function(value, tipred_names = character()) {
+  value <- trimws(as.character(value)[1L])
+  parts <- strsplit(value, "|", fixed = TRUE)[[1L]]
+  base <- trimws(parts[1L])
+  numeric <- suppressWarnings(as.numeric(base))
+  free <- is.na(numeric) && nzchar(base)
+  out <- list(param = if (free) base else NA_character_, transform = "",
+    indvarying = FALSE, sdscale = 1, tipreds = character())
+  if (!free || length(parts) == 1L) return(out)
+  if (length(parts) >= 2L) out$transform <- trimws(parts[2L])
+  if (length(parts) >= 3L) out$indvarying <- identical(tolower(trimws(parts[3L])), "true")
+  if (length(parts) >= 4L) {
+    sdscale_text <- tolower(trimws(parts[4L]))
+    sdscale_value <- suppressWarnings(as.numeric(sdscale_text))
+    if (identical(sdscale_text, "true")) sdscale_value <- 1
+    if (identical(sdscale_text, "false")) sdscale_value <- 0
+    if (!is.na(sdscale_value)) out$sdscale <- sdscale_value else if (length(parts) == 4L) {
+      # Older ctsemgui labels omitted the RandomEffectsScale field.
+      out$tipreds <- intersect(trimws(unlist(strsplit(parts[4L], ",", fixed = TRUE))), tipred_names)
+    }
+  }
+  if (length(parts) >= 5L) {
+    out$tipreds <- intersect(trimws(unlist(strsplit(parts[5L], ",", fixed = TRUE))), tipred_names)
+  }
+  out
+}
+
+ctgui_refresh_parameter_metadata <- function(spec, matrices = spec$matrices) {
+  tipred_names <- spec$tipred_names
+  old <- spec$parameter_metadata
+  if (is.null(old)) old <- ctgui_parameter_metadata_from_pars(spec$pars, tipred_names, matrices)
+  rows <- list()
+  cleaned <- matrices
+  for (matrix_name in names(matrices)) {
+    mat <- matrices[[matrix_name]]
+    if (!is.matrix(mat)) next
+    for (r in seq_len(nrow(mat))) for (c in seq_len(ncol(mat))) {
+      parsed <- ctgui_parse_parameter_cell(mat[r, c], tipred_names)
+      if (is.na(parsed$param)) next
+      cleaned[[matrix_name]][r, c] <- parsed$param
+      key <- ctgui_cell_key(matrix_name, rownames(mat)[r], colnames(mat)[c])
+      prior <- old[ctgui_cell_key(old$matrix, old$row, old$col) == key, , drop = FALSE]
+      row <- data.frame(matrix = matrix_name, row = rownames(mat)[r], col = colnames(mat)[c],
+        param = parsed$param, transform = parsed$transform, indvarying = parsed$indvarying,
+        sdscale = parsed$sdscale, extra_pars = "", stringsAsFactors = FALSE)
+      if (nrow(prior) && !grepl("|", as.character(mat[r, c]), fixed = TRUE)) {
+        row$transform <- prior$transform[1L] %||% ""
+        row$indvarying <- isTRUE(prior$indvarying[1L])
+        row$sdscale <- suppressWarnings(as.numeric(prior$sdscale[1L]))
+        if (is.na(row$sdscale)) row$sdscale <- if (isTRUE(prior$sdscale[1L])) 1 else 0
+        if ("extra_pars" %in% names(prior)) row$extra_pars <- prior$extra_pars[1L] %||% ""
+      }
+      for (tipred in tipred_names) {
+        field <- paste0(tipred, "_effect")
+        row[[field]] <- tipred %in% parsed$tipreds
+        if (nrow(prior) && !grepl("|", as.character(mat[r, c]), fixed = TRUE) && field %in% names(prior)) row[[field]] <- isTRUE(prior[[field]][1L])
+      }
+      rows[[length(rows) + 1L]] <- row
+    }
+  }
+  empty <- ctgui_parameter_metadata_from_pars(NULL, tipred_names)
+  spec$parameter_metadata <- if (length(rows)) do.call(rbind, rows) else empty
+  spec$matrices <- ctgui_order_matrices(cleaned)
+  ctgui_sync_extra_pars(spec)
+  spec
+}
+
+ctgui_matrices_with_metadata <- function(spec) {
+  matrices <- spec$matrices
+  metadata <- spec$parameter_metadata
+  if (is.null(metadata) || !nrow(metadata)) return(matrices)
+  for (i in seq_len(nrow(metadata))) {
+    matrix_name <- metadata$matrix[i]
+    mat <- matrices[[matrix_name]]
+    if (is.null(mat) || !is.matrix(mat)) next
+    r <- match(metadata$row[i], rownames(mat))
+    c <- match(metadata$col[i], colnames(mat))
+    if (is.na(r) || is.na(c)) next
+    transform <- metadata$transform[i] %||% ""
+    indvarying <- isTRUE(metadata$indvarying[i])
+    sdscale <- suppressWarnings(as.numeric(metadata$sdscale[i]))
+    if (is.na(sdscale)) sdscale <- if (isTRUE(metadata$sdscale[i])) 1 else 0
+    effects <- vapply(spec$tipred_names, function(tipred) {
+      field <- paste0(tipred, "_effect")
+      field %in% names(metadata) && isTRUE(metadata[[field]][i])
+    }, logical(1L))
+    needs_annotation <- nzchar(transform) || indvarying || !identical(sdscale, 1) || any(effects)
+    if (needs_annotation) {
+      suffix <- c(transform, if (indvarying) "TRUE" else "", if (identical(sdscale, 1)) "" else as.character(sdscale))
+      if (any(effects)) suffix <- c(suffix, paste(spec$tipred_names[effects], collapse = ","))
+      while (length(suffix) && !nzchar(suffix[length(suffix)])) suffix <- suffix[-length(suffix)]
+      mat[r, c] <- paste(c(as.character(mat[r, c]), suffix), collapse = "|")
+    }
+    matrices[[matrix_name]] <- mat
+  }
+  matrices
+}
+
+ctgui_set_parameter_metadata <- function(spec, matrix, row, col, transform = NULL,
+    indvarying = NULL, sdscale = NULL, tipred_effects = NULL, extra_pars = NULL) {
+  spec <- ctgui_refresh_parameter_metadata(spec)
+  index <- which(spec$parameter_metadata$matrix == matrix &
+    spec$parameter_metadata$row == row & spec$parameter_metadata$col == col)
+  if (!length(index)) return(spec)
+  index <- index[1L]
+  if (!is.null(transform)) spec$parameter_metadata$transform[index] <- trimws(as.character(transform))
+  if (!is.null(indvarying)) spec$parameter_metadata$indvarying[index] <- isTRUE(indvarying)
+  if (!is.null(sdscale)) {
+    value <- suppressWarnings(as.numeric(sdscale)[1L])
+    if (is.na(value)) value <- if (isTRUE(sdscale)) 1 else 0
+    spec$parameter_metadata$sdscale[index] <- value
+  }
+  if (!is.null(tipred_effects)) for (tipred in spec$tipred_names) {
+    spec$parameter_metadata[[paste0(tipred, "_effect")]][index] <- tipred %in% tipred_effects
+  }
+  if (!is.null(extra_pars)) spec$parameter_metadata$extra_pars[index] <- paste(ctgui_split_pars(extra_pars), collapse = ", ")
+  spec <- ctgui_sync_extra_pars(spec)
+  ctgui_sync_model_from_matrices(spec)
+}
+
 ctgui_sync_model_from_matrices <- function(spec) {
+  spec <- ctgui_refresh_parameter_metadata(spec)
   if (!is.null(spec$model) && ctgui_has_ctsem()) {
     synced <- tryCatch({
-      replacer <- getExportedValue("ctsem", "ctModelMatrices<-")
-      spec$model <- replacer(spec$model, spec$matrices)
+      # Rebuilding through ctModel is more reliable than ctModelMatrices<- for
+      # annotated cells: the latter normalises some legacy annotation fields.
+      spec$model <- ctgui_new_ctsem_model(
+        latent_names = spec$latent_names, manifest_names = spec$manifest_names,
+        type = spec$type, id = spec$id, time = spec$time, Tpoints = spec$Tpoints,
+        manifest_type = spec$manifest_type, tdpred_names = spec$tdpred_names,
+        tipred_names = spec$tipred_names, matrices = ctgui_matrices_with_metadata(spec),
+        tipredDefault = spec$tipredDefault, silent = TRUE
+      )
       spec$pars <- spec$model[["pars"]]
-      spec$matrices <- ctgui_prepare_matrices(ctgui_ctsem_matrices(spec$model),
-        latent_names = spec$latent_names,
-        manifest_names = spec$manifest_names,
-        tdpred_names = spec$tdpred_names)
+      spec$parameter_metadata <- ctgui_merge_extra_metadata(
+        ctgui_parameter_metadata_from_pars(spec$pars, spec$tipred_names, spec$matrices),
+        spec$parameter_metadata
+      )
       spec$source <- "ctsem"
       spec
     }, error = function(e) {
