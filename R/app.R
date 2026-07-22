@@ -1,12 +1,17 @@
+utils::globalVariables(c("label", "loop", "label_pos", "label_size", "node_type", "edge_colour", "edge_linetype"))
+
 #' Launch ctsemgui
 #'
-#' Launch the ctsemgui Shiny application.
+#' Launch the ctsemgui Shiny application for specifying, fitting, diagnosing,
+#' and exporting continuous-time structural equation models with ctsem.
 #'
 #' @param launch.browser Passed to `shiny::runApp()`.
 #' @param ... Additional arguments passed to `shiny::runApp()`.
 #' @export
-utils::globalVariables(c("label", "loop", "label_pos", "label_size", "node_type", "edge_colour", "edge_linetype"))
-
+#' @examples
+#' \dontrun{
+#' ctgui_launch_app()
+#' }
 ctgui_launch_app <- function(launch.browser = interactive(), ...) {
   if (!requireNamespace("shiny", quietly = TRUE)) {
     stop("The shiny package is required to launch the ctsemgui app", call. = FALSE)
@@ -15,6 +20,8 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
   spec <- ctgui_spec()
   current_spec <- shiny::reactiveVal(spec)
   help_catalog <- ctgui_help_catalog()
+  www_path <- system.file("www", package = "ctsemgui")
+  if (nzchar(www_path)) shiny::addResourcePath("ctsemgui-assets", www_path)
 
   plot_export_controls <- function(id, height = 420) {
     shiny::div(class = "plot-export",
@@ -125,11 +132,18 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
           }
         });
         var matrixMetadataTimer;
-        $(document).on('change', '.matrix-cell-inspector input, .matrix-cell-inspector select', function() {
+        $(document).on('change', '.matrix-cell-inspector:not(.visual-path-inspector) input, .matrix-cell-inspector:not(.visual-path-inspector) select', function() {
           clearTimeout(matrixMetadataTimer);
           matrixMetadataTimer = setTimeout(function() {
             if (window.Shiny) Shiny.setInputValue('matrix_metadata_commit', Math.random(), {priority: 'event'});
           }, 100);
+        });
+        var visualPathTimer;
+        $(document).on('change', '.visual-path-inspector input, .visual-path-inspector select', function() {
+          clearTimeout(visualPathTimer);
+          visualPathTimer = setTimeout(function() {
+            if (window.Shiny) Shiny.setInputValue('visual_path_commit', Math.random(), {priority: 'event'});
+          }, 50);
         });
         $(function() {
           var workflow = $('#workflow');
@@ -147,7 +161,10 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
             try { var context = new (window.AudioContext || window.webkitAudioContext)(); var oscillator = context.createOscillator(); oscillator.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .15); } catch (e) {}
           }
         });
-      "))
+      ")),
+      shiny::tags$script(src = "ctsemgui-assets/visual-spec/cytoscape.min.js"),
+      shiny::tags$script(src = "ctsemgui-assets/visual-spec/visual-spec.js"),
+      shiny::tags$link(rel = "stylesheet", type = "text/css", href = "ctsemgui-assets/visual-spec/visual-spec.css")
     ),
     shiny::div(
       class = "app-header",
@@ -208,6 +225,21 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
               shiny::tabPanel("Predictors", shiny::uiOutput("matrix_predictor_editor")),
               shiny::tabPanel("PARS", shiny::uiOutput("matrix_pars_editor"))
             )
+          ),
+          shiny::tabPanel(
+            "Visual Specification",
+            shiny::div(
+              class = "control-band",
+              shiny::tags$h4("Drawable state-space specification"),
+              shiny::tags$p(class = "help-note", "Draw and arrange the fitted-model structure here. Each edit updates the model specification immediately. Predictor-distribution matrices used only for data generation remain under Matrices."),
+              shiny::div(class = "control-grid",
+                shiny::selectInput("visual_view", "View", choices = c("State space" = "state_space", "Initial state" = "initial_state"))
+              ),
+              shiny::textOutput("visual_status"),
+              shiny::tags$p(class = "matrix-note", "Right-drag creates a path. If the browser does not deliver right-drag events, switch to Draw paths mode and either left-drag or click the source and target in sequence. Move nodes mode reserves left-drag for positioning; Delete removes a selected variable or path.")
+            ),
+            shiny::tags$div(id = "visual_spec_canvas", class = "ctgui-visual-spec"),
+            shiny::uiOutput("visual_path_inspector")
           ),
           shiny::tabPanel(
             "Equations",
@@ -330,6 +362,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
                 shiny::textInput("model_object_name", "Model object name in R", value = "model"),
                 shiny::actionButton("assign_model", "Return model to R"),
                 shiny::downloadButton("download_model_rds", "Save model RDS"),
+                shiny::downloadButton("download_project_rds", "Save ctsemgui project RDS"),
                 shiny::fileInput("load_model_rds", "Load model RDS", accept = ".rds"),
                 shiny::textInput("fit_object_name", "Fit object name in R", value = "fit"),
                 shiny::actionButton("assign_fit", "Return fit to R"),
@@ -517,6 +550,53 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
     diagnostics_status <- shiny::reactiveVal("No fit diagnostics have been run.")
     matrix_status <- shiny::reactiveVal("Matrix edits update the current model spec.")
     plot_cache <- shiny::reactiveValues()
+    visual_drafts <- shiny::reactiveVal(list())
+    visual_dirty <- shiny::reactiveVal(FALSE)
+    visual_stale <- shiny::reactiveVal(FALSE)
+    visual_status_value <- shiny::reactiveVal("Visual editor is loading the current matrices.")
+    matrix_inputs_suspended <- shiny::reactiveVal(FALSE)
+
+    sync_matrix_inputs_from_spec <- function(spec) {
+      matrix_inputs_suspended(TRUE)
+      for (matrix_name in ctgui_matrix_names(spec)) {
+        mat <- spec$matrices[[matrix_name]]
+        if (!is.matrix(mat)) next
+        for (row in seq_len(nrow(mat))) for (col in seq_len(ncol(mat))) {
+          shiny::updateTextInput(session, matrix_cell_id(matrix_name, row, col),
+            value = as.character(mat[row, col]))
+        }
+      }
+      shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(spec),
+        selected = input$model_visual_matrix %||% "DRIFT")
+      session$onFlushed(function() matrix_inputs_suspended(FALSE), once = TRUE)
+    }
+
+    visual_graph_for_view <- function(view = input$visual_view %||% "state_space") {
+      drafts <- visual_drafts()
+      graph <- drafts[[view]]
+      if (is.null(graph)) graph <- ctgui_visual_graph(current_spec(), view)
+      graph
+    }
+    visual_data_columns <- function() {
+      data <- shiny::isolate(current_data())
+      if (is.null(data)) character() else names(data)
+    }
+    send_visual_graph <- function(view = input$visual_view %||% "state_space") {
+      session$sendCustomMessage("ctgui-visual-load", list(
+        id = "visual_spec_canvas", graph = visual_graph_for_view(view),
+        data_columns = visual_data_columns()
+      ))
+    }
+    reset_visual_drafts <- function(message = "Reloaded visual editor from matrices.") {
+      spec <- ctgui_visual_ensure(current_spec())
+      current_spec(spec)
+      drafts <- list(
+        state_space = ctgui_visual_graph(spec, "state_space"),
+        initial_state = ctgui_visual_graph(spec, "initial_state")
+      )
+      visual_drafts(drafts); visual_dirty(FALSE); visual_stale(FALSE); visual_status_value(message)
+      send_visual_graph()
+    }
 
     register_plot_export <- function(id) {
       save_plot <- function(file, type) {
@@ -782,6 +862,10 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       filename = function() "ctsem-model.rds",
       content = function(file) saveRDS(ctgui_to_ctsem_model(active_spec(), silent = TRUE), file)
     )
+    output$download_project_rds <- shiny::downloadHandler(
+      filename = function() "ctsemgui-project.rds",
+      content = function(file) saveRDS(ctgui_visual_ensure(active_spec()), file)
+    )
     output$download_fit_rds <- shiny::downloadHandler(
       filename = function() "ctsem-fit.rds",
       content = function(file) {
@@ -800,10 +884,13 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
     shiny::observeEvent(input$load_model_rds, {
       path <- input$load_model_rds$datapath; if (is.null(path)) return()
       model <- tryCatch(readRDS(path), error = function(e) e)
-      if (inherits(model, "error") || !is_ctsem_model(model)) {
-        shiny::showNotification(if (inherits(model, "error")) conditionMessage(model) else "The RDS does not contain a ctsem model", type = "error"); return()
+      loaded <- if (inherits(model, "ctsemgui_spec")) {
+        tryCatch(ctgui_visual_ensure(model), error = function(e) e)
+      } else if (!inherits(model, "error") && is_ctsem_model(model)) {
+        tryCatch(ctgui_spec_from_model(model), error = function(e) e)
+      } else {
+        if (inherits(model, "error")) model else simpleError("The RDS does not contain a ctsem model or ctsemgui project")
       }
-      loaded <- tryCatch(ctgui_spec_from_model(model), error = function(e) e)
       if (inherits(loaded, "error")) shiny::showNotification(conditionMessage(loaded), type = "error") else {
         current_spec(loaded); current_fit(NULL); clear_diagnostics(); fit_status_value("Loaded ctsem model from RDS."); shiny::showNotification("Loaded model RDS", type = "message")
       }
@@ -1128,6 +1215,102 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       matrix_status("Matrix edits update the current model spec.")
       invisible(TRUE)
     }
+
+    visual_selected_edge <- shiny::reactive({
+      selected <- input$visual_spec_canvas_selection
+      if (is.null(selected) || is.null(selected$id)) return(NULL)
+      graph <- visual_graph_for_view(selected$view %||% input$visual_view %||% "state_space")
+      edges <- graph$edges %||% list()
+      index <- which(vapply(edges, function(edge) identical(as.character(edge$id), as.character(selected$id)), logical(1L)))
+      if (!length(index)) return(NULL)
+      edge <- edges[[index[1L]]]
+      if (isTRUE(edge$visual_only) || identical(edge$edge_kind, "noise_input")) return(NULL)
+      edge
+    })
+
+    output$visual_path_inspector <- shiny::renderUI({
+      edge <- visual_selected_edge()
+      if (is.null(edge)) return(shiny::div(class = "matrix-cell-inspector", shiny::tags$p("Right-drag from one node to another to create the ctsem path implied by their types. Select a path to edit its value; press Delete to remove a selected path or variable.")))
+      shiny::div(class = "matrix-cell-inspector visual-path-inspector",
+        shiny::tags$h5(paste(edge$matrix, "[", edge$row, ",", edge$col, "]", sep = "")),
+        shiny::div(class = "control-grid",
+          shiny::textInput("visual_path_value", "Value / parameter label / expression", value = if (identical(edge$value, "__free__")) ctgui_auto_label(edge$matrix, edge$row, edge$col) else edge$value %||% ""),
+          shiny::checkboxInput("visual_path_random", "RandomEffects", value = isTRUE(edge$indvarying)),
+          shiny::numericInput("visual_path_sdscale", "RandomEffectsScale", value = suppressWarnings(as.numeric(edge$sdscale %||% 1)), step = 0.1),
+          if (length(current_spec()$tipred_names)) shiny::selectizeInput("visual_path_tipreds", "Time Independent Predictors", choices = current_spec()$tipred_names, selected = edge$tipred_effects %||% character(), multiple = TRUE),
+          shiny::textInput("visual_path_extra_pars", "Additional PARS parameters", value = edge$extra_pars %||% "", placeholder = "e.g. nonlinear_a, nonlinear_b")
+        ),
+        shiny::tags$p(class = "matrix-note", if (isTRUE(edge$indvarying)) "RE badge: this parameter varies over individuals." else "")
+      )
+    })
+
+    shiny::observeEvent(input$visual_spec_canvas_graph, {
+      graph <- input$visual_spec_canvas_graph
+      if (is.null(graph$view)) return()
+      if (isTRUE(graph$layout_only)) {
+        updated <- ctgui_visual_save_layout(current_spec(), graph)
+        drafts <- visual_drafts(); drafts[[graph$view]] <- graph; visual_drafts(drafts)
+        current_spec(updated)
+        visual_status_value("Visual layout saved.")
+        return()
+      }
+      updated <- tryCatch(ctgui_visual_apply_graph(current_spec(), graph), error = function(e) e)
+      if (inherits(updated, "error")) {
+        shiny::showNotification(conditionMessage(updated), type = "error")
+        return()
+      }
+      fresh_graph <- ctgui_visual_graph(updated, graph$view)
+      drafts <- visual_drafts(); drafts[[graph$view]] <- fresh_graph; visual_drafts(drafts)
+      visual_dirty(FALSE); visual_stale(FALSE); current_spec(updated); current_fit(NULL)
+      sync_matrix_inputs_from_spec(updated)
+      fit_status_value("Visual model changed. Refit when ready.")
+      matrix_status("Visual change applied to model matrices.")
+      visual_status_value("Visual changes are applied directly to the current model.")
+      send_visual_graph(graph$view)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$visual_view, {
+      if (!length(visual_drafts())) reset_visual_drafts() else send_visual_graph(input$visual_view)
+    }, ignoreInit = TRUE)
+    shiny::observeEvent(current_data(), {
+      if (length(visual_drafts())) send_visual_graph(input$visual_view %||% "state_space")
+    }, ignoreInit = TRUE)
+
+    update_visual_path <- function() {
+      selected <- input$visual_spec_canvas_selection; edge <- visual_selected_edge()
+      if (is.null(selected) || is.null(edge)) return(invisible(NULL))
+      drafts <- visual_drafts(); view <- selected$view %||% input$visual_view %||% "state_space"; graph <- drafts[[view]]
+      index <- which(vapply(graph$edges, function(item) identical(as.character(item$id), as.character(edge$id)), logical(1L)))[1L]
+      if (is.na(index)) return(invisible(NULL))
+      value <- trimws(input$visual_path_value %||% "")
+      if (!nzchar(value)) value <- "__free__"
+      item <- graph$edges[[index]]
+      item$value <- value; item$label <- if (identical(value, "__free__")) "free" else value
+      item$fixed <- !is.na(suppressWarnings(as.numeric(strsplit(value, "|", fixed = TRUE)[[1L]][1L])))
+      item$custom <- nzchar(input$visual_path_extra_pars %||% ""); item$indvarying <- isTRUE(input$visual_path_random)
+      item$sdscale <- input$visual_path_sdscale %||% 1; item$tipred_effects <- input$visual_path_tipreds %||% character()
+      item$extra_pars <- input$visual_path_extra_pars %||% ""; graph$edges[[index]] <- item
+      drafts[[view]] <- graph; visual_drafts(drafts)
+      updated <- tryCatch(ctgui_visual_update_edge(current_spec(), item), error = function(e) e)
+      if (inherits(updated, "error")) { shiny::showNotification(conditionMessage(updated), type = "error"); return(invisible(NULL)) }
+      current_spec(updated); current_fit(NULL); visual_dirty(FALSE); visual_stale(FALSE)
+      sync_matrix_inputs_from_spec(updated)
+      fit_status_value("Visual model changed. Refit when ready.")
+      matrix_status("Visual path updated in model matrices.")
+      visual_status_value("Visual changes are applied directly to the current model.")
+      session$sendCustomMessage("ctgui-visual-update-edge", list(id = "visual_spec_canvas", edge = item))
+      invisible(NULL)
+    }
+    shiny::observeEvent(input$visual_path_commit, update_visual_path(), ignoreInit = TRUE)
+    output$visual_status <- shiny::renderText(visual_status_value())
+    shiny::observeEvent(current_spec(), {
+      if (isTRUE(visual_dirty())) {
+        visual_stale(TRUE); visual_status_value("Matrices changed while a visual draft was open. Reset visual editor before applying.")
+      }
+    }, ignoreInit = TRUE)
+    # onFlushed() itself is not a reactive consumer.  Isolate the initial
+    # reactive reads while the browser-side editor is being populated.
+    session$onFlushed(function() shiny::isolate(reset_visual_drafts()), once = TRUE)
 
     matrix_group_names <- function(spec, group = input$matrix_group) {
       present <- ctgui_matrix_names(spec)
@@ -1651,6 +1834,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
 
     active_spec <- shiny::reactive({
       spec <- current_spec()
+      if (isTRUE(matrix_inputs_suspended())) return(spec)
       matrix_values <- matrix_input_values()
       if (is.null(matrix_values)) return(spec)
       updated <- spec

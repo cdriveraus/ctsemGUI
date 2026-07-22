@@ -1,0 +1,8 @@
+The visual specification editor is an original ctsemgui integration using
+Cytoscape.js and cytoscape-edgehandles (MIT; see bundled license files).
+
+The product concept and selected interaction patterns were informed by
+lavaangui by Julian D. Karch, licensed GPL-3.0-or-later:
+https://github.com/karchjd/lavaangui
+
+This editor does not embed lavaangui or depend on lavaan.

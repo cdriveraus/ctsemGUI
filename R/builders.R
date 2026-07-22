@@ -139,6 +139,20 @@ ctgui_build_measurement_matrices <- function(spec,
   ctgui_sync_model_from_matrices(spec)
 }
 
+#' Build a complete ctsem GUI specification
+#'
+#' @param structure Matrix structure. One of `"linear_growth"`,
+#'   `"dynamic_var"`, or `"dynamic_var_trend"`.
+#' @param measurement Measurement model. One of `"single_indicator"`,
+#'   `"marker"`, or `"fixed_loadings"`.
+#' @param names Named list of model names. Common entries are
+#'   `factor_names`, `manifest_names`, `id`, and `time`.
+#' @param options Named list of builder options, including `n`, `type`,
+#'   `trend_type`, `indicators_per_factor`, `free_noise_correlations`,
+#'   `fixed_loadings`, and `trend_coupling`.
+#'
+#' @return A `ctsemgui_spec` object.
+#' @export
 ctgui_build_model <- function(structure = c("dynamic_var", "linear_growth", "dynamic_var_trend"),
     measurement = c("single_indicator", "marker", "fixed_loadings"),
     names = list(),

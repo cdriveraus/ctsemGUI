@@ -6,7 +6,7 @@ ctgui_internal_names <- c(
   "ctgui_matrix", "ctgui_matrix_names", "ctgui_set_matrix", "ctgui_set_matrix_value",
   "ctgui_set_parameter_metadata", "ctgui_spec", "ctgui_spec_from_model",
   "ctgui_structures", "ctgui_measurements", "ctgui_to_ctsem_model", "ctgui_validate",
-  "ctgui_validate_data"
+  "ctgui_validate_data", "ctgui_visual_apply_graph", "ctgui_visual_graph"
 )
 for (ctgui_internal_name in ctgui_internal_names) {
   assign(ctgui_internal_name, getFromNamespace(ctgui_internal_name, "ctsemgui"), envir = environment())

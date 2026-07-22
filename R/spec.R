@@ -88,7 +88,7 @@ ctgui_spec <- function(latent_names = "eta1",
   }
 
   spec <- list(
-    version = 2L,
+    version = 3L,
     type = type,
     id = id,
     time = time,
@@ -105,6 +105,9 @@ ctgui_spec <- function(latent_names = "eta1",
     matrix_extra_pars = character(),
     pars = pars,
     parameter_metadata = parameter_metadata,
+    # Presentation-only state used by the visual specification editor.  It is
+    # deliberately kept outside ctsem matrices and never affects estimation.
+    visual = list(version = 1L, layouts = list(state_space = list(), initial_state = list())),
     model = model,
     source = source
   )
@@ -112,6 +115,7 @@ ctgui_spec <- function(latent_names = "eta1",
   spec
 }
 
+#' @export
 print.ctsemgui_spec <- function(x, ...) {
   cat("<ctsemgui_spec>\n")
   cat("  type: ", x$type, "\n", sep = "")
@@ -658,7 +662,12 @@ ctgui_fixed_matrix <- function(value, row_names, col_names, ncol = length(col_na
 
 ctgui_label_matrix <- function(prefix, row_names, col_names, ncol = length(col_names)) {
   if (ncol == 1L) {
-    mat <- matrix(paste(prefix, row_names, sep = "_"),
+    labels <- if (toupper(prefix) %in% c("T0MEANS", "MANIFESTMEANS", "CINT")) {
+      vapply(row_names, function(row) ctgui_auto_label(prefix, row, col_names[1L]), character(1L))
+    } else {
+      paste(prefix, row_names, sep = "_")
+    }
+    mat <- matrix(labels,
       nrow = length(row_names), ncol = 1L,
       dimnames = list(row_names, col_names[1L]))
     return(mat)
@@ -685,7 +694,19 @@ ctgui_diag_label_matrix <- function(prefix, names) {
 
 ctgui_auto_label <- function(matrix, row_name, col_name) {
   clean <- function(x) gsub("\\W", "_", x)
-  paste(clean(tolower(matrix)), clean(row_name), clean(col_name), sep = "_")
+  matrix <- toupper(matrix)
+  row <- clean(row_name)
+  col <- clean(col_name)
+  if (matrix == "MANIFESTMEANS") return(paste0("mm_", row))
+  if (matrix == "CINT") return(paste0("cint_", row))
+  if (matrix == "T0MEANS") return(paste0("T0m_", row))
+  if (identical(row_name, col_name)) {
+    if (matrix == "DRIFT") return(paste0("drift_", row))
+    if (matrix == "DIFFUSION") return(paste0("diff_", row))
+    if (matrix == "MANIFESTVAR") return(paste0("mvar_", row))
+    if (matrix == "T0VAR") return(paste0("T0var_", row))
+  }
+  paste(clean(tolower(matrix)), row, col, sep = "_")
 }
 
 ctgui_expected_dims <- function(spec) {
@@ -804,12 +825,17 @@ ctgui_split_pars <- function(x) {
 }
 
 ctgui_merge_extra_metadata <- function(metadata, previous) {
-  if (!"extra_pars" %in% names(metadata)) metadata$extra_pars <- ""
-  if (is.null(previous) || !nrow(previous) || !"extra_pars" %in% names(previous)) return(metadata)
+  if (is.null(previous) || !nrow(previous)) return(metadata)
   index <- match(ctgui_cell_key(metadata$matrix, metadata$row, metadata$col),
     ctgui_cell_key(previous$matrix, previous$row, previous$col))
   keep <- !is.na(index)
-  metadata$extra_pars[keep] <- previous$extra_pars[index[keep]] %||% ""
+  # ctModel supplies useful defaults when a parameter is first created, but
+  # subsequent GUI edits are authoritative.  In particular, ctsem defaults
+  # some mean parameters to individual-varying; do not restore that default
+  # after a user has explicitly turned RandomEffects off.
+  fields <- intersect(c("transform", "indvarying", "sdscale", "extra_pars",
+    grep("_effect$", names(previous), value = TRUE)), names(metadata))
+  for (field in fields) metadata[[field]][keep] <- previous[[field]][index[keep]]
   metadata
 }
 

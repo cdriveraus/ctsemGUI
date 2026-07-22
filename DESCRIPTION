@@ -11,17 +11,18 @@ Description: Provides a Shiny application for specifying, fitting, diagnosing,
 License: GPL-3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
 Depends:
     R (>= 4.2.0)
 Imports:
     utils,
     igraph,
     ggraph,
-    ggplot2
+    ggplot2,
+    htmltools
 Suggests:
     shiny,
     testthat (>= 3.0.0)
 Enhances:
     ctsem
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0
