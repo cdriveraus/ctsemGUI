@@ -268,6 +268,7 @@ ctgui_matrix <- function(spec, matrix) {
 #' @param value A replacement matrix or a scalar matrix cell value.
 ctgui_set_matrix <- function(spec, matrix, value) {
   ctgui_check_spec(spec)
+  previous_keys <- ctgui_metadata_keys(spec$parameter_metadata)
   matrix <- ctgui_match_matrix_name(spec, matrix)
   if (!is.matrix(value)) stop("value must be a matrix", call. = FALSE)
 
@@ -283,7 +284,9 @@ ctgui_set_matrix <- function(spec, matrix, value) {
     tdpred_names = spec$tdpred_names
   )
   spec$matrices <- ctgui_order_matrices(spec$matrices)
-  ctgui_sync_model_from_matrices(spec)
+  spec <- ctgui_refresh_parameter_metadata(spec)
+  new_keys <- setdiff(ctgui_metadata_keys(spec$parameter_metadata), previous_keys)
+  ctgui_sync_model_from_matrices(spec, ctsem_default_keys = new_keys)
 }
 
 #' @rdname ctgui_spec
@@ -295,6 +298,7 @@ ctgui_set_matrix <- function(spec, matrix, value) {
 ctgui_set_matrix_value <- function(spec, matrix, row, col = 1, value = NULL,
     label = NULL, free = NULL) {
   ctgui_check_spec(spec)
+  previous_keys <- ctgui_metadata_keys(spec$parameter_metadata)
   matrix <- ctgui_match_matrix_name(spec, matrix)
   mat <- spec$matrices[[matrix]]
   if (is.null(mat)) stop(matrix, " is not present in spec", call. = FALSE)
@@ -326,7 +330,9 @@ ctgui_set_matrix_value <- function(spec, matrix, row, col = 1, value = NULL,
 
   spec$matrices[[matrix]] <- mat
   spec$matrices <- ctgui_order_matrices(spec$matrices)
-  ctgui_sync_model_from_matrices(spec)
+  spec <- ctgui_refresh_parameter_metadata(spec)
+  new_keys <- setdiff(ctgui_metadata_keys(spec$parameter_metadata), previous_keys)
+  ctgui_sync_model_from_matrices(spec, ctsem_default_keys = new_keys)
 }
 
 #' @rdname ctgui_spec
@@ -819,6 +825,11 @@ ctgui_parameter_metadata_from_pars <- function(pars, tipred_names = character(),
 
 ctgui_cell_key <- function(matrix, row, col) paste(matrix, row, col, sep = "\r")
 
+ctgui_metadata_keys <- function(metadata) {
+  if (is.null(metadata) || !nrow(metadata)) return(character())
+  ctgui_cell_key(metadata$matrix, metadata$row, metadata$col)
+}
+
 ctgui_split_pars <- function(x) {
   values <- trimws(unlist(strsplit(paste(x %||% character(), collapse = ","), "[,\r\n]+"), use.names = FALSE))
   unique(values[nzchar(values)])
@@ -835,7 +846,17 @@ ctgui_merge_extra_metadata <- function(metadata, previous) {
   # after a user has explicitly turned RandomEffects off.
   fields <- intersect(c("transform", "indvarying", "sdscale", "extra_pars",
     grep("_effect$", names(previous), value = TRUE)), names(metadata))
-  for (field in fields) metadata[[field]][keep] <- previous[[field]][index[keep]]
+  for (field in fields) {
+    field_keep <- keep
+    if (identical(field, "transform")) {
+      # An unannotated cell asks ctModel to choose its matrix-specific
+      # transform. Keep that ctsem result instead of replacing it with the
+      # blank placeholder created while the GUI metadata row was initialized.
+      previous_transform <- trimws(as.character(previous[[field]][index[keep]]))
+      field_keep[keep] <- nzchar(previous_transform)
+    }
+    metadata[[field]][field_keep] <- previous[[field]][index[field_keep]]
+  }
   metadata
 }
 
@@ -916,6 +937,10 @@ ctgui_refresh_parameter_metadata <- function(spec, matrices = spec$matrices) {
         field <- paste0(tipred, "_effect")
         row[[field]] <- tipred %in% parsed$tipreds
         if (nrow(prior) && !grepl("|", as.character(mat[r, c]), fixed = TRUE) && field %in% names(prior)) row[[field]] <- isTRUE(prior[[field]][1L])
+        # A visual TI-predictor policy applies to subsequently created
+        # parameters as well, without overwriting an existing explicit choice.
+        policy <- spec$visual$tipred_defaults[[tipred]] %||% NULL
+        if (!nrow(prior) && !is.null(policy)) row[[field]] <- isTRUE(policy)
       }
       rows[[length(rows) + 1L]] <- row
     }
@@ -958,8 +983,14 @@ ctgui_matrices_with_metadata <- function(spec) {
   matrices
 }
 
+ctgui_display_transform <- function(transform) {
+  value <- trimws(as.character(transform)[1L])
+  if (is.na(value) || !nzchar(value)) "param" else value
+}
+
 ctgui_set_parameter_metadata <- function(spec, matrix, row, col, transform = NULL,
-    indvarying = NULL, sdscale = NULL, tipred_effects = NULL, extra_pars = NULL) {
+    indvarying = NULL, sdscale = NULL, tipred_effects = NULL, extra_pars = NULL,
+    sync = TRUE) {
   spec <- ctgui_refresh_parameter_metadata(spec)
   index <- which(spec$parameter_metadata$matrix == matrix &
     spec$parameter_metadata$row == row & spec$parameter_metadata$col == col)
@@ -977,13 +1008,24 @@ ctgui_set_parameter_metadata <- function(spec, matrix, row, col, transform = NUL
   }
   if (!is.null(extra_pars)) spec$parameter_metadata$extra_pars[index] <- paste(ctgui_split_pars(extra_pars), collapse = ", ")
   spec <- ctgui_sync_extra_pars(spec)
-  ctgui_sync_model_from_matrices(spec)
+  if (isTRUE(sync)) ctgui_sync_model_from_matrices(spec) else spec
 }
 
-ctgui_sync_model_from_matrices <- function(spec) {
+ctgui_sync_model_from_matrices <- function(spec, ctsem_default_keys = character()) {
   spec <- ctgui_refresh_parameter_metadata(spec)
   if (!is.null(spec$model) && ctgui_has_ctsem()) {
     synced <- tryCatch({
+      # ctsem rewrites T0VAR while an initial mean has RandomEffects. Keep
+      # the user's complete T0VAR specification as dormant model-spec state:
+      # ctsem ignores the affected cells while random effects are enabled,
+      # but they must become available again if RandomEffects is later off.
+      t0var <- spec$matrices[["T0VAR"]]
+      # Make an independent copy: ctsem can modify the supplied matrix in
+      # place while preparing a model with individual-varying T0 means.
+      saved_t0var <- if (is.null(t0var)) NULL else matrix(
+        as.character(t0var), nrow = nrow(t0var), ncol = ncol(t0var),
+        dimnames = dimnames(t0var)
+      )
       # Rebuilding through ctModel is more reliable than ctModelMatrices<- for
       # annotated cells: the latter normalises some legacy annotation fields.
       spec$model <- ctgui_new_ctsem_model(
@@ -993,11 +1035,32 @@ ctgui_sync_model_from_matrices <- function(spec) {
         tipred_names = spec$tipred_names, matrices = ctgui_matrices_with_metadata(spec),
         tipredDefault = spec$tipredDefault, silent = TRUE
       )
+      if (!is.null(saved_t0var)) spec$matrices[["T0VAR"]] <- saved_t0var
       spec$pars <- spec$model[["pars"]]
+      previous_metadata <- spec$parameter_metadata
+      if (length(ctsem_default_keys) && !is.null(previous_metadata) && nrow(previous_metadata)) {
+        previous_keys <- ctgui_cell_key(previous_metadata$matrix, previous_metadata$row, previous_metadata$col)
+        previous_metadata <- previous_metadata[!(previous_keys %in% ctsem_default_keys), , drop = FALSE]
+      }
       spec$parameter_metadata <- ctgui_merge_extra_metadata(
         ctgui_parameter_metadata_from_pars(spec$pars, spec$tipred_names, spec$matrices),
-        spec$parameter_metadata
+        previous_metadata
       )
+      # ctsem's global tipredDefault is used while constructing the model, but
+      # the visual editor supports a persistent all/none policy per predictor.
+      # Reapply that policy only to newly created parameters, preserving any
+      # per-parameter choices already made by the user.
+      if (length(ctsem_default_keys) && nrow(spec$parameter_metadata)) {
+        keys <- ctgui_cell_key(spec$parameter_metadata$matrix, spec$parameter_metadata$row, spec$parameter_metadata$col)
+        new_rows <- keys %in% ctsem_default_keys
+        for (tipred in spec$tipred_names) {
+          policy <- spec$visual$tipred_defaults[[tipred]] %||% NULL
+          field <- paste0(tipred, "_effect")
+          if (!is.null(policy) && field %in% names(spec$parameter_metadata)) {
+            spec$parameter_metadata[[field]][new_rows] <- isTRUE(policy)
+          }
+        }
+      }
       spec$source <- "ctsem"
       spec
     }, error = function(e) {

@@ -22,6 +22,15 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
   help_catalog <- ctgui_help_catalog()
   www_path <- system.file("www", package = "ctsemgui")
   if (nzchar(www_path)) shiny::addResourcePath("ctsemgui-assets", www_path)
+  visual_asset_files <- file.path(www_path, "visual-spec", c("visual-spec.js", "visual-spec.css"))
+  visual_asset_version <- if (length(visual_asset_files) && all(file.exists(visual_asset_files))) {
+    format(max(file.info(visual_asset_files)$mtime), "%Y%m%d%H%M%S")
+  } else {
+    as.character(utils::packageVersion("ctsemgui"))
+  }
+  visual_asset_url <- function(file) {
+    paste0("ctsemgui-assets/visual-spec/", file, "?v=", visual_asset_version)
+  }
 
   plot_export_controls <- function(id, height = 420) {
     shiny::div(class = "plot-export",
@@ -139,10 +148,22 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
           }, 100);
         });
         var visualPathTimer;
+        // Native change fires when edited text is blurred or tabbed away and
+        // immediately for selectors/checkboxes. Avoid focusout itself: Shiny
+        // can remove an inspector during rendering, and that focus loss must
+        // not commit unchanged values and start a model-rebuild loop.
         $(document).on('change', '.visual-path-inspector input, .visual-path-inspector select', function() {
           clearTimeout(visualPathTimer);
           visualPathTimer = setTimeout(function() {
-            if (window.Shiny) Shiny.setInputValue('visual_path_commit', Math.random(), {priority: 'event'});
+            if (window.Shiny) {
+              var payload = {nonce: Math.random()};
+              $('.visual-path-inspector input, .visual-path-inspector select').each(function() {
+                if (!this.id) return;
+                if (this.type === 'checkbox') payload[this.id] = this.checked;
+                else payload[this.id] = $(this).val();
+              });
+              Shiny.setInputValue('visual_path_commit', payload, {priority: 'event'});
+            }
           }, 50);
         });
         $(function() {
@@ -163,13 +184,12 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
         });
       ")),
       shiny::tags$script(src = "ctsemgui-assets/visual-spec/cytoscape.min.js"),
-      shiny::tags$script(src = "ctsemgui-assets/visual-spec/visual-spec.js"),
-      shiny::tags$link(rel = "stylesheet", type = "text/css", href = "ctsemgui-assets/visual-spec/visual-spec.css")
+      shiny::tags$script(src = visual_asset_url("visual-spec.js")),
+      shiny::tags$link(rel = "stylesheet", type = "text/css", href = visual_asset_url("visual-spec.css"))
     ),
     shiny::div(
       class = "app-header",
-      shiny::titlePanel("ctsemgui"),
-      shiny::checkboxInput("show_explanations", "Explanations", value = TRUE)
+      shiny::titlePanel("ctsemgui")
     ),
     shiny::tabsetPanel(
       id = "workflow",
@@ -233,13 +253,24 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
               shiny::tags$h4("Drawable state-space specification"),
               shiny::tags$p(class = "help-note", "Draw and arrange the fitted-model structure here. Each edit updates the model specification immediately. Predictor-distribution matrices used only for data generation remain under Matrices."),
               shiny::div(class = "control-grid",
-                shiny::selectInput("visual_view", "View", choices = c("State space" = "state_space", "Initial state" = "initial_state"))
+                shiny::selectInput("visual_view", "View", choices = c(
+                  "State space" = "state_space", "Initial state" = "initial_state",
+                  "TI predictor effects" = "tipred_effects"
+                ))
               ),
               shiny::textOutput("visual_status"),
-              shiny::tags$p(class = "matrix-note", "Right-drag creates a path. If the browser does not deliver right-drag events, switch to Draw paths mode and either left-drag or click the source and target in sequence. Move nodes mode reserves left-drag for positioning; Delete removes a selected variable or path.")
+              shiny::tags$p(class = "matrix-note", "To define paths, right click and drag from node to node or set Mode to 'draw paths' then left click and drag."),
+              shiny::conditionalPanel(
+                condition = "input.visual_view == 'initial_state'",
+                shiny::tags$p(
+                  class = "matrix-note",
+                  "Initial-state noise maps directly to T0VAR. When a T0MEANS parameter has RandomEffects enabled, ctsem ignores the corresponding T0VAR row and column during fitting: its diagonal is fixed to 1e-6 and its off-diagonals to 0. This view shows the ignored diagonal as a dotted 1e-6 loop and omits its zero correlations."
+                )
+              )
             ),
             shiny::tags$div(id = "visual_spec_canvas", class = "ctgui-visual-spec"),
-            shiny::uiOutput("visual_path_inspector")
+            shiny::uiOutput("visual_path_inspector"),
+            shiny::uiOutput("visual_pars_details")
           ),
           shiny::tabPanel(
             "Equations",
@@ -555,9 +586,11 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
     visual_stale <- shiny::reactiveVal(FALSE)
     visual_status_value <- shiny::reactiveVal("Visual editor is loading the current matrices.")
     matrix_inputs_suspended <- shiny::reactiveVal(FALSE)
+    spec_inputs_suspended <- shiny::reactiveVal(FALSE)
 
     sync_matrix_inputs_from_spec <- function(spec) {
       matrix_inputs_suspended(TRUE)
+      spec_inputs_suspended(TRUE)
       for (matrix_name in ctgui_matrix_names(spec)) {
         mat <- spec$matrices[[matrix_name]]
         if (!is.matrix(mat)) next
@@ -568,7 +601,14 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       }
       shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(spec),
         selected = input$model_visual_matrix %||% "DRIFT")
-      session$onFlushed(function() matrix_inputs_suspended(FALSE), once = TRUE)
+      shiny::updateTextInput(session, "latent_names", value = paste(spec$latent_names, collapse = ", "))
+      shiny::updateTextInput(session, "manifest_names", value = paste(spec$manifest_names, collapse = ", "))
+      shiny::updateTextInput(session, "tdpred_names", value = paste(spec$tdpred_names, collapse = ", "))
+      shiny::updateTextInput(session, "tipred_names", value = paste(spec$tipred_names, collapse = ", "))
+      shiny::updateCheckboxInput(session, "tipredDefault", value = isTRUE(spec$tipredDefault))
+      session$onFlushed(function() {
+        matrix_inputs_suspended(FALSE); spec_inputs_suspended(FALSE)
+      }, once = TRUE)
     }
 
     visual_graph_for_view <- function(view = input$visual_view %||% "state_space") {
@@ -592,7 +632,8 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       current_spec(spec)
       drafts <- list(
         state_space = ctgui_visual_graph(spec, "state_space"),
-        initial_state = ctgui_visual_graph(spec, "initial_state")
+        initial_state = ctgui_visual_graph(spec, "initial_state"),
+        tipred_effects = ctgui_visual_graph(spec, "tipred_effects")
       )
       visual_drafts(drafts); visual_dirty(FALSE); visual_stale(FALSE); visual_status_value(message)
       send_visual_graph()
@@ -630,7 +671,6 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
     )
 
     explanation_text <- function(key) {
-      if (!isTRUE(input$show_explanations)) return(NULL)
       brief <- switch(key,
         spec_data = "Map active data columns to ctsem roles; these selectors update the editable name fields.",
         spec_options = "Core ctModel options control the continuous/discrete time model, manifest variable types, and default TI predictor behavior.",
@@ -1023,15 +1063,13 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       if (length(current) != length(manifest_names)) current <- rep(0L, length(manifest_names))
       shiny::tagList(
         shiny::tags$h4("Manifest variable types"),
-        if (isTRUE(input$show_explanations)) {
-          shiny::tags$div(class = "help-note",
-            shiny::tags$p("Choose how each observed manifest variable is treated by ctsem."),
-            shiny::tags$ul(
-              shiny::tags$li(shiny::tags$b("Continuous:"), " numeric measurement with Gaussian residual error."),
-              shiny::tags$li(shiny::tags$b("Binary:"), " two-category 0/1 measurement using ctsem's binary manifest-variable handling.")
-            )
+        shiny::tags$div(class = "help-note",
+          shiny::tags$p("Choose how each observed manifest variable is treated by ctsem."),
+          shiny::tags$ul(
+            shiny::tags$li(shiny::tags$b("Continuous:"), " numeric measurement with Gaussian residual error."),
+            shiny::tags$li(shiny::tags$b("Binary:"), " two-category 0/1 measurement using ctsem's binary manifest-variable handling.")
           )
-        },
+        ),
         shiny::div(
           class = "manifest-type-grid",
           lapply(seq_along(manifest_names), function(i) {
@@ -1182,6 +1220,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
     }, ignoreInit = TRUE)
 
     rebuild_spec_if_needed <- function() {
+      if (isTRUE(spec_inputs_suspended())) return(invisible(FALSE))
       fields <- input_spec_fields()
       spec <- current_spec()
       if (!spec_fields_changed(spec, fields)) return(invisible(FALSE))
@@ -1220,6 +1259,16 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       selected <- input$visual_spec_canvas_selection
       if (is.null(selected) || is.null(selected$id)) return(NULL)
       graph <- visual_graph_for_view(selected$view %||% input$visual_view %||% "state_space")
+      if (isTRUE(selected$parameter_node)) {
+        spec <- current_spec(); matrix <- as.character(selected$matrix)
+        mat <- spec$matrices[[matrix]]
+        if (is.null(mat)) return(NULL)
+        row <- match(as.character(selected$row), rownames(mat)); col <- match(as.character(selected$col), colnames(mat))
+        if (is.na(row) || is.na(col)) return(NULL)
+        style <- ctgui_visual_edge_style(spec, matrix, rownames(mat)[row], colnames(mat)[col], mat[row, col])
+        return(c(list(id = NULL, matrix = matrix, row = rownames(mat)[row], col = colnames(mat)[col],
+          source = NULL, target = NULL, directed = TRUE, edge_kind = "parameter"), style))
+      }
       edges <- graph$edges %||% list()
       index <- which(vapply(edges, function(edge) identical(as.character(edge$id), as.character(selected$id)), logical(1L)))
       if (!length(index)) return(NULL)
@@ -1230,18 +1279,49 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
 
     output$visual_path_inspector <- shiny::renderUI({
       edge <- visual_selected_edge()
-      if (is.null(edge)) return(shiny::div(class = "matrix-cell-inspector", shiny::tags$p("Right-drag from one node to another to create the ctsem path implied by their types. Select a path to edit its value; press Delete to remove a selected path or variable.")))
+      if (is.null(edge)) return(shiny::div(class = "matrix-cell-inspector", shiny::tags$p("Select a path to edit its parameter settings.")))
       shiny::div(class = "matrix-cell-inspector visual-path-inspector",
         shiny::tags$h5(paste(edge$matrix, "[", edge$row, ",", edge$col, "]", sep = "")),
         shiny::div(class = "control-grid",
           shiny::textInput("visual_path_value", "Value / parameter label / expression", value = if (identical(edge$value, "__free__")) ctgui_auto_label(edge$matrix, edge$row, edge$col) else edge$value %||% ""),
           shiny::checkboxInput("visual_path_random", "RandomEffects", value = isTRUE(edge$indvarying)),
+          shiny::textInput("visual_path_transform", "Transform", value = ctgui_display_transform(edge$transform)),
           shiny::numericInput("visual_path_sdscale", "RandomEffectsScale", value = suppressWarnings(as.numeric(edge$sdscale %||% 1)), step = 0.1),
           if (length(current_spec()$tipred_names)) shiny::selectizeInput("visual_path_tipreds", "Time Independent Predictors", choices = current_spec()$tipred_names, selected = edge$tipred_effects %||% character(), multiple = TRUE),
-          shiny::textInput("visual_path_extra_pars", "Additional PARS parameters", value = edge$extra_pars %||% "", placeholder = "e.g. nonlinear_a, nonlinear_b")
-        ),
-        shiny::tags$p(class = "matrix-note", if (isTRUE(edge$indvarying)) "RE badge: this parameter varies over individuals." else "")
+          shiny::textInput("visual_path_extra_pars", "PARS (free parameters in expression)", value = edge$extra_pars %||% "", placeholder = "e.g. nonlinear_a, nonlinear_b")
+        )
       )
+    })
+
+    output$visual_pars_details <- shiny::renderUI({
+      edge <- visual_selected_edge()
+      if (is.null(edge)) return(NULL)
+      used <- ctgui_split_pars(edge$extra_pars)
+      if (!length(used)) return(NULL)
+      spec <- current_spec(); pars <- spec$matrices[["PARS"]]
+      if (is.null(pars)) return(NULL)
+      rows <- which(as.character(pars[, 1L, drop = TRUE]) %in% used)
+      if (!length(rows)) return(NULL)
+      cards <- lapply(rows, function(row) {
+        meta <- matrix_metadata(spec, "PARS", rownames(pars)[row], colnames(pars)[1L])
+        if (is.null(meta)) return(NULL)
+        tipreds <- spec$tipred_names[vapply(spec$tipred_names, function(tipred) {
+          field <- paste0(tipred, "_effect")
+          field %in% names(meta) && isTRUE(meta[[field]][1L])
+        }, logical(1L))]
+        scale <- suppressWarnings(as.numeric(meta$sdscale[1L])); if (is.na(scale)) scale <- 1
+        prefix <- paste0("visual_pars_", row)
+        shiny::div(class = "matrix-cell-inspector visual-path-inspector",
+          shiny::tags$h5(as.character(pars[row, 1L])),
+          shiny::div(class = "control-grid",
+            shiny::checkboxInput(paste0(prefix, "_indvarying"), "RandomEffects", value = isTRUE(meta$indvarying[1L])),
+            shiny::textInput(paste0(prefix, "_transform"), "Transform", value = ctgui_display_transform(meta$transform[1L])),
+            shiny::numericInput(paste0(prefix, "_sdscale"), "RandomEffectsScale", value = scale, step = 0.1),
+            if (length(spec$tipred_names)) shiny::selectizeInput(paste0(prefix, "_tipreds"), "Time Independent Predictors", choices = spec$tipred_names, selected = tipreds, multiple = TRUE)
+          )
+        )
+      })
+      shiny::div(class = "matrix-pars-details", shiny::tags$h5("PARS parameter metadata"), cards)
     })
 
     shiny::observeEvent(input$visual_spec_canvas_graph, {
@@ -1259,8 +1339,12 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
         shiny::showNotification(conditionMessage(updated), type = "error")
         return()
       }
-      fresh_graph <- ctgui_visual_graph(updated, graph$view)
-      drafts <- visual_drafts(); drafts[[graph$view]] <- fresh_graph; visual_drafts(drafts)
+      drafts <- list(
+        state_space = ctgui_visual_graph(updated, "state_space"),
+        initial_state = ctgui_visual_graph(updated, "initial_state"),
+        tipred_effects = ctgui_visual_graph(updated, "tipred_effects")
+      )
+      visual_drafts(drafts)
       visual_dirty(FALSE); visual_stale(FALSE); current_spec(updated); current_fit(NULL)
       sync_matrix_inputs_from_spec(updated)
       fit_status_value("Visual model changed. Refit when ready.")
@@ -1279,26 +1363,61 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
     update_visual_path <- function() {
       selected <- input$visual_spec_canvas_selection; edge <- visual_selected_edge()
       if (is.null(selected) || is.null(edge)) return(invisible(NULL))
+      committed_input <- function(id) {
+        payload <- input$visual_path_commit
+        if (is.list(payload) && id %in% names(payload)) payload[[id]] else input[[id]]
+      }
+      previous_pars <- current_spec()$matrices[["PARS"]]
+      previous_par_values <- if (is.null(previous_pars)) character() else {
+        as.character(previous_pars[, 1L, drop = TRUE])
+      }
       drafts <- visual_drafts(); view <- selected$view %||% input$visual_view %||% "state_space"; graph <- drafts[[view]]
       index <- which(vapply(graph$edges, function(item) identical(as.character(item$id), as.character(edge$id)), logical(1L)))[1L]
-      if (is.na(index)) return(invisible(NULL))
-      value <- trimws(input$visual_path_value %||% "")
+      value <- trimws(committed_input("visual_path_value") %||% "")
       if (!nzchar(value)) value <- "__free__"
-      item <- graph$edges[[index]]
+      item <- if (is.na(index)) edge else graph$edges[[index]]
       item$value <- value; item$label <- if (identical(value, "__free__")) "free" else value
       item$fixed <- !is.na(suppressWarnings(as.numeric(strsplit(value, "|", fixed = TRUE)[[1L]][1L])))
-      item$custom <- nzchar(input$visual_path_extra_pars %||% ""); item$indvarying <- isTRUE(input$visual_path_random)
-      item$sdscale <- input$visual_path_sdscale %||% 1; item$tipred_effects <- input$visual_path_tipreds %||% character()
-      item$extra_pars <- input$visual_path_extra_pars %||% ""; graph$edges[[index]] <- item
-      drafts[[view]] <- graph; visual_drafts(drafts)
+      item$custom <- nzchar(committed_input("visual_path_extra_pars") %||% "")
+      item$indvarying <- isTRUE(committed_input("visual_path_random"))
+      item$transform <- committed_input("visual_path_transform") %||% ""
+      item$sdscale <- committed_input("visual_path_sdscale") %||% 1
+      item$tipred_effects <- committed_input("visual_path_tipreds") %||% character()
+      item$extra_pars <- committed_input("visual_path_extra_pars") %||% ""
+      if (!is.na(index)) { graph$edges[[index]] <- item; drafts[[view]] <- graph; visual_drafts(drafts) }
       updated <- tryCatch(ctgui_visual_update_edge(current_spec(), item), error = function(e) e)
       if (inherits(updated, "error")) { shiny::showNotification(conditionMessage(updated), type = "error"); return(invisible(NULL)) }
+      pars <- updated$matrices[["PARS"]]
+      used <- ctgui_split_pars(item$extra_pars)
+      if (!is.null(pars) && length(used)) for (row in which(as.character(pars[, 1L, drop = TRUE]) %in% used)) {
+        parameter_name <- as.character(pars[row, 1L])
+        if (!(parameter_name %in% previous_par_values)) next
+        prefix <- paste0("visual_pars_", row)
+        updated <- ctgui_set_parameter_metadata(updated, "PARS", rownames(pars)[row], colnames(pars)[1L],
+          transform = committed_input(paste0(prefix, "_transform")) %||% NULL,
+          indvarying = committed_input(paste0(prefix, "_indvarying")) %||% NULL,
+          sdscale = committed_input(paste0(prefix, "_sdscale")) %||% NULL,
+          tipred_effects = committed_input(paste0(prefix, "_tipreds")) %||% NULL)
+      }
+      drafts <- list(
+        state_space = ctgui_visual_graph(updated, "state_space"),
+        initial_state = ctgui_visual_graph(updated, "initial_state"),
+        tipred_effects = ctgui_visual_graph(updated, "tipred_effects")
+      )
+      visual_drafts(drafts)
       current_spec(updated); current_fit(NULL); visual_dirty(FALSE); visual_stale(FALSE)
       sync_matrix_inputs_from_spec(updated)
       fit_status_value("Visual model changed. Refit when ready.")
       matrix_status("Visual path updated in model matrices.")
       visual_status_value("Visual changes are applied directly to the current model.")
-      session$sendCustomMessage("ctgui-visual-update-edge", list(id = "visual_spec_canvas", edge = item))
+      # T0MEANS RandomEffects determines which T0VAR paths are visible in the
+      # initial-state graph. Reload that graph rather than patching only the
+      # edited mean path, so restored variance/correlation edges appear.
+      if (identical(item$matrix, "T0MEANS")) {
+        send_visual_graph("initial_state")
+      } else {
+        session$sendCustomMessage("ctgui-visual-update-edge", list(id = "visual_spec_canvas", edge = item))
+      }
       invisible(NULL)
     }
     shiny::observeEvent(input$visual_path_commit, update_visual_path(), ignoreInit = TRUE)
@@ -1495,7 +1614,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       if (is.na(scale)) scale <- if (isTRUE(meta$sdscale[1L])) 1 else 0
       shiny::div(
         class = "matrix-cell-metadata",
-        shiny::div("Transform: ", if (nzchar(meta$transform[1L] %||% "")) meta$transform[1L] else "-"),
+        shiny::div("Transform: ", ctgui_display_transform(meta$transform[1L])),
         shiny::div("RandomEffects: ", if (isTRUE(meta$indvarying[1L])) "TRUE" else "FALSE"),
         shiny::div("RandomEffectsScale: ", format(scale, trim = TRUE)),
         shiny::div("Time Independent Predictors: ", if (length(tipreds)) paste(tipreds, collapse = ", ") else "-")
@@ -1539,10 +1658,10 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
         shiny::tags$p(class = "help-note", paste0("Selected cell: ", matrix_name, " [", row_name, ", ", col_name, "]. Settings apply to the free parameter in this cell and are saved automatically.")),
         shiny::div(class = "control-grid",
           shiny::checkboxInput(matrix_meta_id(matrix_name, selected$row, selected$col, "indvarying"), arg_label("RandomEffects", "help_matrix_random_effects"), value = isTRUE(meta$indvarying[1L])),
-          shiny::textInput(matrix_meta_id(matrix_name, selected$row, selected$col, "transform"), arg_label("Transform", "help_matrix_transform"), value = meta$transform[1L] %||% ""),
+          shiny::textInput(matrix_meta_id(matrix_name, selected$row, selected$col, "transform"), arg_label("Transform", "help_matrix_transform"), value = ctgui_display_transform(meta$transform[1L])),
           shiny::numericInput(matrix_meta_id(matrix_name, selected$row, selected$col, "sdscale"), arg_label("RandomEffectsScale", "help_matrix_random_effects_scale"), value = random_effects_scale, step = 0.1),
           if (length(spec$tipred_names)) shiny::selectizeInput(matrix_meta_id(matrix_name, selected$row, selected$col, "tipreds"), arg_label("Time Independent Predictors", "help_matrix_time_independent_predictors"), choices = spec$tipred_names, selected = tipreds, multiple = TRUE),
-          shiny::textInput(matrix_meta_id(matrix_name, selected$row, selected$col, "extra_pars"), "Additional PARS parameters", value = meta$extra_pars[1L] %||% "", placeholder = "e.g. nonlinear_a, nonlinear_b")
+          shiny::textInput(matrix_meta_id(matrix_name, selected$row, selected$col, "extra_pars"), "PARS (free parameters in expression)", value = meta$extra_pars[1L] %||% "", placeholder = "e.g. nonlinear_a, nonlinear_b")
         )
       )
     }
@@ -1570,7 +1689,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
           shiny::tags$h5(as.character(pars[row, 1L])),
           shiny::div(class = "control-grid",
             shiny::checkboxInput(matrix_meta_id("PARS", row, 1L, "indvarying"), "RandomEffects", value = isTRUE(meta$indvarying[1L])),
-            shiny::textInput(matrix_meta_id("PARS", row, 1L, "transform"), "Transform", value = meta$transform[1L] %||% ""),
+            shiny::textInput(matrix_meta_id("PARS", row, 1L, "transform"), "Transform", value = ctgui_display_transform(meta$transform[1L])),
             shiny::numericInput(matrix_meta_id("PARS", row, 1L, "sdscale"), "RandomEffectsScale", value = scale, step = 0.1),
             if (length(spec$tipred_names)) shiny::selectizeInput(matrix_meta_id("PARS", row, 1L, "tipreds"), "Time Independent Predictors", choices = spec$tipred_names, selected = tipreds, multiple = TRUE)
           )
@@ -1615,8 +1734,8 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       shiny::div(
         class = "matrix-block",
         shiny::tags$h4(matrix_name),
-        if (isTRUE(input$show_explanations)) shiny::tags$p(class = "matrix-note", matrix_note(matrix_name)),
-        if (identical(matrix_name, "T0VAR") && length(inactive_names) && isTRUE(input$show_explanations)) {
+        shiny::tags$p(class = "matrix-note", matrix_note(matrix_name)),
+        if (identical(matrix_name, "T0VAR") && length(inactive_names)) {
           shiny::tags$p(class = "matrix-note",
             paste("Inactive cells involve", paste(inactive_names, collapse = ", "),
               "because those T0MEANS entries are individual-varying. ctsem fixes the corresponding T0VAR rows and columns."))
@@ -1686,10 +1805,8 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       shiny::div(
         class = "matrix-block pars-editor",
         shiny::tags$h4("PARS"),
-        if (isTRUE(input$show_explanations)) {
-          shiny::tags$p(class = "matrix-note",
-            "Extra parameter vector for nonlinear or custom expressions. Enter one fixed value or free label per line.")
-        },
+        shiny::tags$p(class = "matrix-note",
+          "Extra parameter vector for nonlinear or custom expressions. Enter one fixed value or free label per line."),
         shiny::textAreaInput("pars_vector", "PARS vector", value = paste(pars_vector(spec), collapse = "\n"),
           width = "100%", height = "180px")
       )
@@ -1833,20 +1950,10 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
     }
 
     active_spec <- shiny::reactive({
-      spec <- current_spec()
-      if (isTRUE(matrix_inputs_suspended())) return(spec)
-      matrix_values <- matrix_input_values()
-      if (is.null(matrix_values)) return(spec)
-      updated <- spec
-      for (matrix_name in names(matrix_values)) {
-        value <- matrix_values[[matrix_name]]
-        old <- spec$matrices[[matrix_name]]
-        if (is.null(value) && is.null(old)) next
-        if (!is.null(value) && !is.null(old) && identical(as.character(old), as.character(value))) next
-        updated <- tryCatch(set_spec_matrix(updated, matrix_name, value), error = function(e) e)
-        if (inherits(updated, "error")) return(spec)
-      }
-      apply_matrix_metadata_inputs(updated)
+      # The current specification is the single source of truth for fitting,
+      # export, validation, and diagrams.  Matrix widgets commit to it; never
+      # overlay their asynchronous browser values here.
+      current_spec()
     })
 
     apply_current_matrix <- function(show_notification = FALSE) {
@@ -1878,6 +1985,16 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       updated <- metadata_updated
       if (length(changed) == 0L) return(invisible(FALSE))
       current_spec(updated)
+      # Matrix metadata can change which T0VAR cells ctsem uses. Rebuild all
+      # visual drafts so toggling T0MEANS RandomEffects restores or suppresses
+      # the corresponding initial-state variance and correlation paths.
+      visual_drafts(list(
+        state_space = ctgui_visual_graph(updated, "state_space"),
+        initial_state = ctgui_visual_graph(updated, "initial_state"),
+        tipred_effects = ctgui_visual_graph(updated, "tipred_effects")
+      ))
+      visual_dirty(FALSE); visual_stale(FALSE)
+      send_visual_graph(input$visual_view %||% "state_space")
       current_fit(NULL)
       clear_diagnostics()
       fit_status_value("Model changed. Refit when ready.")
@@ -2151,7 +2268,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       data_name <- current_data_name()
       lines <- c(
         "# Model specification",
-        paste0("# Explanations shown in the GUI: ", code_value(isTRUE(input$show_explanations))),
+        "# Explanations are shown in the GUI.",
         ctgui_export_code(active_spec()),
         "",
         "# Data"

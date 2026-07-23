@@ -70,6 +70,89 @@ test_that("visual parameter metadata can override ctsem random-effect defaults",
   expect_false(manifest_mean$indvarying[1L])
 })
 
+test_that("new visual parameters inherit the same ctsem metadata defaults as matrix edits", {
+  base <- ctgui_spec(latent_names = "eta", manifest_names = c("y1", "y2"))
+  matrix_spec <- ctgui_set_matrix_value(base, "LAMBDA", "y2", "eta", free = TRUE)
+  visual_spec <- ctgui_visual_update_edge(base, list(
+    matrix = "LAMBDA", row = "y2", col = "eta", value = "__free__"
+  ))
+  matrix_meta <- ctgui_visual_metadata(matrix_spec, "LAMBDA", "y2", "eta")
+  visual_meta <- ctgui_visual_metadata(visual_spec, "LAMBDA", "y2", "eta")
+  expect_true(nzchar(matrix_meta$transform[1L]))
+  expect_equal(visual_meta$transform[1L], matrix_meta$transform[1L])
+  expect_equal(visual_meta$indvarying[1L], matrix_meta$indvarying[1L])
+  expect_equal(visual_meta$sdscale[1L], matrix_meta$sdscale[1L])
+})
+
+test_that("additional visual PARS parameters inherit ctsem metadata defaults", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  updated <- ctgui_visual_update_edge(spec, list(
+    matrix = "DRIFT", row = "eta", col = "eta",
+    value = as.character(spec$matrices$DRIFT["eta", "eta"]),
+    extra_pars = "shape"
+  ))
+  metadata <- ctgui_visual_metadata(updated, "PARS", "PARS1", "PARS")
+  expect_equal(metadata$param[1L], "shape")
+  expect_equal(metadata$transform[1L], "param")
+  updated <- ctgui_set_parameter_metadata(
+    updated, "PARS", "PARS1", "PARS", transform = ""
+  )
+  metadata <- ctgui_visual_metadata(updated, "PARS", "PARS1", "PARS")
+  expect_equal(metadata$transform[1L], "param")
+})
+
+test_that("blank identity transforms are displayed explicitly", {
+  expect_equal(ctgui_display_transform(""), "param")
+  expect_equal(ctgui_display_transform(NA_character_), "param")
+  expect_equal(ctgui_display_transform("exp(param)"), "exp(param)")
+})
+
+test_that("initial visual view preserves T0VAR cells suppressed by random T0MEANS", {
+  spec <- ctgui_spec(
+    latent_names = c("eta1", "eta2"),
+    manifest_names = c("y1", "y2")
+  )
+  spec <- ctgui_set_matrix_value(spec, "T0VAR", "eta2", "eta1", label = "initial_correlation")
+  spec <- ctgui_set_parameter_metadata(
+    spec, "T0MEANS", "eta2", "T0MEANS", indvarying = FALSE
+  )
+  spec <- ctgui_set_parameter_metadata(
+    spec, "T0MEANS", "eta1", "T0MEANS", indvarying = TRUE
+  )
+  before <- spec$matrices$T0VAR
+  graph <- ctgui_visual_graph(spec, "initial_state")
+  expect_false(any(vapply(graph$edges, function(edge) {
+    identical(edge$matrix, "T0VAR") && !isTRUE(edge$visual_only) &&
+      (identical(edge$row, "eta1") || identical(edge$col, "eta1"))
+  }, logical(1L))))
+  suppressed <- Filter(function(edge) {
+    identical(edge$id, "inactive:T0VAR:eta1")
+  }, graph$edges)[[1L]]
+  expect_equal(suppressed$label, "1e-6 (ignored)")
+  expect_true(suppressed$visual_only)
+  noise <- Filter(function(node) identical(node$id, "noise:T0VAR:eta1"), graph$nodes)[[1L]]
+  expect_equal(noise$label, "noise\neta1")
+  updated <- ctgui_visual_apply_graph(spec, graph)
+  expect_equal(updated$matrices$T0VAR["eta1", ], before["eta1", ])
+  expect_equal(updated$matrices$T0VAR[, "eta1"], before[, "eta1"])
+
+  restored <- ctgui_set_parameter_metadata(
+    spec, "T0MEANS", "eta1", "T0MEANS", indvarying = FALSE
+  )
+  restored_graph <- ctgui_visual_graph(restored, "initial_state")
+  expect_false(any(vapply(restored_graph$edges, function(edge) {
+    identical(edge$id, "inactive:T0VAR:eta1")
+  }, logical(1L))))
+  expect_true(any(vapply(restored_graph$edges, function(edge) {
+    identical(edge$matrix, "T0VAR") && !isTRUE(edge$visual_only) &&
+      identical(edge$row, "eta1") && identical(edge$col, "eta1")
+  }, logical(1L))))
+  expect_true(any(vapply(restored_graph$edges, function(edge) {
+    identical(edge$matrix, "T0VAR") && !isTRUE(edge$visual_only) &&
+      identical(edge$row, "eta2") && identical(edge$col, "eta1")
+  }, logical(1L))))
+})
+
 test_that("single-edge visual updates toggle covariance random effects without graph replacement", {
   spec <- ctgui_spec(latent_names = c("eta1", "eta2"), manifest_names = c("y1", "y2"))
   graph <- ctgui_visual_graph(spec, "state_space")
@@ -145,4 +228,70 @@ test_that("removing variables also removes their regenerated noise nodes", {
   expect_false("noise:MANIFESTVAR:y2" %in% ids)
   expect_equal(updated$latent_names, "eta1")
   expect_equal(updated$manifest_names, "y1")
+})
+
+test_that("visual additions retain standard estimated noise variances", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  graph <- ctgui_visual_graph(spec, "state_space")
+  graph$nodes[[length(graph$nodes) + 1L]] <- list(
+    id = "latent:eta2", kind = "latent", name = "eta2", original_name = "eta2", x = 530, y = 255
+  )
+  updated <- ctgui_visual_apply_graph(spec, graph)
+  expect_true(ctgui_visual_cell_active(updated$matrices$DIFFUSION["eta2", "eta2"]))
+  expect_true(ctgui_visual_cell_active(updated$matrices$DRIFT["eta2", "eta2"]))
+  graph <- ctgui_visual_graph(updated, "state_space")
+  graph$nodes[[length(graph$nodes) + 1L]] <- list(
+    id = "manifest:y2", kind = "manifest", name = "y2", original_name = "y2", x = 530, y = 430
+  )
+  updated <- ctgui_visual_apply_graph(updated, graph)
+  expect_true(ctgui_visual_cell_active(updated$matrices$MANIFESTVAR["y2", "y2"]))
+  expect_true(ctgui_visual_cell_active(updated$matrices$MANIFESTMEANS["y2", 1L]))
+  expect_true(ctgui_visual_metadata(updated, "MANIFESTMEANS", "y2", colnames(updated$matrices$MANIFESTMEANS)[1L])$indvarying[1L])
+})
+
+test_that("TI visual graph round trips predictor effects", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y", tipred_names = c("group", "age"), tipredDefault = FALSE)
+  spec <- ctgui_set_parameter_metadata(spec, "DRIFT", "eta", "eta", tipred_effects = "group")
+  graph <- ctgui_visual_graph(spec, "tipred_effects")
+  expect_true(any(vapply(graph$nodes, function(node) identical(node$kind, "parameter"), logical(1L))))
+  edge <- Filter(function(item) identical(item$edge_kind, "tipred_effect") && identical(item$tipred, "group"), graph$edges)[[1L]]
+  expect_equal(edge$colour, "#0f766e")
+  expect_equal(edge$label, "")
+  graph$edges <- Filter(function(item) !identical(item$id, edge$id), graph$edges)
+  updated <- ctgui_visual_apply_graph(spec, graph)
+  meta <- ctgui_visual_metadata(updated, "DRIFT", "eta", "eta")
+  expect_false(meta$group_effect[1L])
+})
+
+test_that("TI predictors added in the state-space visual graph update the specification", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  graph <- ctgui_visual_graph(spec, "state_space")
+  graph$nodes[[length(graph$nodes) + 1L]] <- list(
+    id = "tipred:group", kind = "tipred", name = "group", label = "group",
+    original_name = "group", tipred_default = TRUE, x = 85, y = 430
+  )
+  updated <- ctgui_visual_apply_graph(spec, graph)
+  expect_equal(updated$tipred_names, "group")
+  expect_true(all(updated$parameter_metadata$group_effect))
+  updated <- ctgui_set_matrix_value(updated, "CINT", "eta", colnames(updated$matrices$CINT)[1L], label = "cint_eta")
+  expect_true(ctgui_visual_metadata(updated, "CINT", "eta", colnames(updated$matrices$CINT)[1L])$group_effect[1L])
+})
+
+test_that("TI view adds and deletes predictors in the specification", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y", tipred_names = c("group", "age"))
+  graph <- ctgui_visual_graph(spec, "tipred_effects")
+  graph$nodes <- Filter(function(node) !identical(node$id, "tipred:group"), graph$nodes)
+  updated <- ctgui_visual_apply_graph(spec, graph)
+  expect_equal(updated$tipred_names, "age")
+
+  graph <- ctgui_visual_graph(updated, "tipred_effects")
+  graph$nodes[[length(graph$nodes) + 1L]] <- list(
+    id = "tipred:cohort", kind = "tipred", name = "cohort", label = "cohort",
+    original_name = "cohort", tipred_default = FALSE, x = 540, y = 315
+  )
+  updated <- ctgui_visual_apply_graph(updated, graph)
+  expect_equal(updated$tipred_names, c("age", "cohort"))
+  expect_false(any(updated$parameter_metadata$cohort_effect))
+  updated <- ctgui_set_matrix_value(updated, "CINT", "eta", colnames(updated$matrices$CINT)[1L], label = "cint_eta")
+  expect_false(ctgui_visual_metadata(updated, "CINT", "eta", colnames(updated$matrices$CINT)[1L])$cohort_effect[1L])
 })

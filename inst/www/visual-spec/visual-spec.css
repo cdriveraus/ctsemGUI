@@ -2,5 +2,16 @@
 .ctgui-visual-tools { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; padding: 8px; border-bottom: 1px solid #e5e7eb; }
 .ctgui-visual-tools button, .ctgui-visual-tools select { font-size: 12px; }
 .ctgui-visual-tools label { margin: 0; font-weight: normal; }
-.ctgui-visual-canvas { height: 560px; min-height: 360px; }
-@media (max-width: 760px) { .ctgui-visual-canvas { height: 430px; } }
+.ctgui-visual-body { display: flex; min-width: 0; }
+.ctgui-visual-canvas { height: 560px; min-height: 360px; flex: 1 1 auto; min-width: 0; }
+.ctgui-visual-legend { flex: 0 0 205px; border-left: 1px solid #e5e7eb; padding: 10px 12px; font-size: 12px; line-height: 1.35; overflow-y: auto; max-height: 560px; }
+.ctgui-visual-legend h5, .ctgui-visual-legend h6 { margin: 2px 0 7px; font-weight: 600; }
+.ctgui-visual-legend h6 { margin-top: 12px; }
+.ctgui-legend-item { display: flex; align-items: center; gap: 7px; margin: 4px 0; }
+.ctgui-legend-mark { display: inline-block; width: 22px; height: 14px; border: 2px solid #475569; background: #f8fafc; }
+.ctgui-legend-mark.latent, .ctgui-legend-mark.parameter { border-radius: 50%; }
+.ctgui-legend-mark.latent { background: #dbeafe; border-color: #1d4ed8; }.ctgui-legend-mark.manifest { border-radius: 4px; }.ctgui-legend-mark.tdpred { transform: rotate(45deg); background: #dcfce7; border-color: #15803d; width: 14px; }.ctgui-legend-mark.constant { clip-path: polygon(50% 0, 0 100%, 100% 100%); background: #fef3c7; border: 0; }.ctgui-legend-mark.system_noise, .ctgui-legend-mark.measurement_noise, .ctgui-legend-mark.initial_noise { width: 16px; height: 16px; border-radius: 50%; background: #f3e8ff; border-color: #7e22ce; }.ctgui-legend-mark.tipred { border-radius: 4px; background: #0f766e; }.ctgui-legend-mark.parameter { background: #fef3c7; border-color: #b45309; }
+.ctgui-legend-mark.path_mark { height: 0; border-width: 0 0 3px; border-color: #2563eb; background: transparent; }.ctgui-legend-mark.fixed { border-bottom-style: dashed; border-color: #94a3b8; }.ctgui-legend-mark.random { border-color: #ea580c; }.ctgui-legend-mark.custom { border-color: #7c3aed; }.ctgui-legend-mark.variance_correlation { border-color: #111827; }.ctgui-legend-mark.noise_input { border-color: #111827; border-bottom-width: 1px; }.ctgui-legend-mark.inactive { border-bottom-style: dotted; border-color: #9ca3af; }
+.ctgui-legend-line { display: inline-block; width: 22px; border-top: 3px solid; }
+.ctgui-visual-filters { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; display: flex; gap: 9px; flex-wrap: wrap; align-items: center; font-size: 12px; }.ctgui-visual-filters label { margin: 0; font-weight: normal; }
+@media (max-width: 760px) { .ctgui-visual-body { display: block; }.ctgui-visual-canvas { height: 430px; }.ctgui-visual-legend { border-left: 0; border-top: 1px solid #e5e7eb; max-height: none; }.ctgui-legend-item { display: inline-flex; margin-right: 12px; } }
