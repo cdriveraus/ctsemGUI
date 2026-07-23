@@ -403,6 +403,66 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
             )
           ),
           shiny::tabPanel(
+            "Uncertainty",
+            shiny::div(
+              class = "control-band",
+              shiny::tags$h4("Optimized-fit uncertainty"),
+              shiny::tags$p(class = "help-note", "These settings are used by Fit model when Optimize is selected. They can also be applied to an existing optimized fit below. Importance sampling and full bootstrap can take substantially longer."),
+              shiny::div(
+                class = "control-grid",
+                shiny::selectInput("fit_uncertainty_method", arg_label("Method", "help_uncertainty_method", "ctOptimUncertainty argument: uncertainty"), choices = ctgui_uncertainty_method_choices(), selected = "hessian"),
+                shiny::selectInput("fit_uncertainty_draws", arg_label("Approximate draws", "help_uncertainty_draws", "ctOptimUncertainty argument: draws"), choices = ctgui_uncertainty_draw_choices("hessian"), selected = "auto"),
+                shiny::numericInput("fit_uncertainty_samples", arg_label("Draws / refits", "help_uncertainty_samples", "ctOptimUncertainty argument: finishsamples"), value = 1000, min = 2, step = 100),
+                shiny::actionButton("run_uncertainty", "Recompute uncertainty", class = "btn-primary")
+              ),
+              shiny::uiOutput("uncertainty_eligibility"),
+              shiny::conditionalPanel(
+                "input.fit_uncertainty_method === 'fullbootstrap'",
+                shiny::tags$p(class = "warning-note", "Full bootstrap refits the model once per requested sample. Recomputing will ask for confirmation.")
+              ),
+              shiny::tags$details(
+                shiny::tags$summary(arg_label("Advanced method controls", "help_uncertainty_control", "ctOptimUncertainty argument: control")),
+                shiny::div(
+                  class = "control-grid",
+                  shiny::numericInput("fit_uncertainty_ridge", "Ridge", value = 1e-8, min = 0, step = 1e-8),
+                  shiny::numericInput("fit_uncertainty_hessian_step", "Hessian step", value = 1e-3, min = 1e-8, step = 1e-3),
+                  shiny::conditionalPanel(
+                    "input.fit_uncertainty_method === 'surrogate'",
+                    shiny::textInput("fit_uncertainty_surrogate_npoints", "Surrogate points (blank = automatic)", value = ""),
+                    shiny::numericInput("fit_uncertainty_surrogate_scale", "Surrogate scale", value = .5, min = .01, step = .1),
+                    shiny::checkboxInput("fit_uncertainty_surrogate_profile", "Profile surrogate curvature", value = TRUE),
+                    shiny::textInput("fit_uncertainty_surrogate_target_drop", "Profile target drop (blank = automatic)", value = ""),
+                    shiny::numericInput("fit_uncertainty_surrogate_max_step", "Profile maximum step", value = 64, min = 1, step = 1)
+                  ),
+                  shiny::conditionalPanel(
+                    "input.fit_uncertainty_method === 'is' || input.fit_uncertainty_draws === 'imis'",
+                    shiny::numericInput("fit_uncertainty_imis_max_iter", "IMIS maximum iterations", value = 50, min = 1, step = 1),
+                    shiny::numericInput("fit_uncertainty_imis_scale_init", "IMIS initial scale", value = 1.1, min = .01, step = .1),
+                    shiny::numericInput("fit_uncertainty_imis_tail_scale", "IMIS tail scale", value = 1.1, min = .01, step = .1),
+                    shiny::numericInput("fit_uncertainty_is_ess", "IMIS target ESS", value = 100, min = 1, step = 10),
+                    shiny::numericInput("fit_uncertainty_is_itersize", "IMIS batch size", value = 1000, min = 1, step = 100)
+                  ),
+                  shiny::conditionalPanel(
+                    "input.fit_uncertainty_method === 'fullbootstrap'",
+                    shiny::numericInput("fit_uncertainty_bootstrap_fit_cores", "Cores per bootstrap refit", value = 1, min = 1, step = 1),
+                    shiny::numericInput("fit_uncertainty_bootstrap_tol", "Bootstrap optimizer tolerance", value = 1e-5, min = 1e-10, step = 1e-5)
+                  )
+                )
+              )
+            ),
+            shiny::div(
+              class = "fit-inline-output",
+              shiny::tags$h4("Current uncertainty"),
+              shiny::verbatimTextOutput("uncertainty_summary"),
+              shiny::tags$h4("Status"),
+              shiny::textOutput("uncertainty_status"),
+              shiny::tags$h4("Messages"),
+              shiny::verbatimTextOutput("uncertainty_log"),
+              shiny::tags$h4("Warnings"),
+              shiny::verbatimTextOutput("uncertainty_warnings")
+            )
+          ),
+          shiny::tabPanel(
             "Equations",
             shiny::div(
               class = "control-band",
@@ -564,6 +624,14 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
     fit_messages <- shiny::reactiveVal("No fit has been run.")
     fit_warnings <- shiny::reactiveVal("No warnings.")
     fit_status_value <- shiny::reactiveVal("No fit available.")
+    uncertainty_status_value <- shiny::reactiveVal("No uncertainty recomputation has been run.")
+    uncertainty_messages <- shiny::reactiveVal("No uncertainty recomputation has been run.")
+    uncertainty_warnings <- shiny::reactiveVal("No warnings.")
+    clear_uncertainty_state <- function() {
+      uncertainty_status_value("No uncertainty recomputation has been run for the active fit.")
+      uncertainty_messages("No uncertainty recomputation has been run.")
+      uncertainty_warnings("No warnings.")
+    }
     generated_fit <- shiny::reactiveVal(NULL)
     cov_check <- shiny::reactiveVal(NULL)
     cov_check_log <- shiny::reactiveVal("No covariance check has been run.")
@@ -880,6 +948,47 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       current_fit()
     }
 
+    replace_active_fit <- function(fit) {
+      current_fit(fit)
+      selected <- input$active_fit_name
+      if (!is.null(selected) && nzchar(selected)) {
+        registry <- fit_registry()
+        if (selected %in% names(registry)) {
+          registry[[selected]] <- fit
+          fit_registry(registry)
+        }
+      }
+      invisible(fit)
+    }
+
+    uncertainty_control <- function() {
+      ctgui_uncertainty_control(
+        ridge = input$fit_uncertainty_ridge,
+        hessian_step = input$fit_uncertainty_hessian_step,
+        surrogate_npoints = input$fit_uncertainty_surrogate_npoints,
+        surrogate_scale = input$fit_uncertainty_surrogate_scale,
+        surrogate_profile = input$fit_uncertainty_surrogate_profile,
+        surrogate_profile_target_drop = input$fit_uncertainty_surrogate_target_drop,
+        surrogate_profile_max_step = input$fit_uncertainty_surrogate_max_step,
+        imis_max_iter = input$fit_uncertainty_imis_max_iter,
+        imis_scale_init = input$fit_uncertainty_imis_scale_init,
+        imis_tail_scale = input$fit_uncertainty_imis_tail_scale,
+        is_ess = input$fit_uncertainty_is_ess,
+        is_itersize = input$fit_uncertainty_is_itersize,
+        bootstrap_fit_cores = input$fit_uncertainty_bootstrap_fit_cores,
+        bootstrap_tol = input$fit_uncertainty_bootstrap_tol
+      )
+    }
+
+    uncertainty_optimcontrol <- function() {
+      ctgui_uncertainty_optimcontrol(
+        method = input$fit_uncertainty_method,
+        draws = input$fit_uncertainty_draws,
+        finishsamples = input$fit_uncertainty_samples,
+        control = uncertainty_control()
+      )
+    }
+
     valid_object_name <- function(x) length(x) == 1L && grepl("^[.A-Za-z][.A-Za-z0-9_]*$", x)
     assign_r_object <- function(object, name, label) {
       name <- trimws(name %||% "")
@@ -897,6 +1006,20 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
 
     is_ctsem_model <- function(x) !is.null(x$pars) && !is.null(x$latentNames) && !is.null(x$manifestNames)
     is_ctsem_fit <- function(x) is.list(x) && (!is.null(x$stanfit) || !is.null(x$model) || !is.null(x$ctstanmodel))
+
+    shiny::observeEvent(input$fit_uncertainty_method, {
+      method <- input$fit_uncertainty_method %||% "hessian"
+      choices <- ctgui_uncertainty_draw_choices(method)
+      selected <- input$fit_uncertainty_draws
+      if (is.null(selected) || !selected %in% unname(choices)) selected <- unname(choices)[1L]
+      shiny::updateSelectInput(session, "fit_uncertainty_draws", choices = choices, selected = selected)
+    }, ignoreInit = FALSE)
+
+    output$uncertainty_eligibility <- shiny::renderUI({
+      eligibility <- ctgui_optim_uncertainty_eligibility(active_fit())
+      class <- if (isTRUE(eligibility$ok)) "help-note" else "warning-note"
+      shiny::tags$p(class = class, eligibility$message)
+    })
 
     output$download_model_rds <- shiny::downloadHandler(
       filename = function() "ctsem-model.rds",
@@ -941,7 +1064,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       if (inherits(fit, "error") || !is_ctsem_fit(fit)) {
         shiny::showNotification(if (inherits(fit, "error")) conditionMessage(fit) else "The RDS does not contain a ctsem fit", type = "error"); return()
       }
-      current_fit(fit); fit_status_value("Loaded fit from RDS."); shiny::showNotification("Loaded fit RDS", type = "message")
+      current_fit(fit); clear_uncertainty_state(); fit_status_value("Loaded fit from RDS."); shiny::showNotification("Loaded fit RDS", type = "message")
     })
 
     clear_diagnostics <- function() {
@@ -1355,6 +1478,14 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
 
     shiny::observeEvent(input$visual_view, {
       if (!length(visual_drafts())) reset_visual_drafts() else send_visual_graph(input$visual_view)
+    }, ignoreInit = TRUE)
+    # The visual tab is a view of the current matrix specification. Rebuild its
+    # drafts when it is opened so edits made in Specification or Matrices cannot
+    # leave the browser showing the startup/default graph.
+    shiny::observeEvent(input$model_tabs, {
+      if (identical(input$model_tabs, "Visual Specification")) {
+        reset_visual_drafts("Loaded visual editor from the current model specification.")
+      }
     }, ignoreInit = TRUE)
     shiny::observeEvent(current_data(), {
       if (length(visual_drafts())) send_visual_graph(input$visual_view %||% "state_space")
@@ -2306,21 +2437,64 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       lines
     })
 
+    uncertainty_control_code <- function(indent = "    ") {
+      control <- uncertainty_control()
+      control <- control[!vapply(control, is.null, logical(1))]
+      lines <- vapply(names(control), function(name) {
+        paste0(indent, name, " = ", code_value(control[[name]]))
+      }, character(1))
+      if (length(lines) > 1L) lines[-length(lines)] <- paste0(lines[-length(lines)], ",")
+      c(paste0(indent, "uncertaintyControl = list("),
+        paste0(indent, "  ", lines), paste0(indent, ")"))
+    }
+
+    fit_optimcontrol_code <- function(indent = "  ") {
+      lines <- c(
+        paste0(indent, "uncertainty = ", code_value(input$fit_uncertainty_method), ","),
+        paste0(indent, "uncertaintyDraws = ", code_value(input$fit_uncertainty_draws), ","),
+        paste0(indent, "finishsamples = ", code_value(input$fit_uncertainty_samples), ","),
+        uncertainty_control_code(paste0(indent, "  "))
+      )
+      c(paste0(indent, "optimcontrol = list("), lines, paste0(indent, ")"))
+    }
+
     fit_code_snippet <- function() {
-      c(
+      args <- c(
         "# Fit",
         "fit <- ctsem::ctFit(",
         "  datalong = data,",
         "  model = model,",
         paste0("  optimize = ", code_value(input$fit_optimize), ","),
         paste0("  priors = ", code_value(input$fit_priors), ","),
-        paste0("  cores = ", code_value(input$fit_cores), ","),
-        "  plot = FALSE",
+        paste0("  cores = ", code_value(input$fit_cores), ",")
+      )
+      if (isTRUE(input$fit_optimize)) {
+        optim_lines <- fit_optimcontrol_code("  ")
+        optim_lines[length(optim_lines)] <- paste0(optim_lines[length(optim_lines)], ",")
+        args <- c(args, optim_lines)
+      }
+      args <- c(args, "  plot = FALSE",
         ")",
         "",
         "# Output",
         "summary(fit)",
         "ctsem::ctSummaryMatrices(fit)"
+      )
+      args
+    }
+
+    uncertainty_code_snippet <- function() {
+      control <- uncertainty_control_code("  ")
+      c(
+        "# Recompute optimized-fit uncertainty",
+        "fit <- ctsem::ctOptimUncertainty(",
+        "  fit = fit,",
+        paste0("  uncertainty = ", code_value(input$fit_uncertainty_method), ","),
+        paste0("  draws = ", code_value(input$fit_uncertainty_draws), ","),
+        paste0("  finishsamples = ", code_value(input$fit_uncertainty_samples), ","),
+        paste0("  cores = ", code_value(input$fit_cores), ","),
+        control,
+        ")"
       )
     }
 
@@ -2874,6 +3048,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       fit_busy(TRUE)
       on.exit({ fit_busy(FALSE); session$sendCustomMessage("ctgui-fit-finished", list(beep = isTRUE(input$fit_completion_beep))) }, add = TRUE)
       current_fit(NULL)
+      clear_uncertainty_state()
       fit_status_value("Fitting...")
       fit_messages("Fitting...")
       fit_warnings("No warnings.")
@@ -2891,7 +3066,14 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
             cores = input$fit_cores,
             plot = FALSE
           )
-          args <- append_extra_args(args, input$fit_extra_args)
+          extra <- parse_extra_args(input$fit_extra_args)
+          if (isTRUE(input$fit_optimize)) {
+            supplied_optimcontrol <- extra$optimcontrol
+            extra$optimcontrol <- NULL
+            args$optimcontrol <- ctgui_uncertainty_merge_optimcontrol(
+              uncertainty_optimcontrol(), supplied_optimcontrol)
+          }
+          args <- c(args, extra[!names(extra) %in% names(args)])
           do.call(getExportedValue("ctsem", "ctFit"), args)
         }, progress_callback = function(lines) {
           fit_messages(paste(lines, collapse = "\n"))
@@ -2910,6 +3092,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       current_fit(result$value)
       clear_diagnostics()
       fit_status_value("Fit available (ctsem::ctFit result).")
+      uncertainty_status_value("Uncertainty was estimated as part of fitting.")
       fit_messages(if (length(result$messages)) paste(result$messages, collapse = "\n") else "Fit complete.")
       fit_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
       record_output_code("fit", fit_code_snippet())
@@ -2936,6 +3119,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
       selected <- input$active_fit_name
       if (!is.null(selected) && selected %in% names(registry)) {
         current_fit(registry[[selected]])
+        clear_uncertainty_state()
         clear_diagnostics()
         fit_status_value(paste("Active fit:", selected))
       }
@@ -2946,6 +3130,88 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
     output$fit_warnings <- shiny::renderText(fit_warnings())
     output$fit_log_inline <- shiny::renderText(fit_messages())
     output$fit_warnings_inline <- shiny::renderText(fit_warnings())
+
+    run_uncertainty_update <- function() {
+      fit <- active_fit()
+      eligibility <- ctgui_optim_uncertainty_eligibility(fit)
+      if (!isTRUE(eligibility$ok)) {
+        uncertainty_status_value(eligibility$message)
+        shiny::showNotification(eligibility$message, type = "error")
+        return(invisible(NULL))
+      }
+      if (!requireNamespace("ctsem", quietly = TRUE) ||
+          !exists("ctOptimUncertainty", envir = asNamespace("ctsem"), mode = "function")) {
+        message <- "The loaded ctsem package does not provide ctOptimUncertainty. Load a current ctsem source tree."
+        uncertainty_status_value(message)
+        shiny::showNotification(message, type = "error")
+        return(invisible(NULL))
+      }
+
+      uncertainty_status_value("Recomputing optimized-fit uncertainty...")
+      uncertainty_messages("Recomputing optimized-fit uncertainty...")
+      uncertainty_warnings("No warnings.")
+      result <- NULL
+      shiny::withProgress(message = "Recomputing optimized-fit uncertainty", value = .1, {
+        result <- capture_conditions({
+          getExportedValue("ctsem", "ctOptimUncertainty")(
+            fit = fit,
+            uncertainty = input$fit_uncertainty_method,
+            draws = input$fit_uncertainty_draws,
+            finishsamples = input$fit_uncertainty_samples,
+            cores = input$fit_cores,
+            control = uncertainty_control()
+          )
+        }, progress_callback = function(lines) {
+          uncertainty_messages(paste(lines, collapse = "\n"))
+        })
+        shiny::incProgress(.9, detail = "Uncertainty call returned")
+      })
+      if (inherits(result$value, "error")) {
+        uncertainty_status_value("Uncertainty recomputation failed.")
+        uncertainty_messages(paste(c(result$messages, conditionMessage(result$value)), collapse = "\n"))
+        uncertainty_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
+        shiny::showNotification(conditionMessage(result$value), type = "error")
+        return(invisible(NULL))
+      }
+      replace_active_fit(result$value)
+      clear_diagnostics()
+      uncertainty_status_value("Optimized-fit uncertainty updated.")
+      uncertainty_messages(if (length(result$messages)) paste(result$messages, collapse = "\n") else "Uncertainty updated.")
+      uncertainty_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
+      record_output_code("uncertainty", uncertainty_code_snippet())
+      shiny::showNotification("Optimized-fit uncertainty updated", type = "message")
+      invisible(result$value)
+    }
+
+    shiny::observeEvent(input$run_uncertainty, {
+      if (identical(input$fit_uncertainty_method, "fullbootstrap")) {
+        shiny::showModal(shiny::modalDialog(
+          title = "Confirm full bootstrap",
+          paste("This will refit the model", input$fit_uncertainty_samples, "times."),
+          easyClose = TRUE,
+          footer = shiny::tagList(
+            shiny::modalButton("Cancel"),
+            shiny::actionButton("confirm_uncertainty", "Run full bootstrap", class = "btn-danger")
+          )
+        ))
+      } else {
+        run_uncertainty_update()
+      }
+    })
+
+    shiny::observeEvent(input$confirm_uncertainty, {
+      shiny::removeModal()
+      run_uncertainty_update()
+    })
+
+    output$uncertainty_status <- shiny::renderText(uncertainty_status_value())
+    output$uncertainty_log <- shiny::renderText(uncertainty_messages())
+    output$uncertainty_warnings <- shiny::renderText(uncertainty_warnings())
+    output$uncertainty_summary <- shiny::renderText({
+      fit <- active_fit()
+      if (is.null(fit)) return("No fit available.")
+      ctgui_uncertainty_summary(fit)
+    })
 
     shiny::observeEvent(input$generate_from_fit, {
       fit <- active_fit()
@@ -2973,15 +3239,7 @@ ctgui_launch_app <- function(launch.browser = interactive(), ...) {
         shiny::showNotification(conditionMessage(out$value), type = "error")
         return()
       }
-      current_fit(out$value)
-      selected <- input$active_fit_name
-      if (!is.null(selected) && nzchar(selected)) {
-        registry <- fit_registry()
-        if (selected %in% names(registry)) {
-          registry[[selected]] <- out$value
-          fit_registry(registry)
-        }
-      }
+      replace_active_fit(out$value)
       generated_fit(out$value$generated)
       diagnostics_status(paste(c("Fit-generated data available.", out$messages, out$warnings), collapse = "\n"))
       record_output_code("generate_from_fit", generate_from_fit_code_snippet())
