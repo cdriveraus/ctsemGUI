@@ -9,15 +9,11 @@
 \alias{ctgui_graph_edges}
 \title{Build guided ctsem GUI matrices}
 \usage{
-ctgui_build_matrices(
-  spec,
-  structure = c("dynamic_var", "linear_growth", "dynamic_var_trend"),
-  options = list()
-)
+ctgui_build_matrices(spec, structure = "dynamic_var", options = list())
 
 ctgui_build_measurement_matrices(
   spec,
-  measurement = c("single_indicator", "marker", "fixed_loadings"),
+  measurement = "single_indicator",
   options = list()
 )
 

@@ -6,6 +6,7 @@
 #' should normalise matrices, metadata and PARS before invalidating a fit.
 #' It returns both the canonical specification and the effects the caller must
 #' apply to reactive fit/widget/visual state.
+#' @keywords internal
 ctgui_commit_spec <- function(previous, updated = previous, reason = "edit",
     sync_model = TRUE, refresh_visual = NULL, refresh_widgets = TRUE) {
   ctgui_check_spec(previous)
