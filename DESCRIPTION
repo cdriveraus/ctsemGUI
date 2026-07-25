@@ -14,15 +14,13 @@ Roxygen: list(markdown = TRUE)
 Depends:
     R (>= 4.2.0)
 Imports:
+    ctsem (>= 3.11.1),
+    shiny,
     utils,
     igraph,
     ggraph,
-    ggplot2,
-    htmltools
+    ggplot2
 Suggests:
-    shiny,
     testthat (>= 3.0.0)
-Enhances:
-    ctsem
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0

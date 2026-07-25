@@ -14,7 +14,6 @@
 #' @return `ctgui_build_matrices()` and
 #'   `ctgui_build_measurement_matrices()` return updated `ctsemgui_spec`
 #'   objects without changing the model names or data-role fields.
-#'   `ctgui_build_model()` returns a `ctsemgui_spec`.
 #'   `ctgui_structures()` and `ctgui_measurements()` return data frames.
 #'   `ctgui_validate_data()` returns a validation data frame.
 #'   `ctgui_graph_edges()` returns graph edge data for one model element.
@@ -139,20 +138,7 @@ ctgui_build_measurement_matrices <- function(spec,
   ctgui_sync_model_from_matrices(spec)
 }
 
-#' Build a complete ctsem GUI specification
-#'
-#' @param structure Matrix structure. One of `"linear_growth"`,
-#'   `"dynamic_var"`, or `"dynamic_var_trend"`.
-#' @param measurement Measurement model. One of `"single_indicator"`,
-#'   `"marker"`, or `"fixed_loadings"`.
-#' @param names Named list of model names. Common entries are
-#'   `factor_names`, `manifest_names`, `id`, and `time`.
-#' @param options Named list of builder options, including `n`, `type`,
-#'   `trend_type`, `indicators_per_factor`, `free_noise_correlations`,
-#'   `fixed_loadings`, and `trend_coupling`.
-#'
-#' @return A `ctsemgui_spec` object.
-#' @export
+#' @noRd
 ctgui_build_model <- function(structure = c("dynamic_var", "linear_growth", "dynamic_var_trend"),
     measurement = c("single_indicator", "marker", "fixed_loadings"),
     names = list(),
@@ -248,7 +234,7 @@ ctgui_build_model <- function(structure = c("dynamic_var", "linear_growth", "dyn
   spec
 }
 
-#' @rdname ctgui_build_model
+#' @rdname ctgui_build_matrices
 ctgui_structures <- function() {
   data.frame(
     id = c("linear_growth", "dynamic_var", "dynamic_var_trend"),
@@ -262,7 +248,7 @@ ctgui_structures <- function() {
   )
 }
 
-#' @rdname ctgui_build_model
+#' @rdname ctgui_build_matrices
 ctgui_measurements <- function() {
   data.frame(
     id = c("single_indicator", "marker", "fixed_loadings"),
@@ -276,7 +262,7 @@ ctgui_measurements <- function() {
   )
 }
 
-#' @rdname ctgui_build_model
+#' @rdname ctgui_build_matrices
 #' @param spec A `ctsemgui_spec`.
 #' @param data A data frame to check against the model specification.
 ctgui_validate_data <- function(spec, data) {
@@ -340,7 +326,7 @@ ctgui_validate_data <- function(spec, data) {
   do.call(rbind, messages)
 }
 
-#' @rdname ctgui_build_model
+#' @rdname ctgui_build_matrices
 #' @param element Graph element: `"drift"`, `"diffusion"`, `"measurement"`, or
 #'   `"trend"`.
 ctgui_graph_edges <- function(spec, element = c("drift", "diffusion", "measurement", "trend")) {

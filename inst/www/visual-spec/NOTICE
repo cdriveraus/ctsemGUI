@@ -1,5 +1,5 @@
 The visual specification editor is an original ctsemgui integration using
-Cytoscape.js and cytoscape-edgehandles (MIT; see bundled license files).
+Cytoscape.js (MIT; see LICENSE-cytoscape.txt).
 
 The product concept and selected interaction patterns were informed by
 lavaangui by Julian D. Karch, licensed GPL-3.0-or-later:

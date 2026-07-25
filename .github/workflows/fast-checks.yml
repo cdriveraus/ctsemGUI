@@ -1,0 +1,29 @@
+name: Fast package checks
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: true
+          extra-packages: any::roxygen2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check generated documentation is current
+        run: |
+          Rscript -e 'roxygen2::roxygenise(".")'
+          git diff --exit-code -- NAMESPACE man
+      - name: Check dependency and asset hygiene
+        run: Rscript tools/check-package-hygiene.R
+      - name: Check JavaScript syntax
+        run: find inst -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Run tests
+        run: Rscript -e 'testthat::test_local(".", reporter = "summary")'
