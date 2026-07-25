@@ -16,33 +16,12 @@ ctgui_app_ui <- function(initial_spec, help_catalog, assets) {
       utils::URLencode(application_asset_version, reserved = TRUE)
     )
   }
-plot_export_controls <- function(id, height = 420) {
-  shiny::div(class = "plot-export",
-    shiny::numericInput(paste0(id, "_export_width"), "Width (px)", value = 700, min = 100, step = 10),
-    shiny::numericInput(paste0(id, "_export_height"), "Height (px)", value = height, min = 100, step = 10),
-    shiny::numericInput(paste0(id, "_export_dpi"), "DPI", value = 96, min = 36, step = 12),
-    shiny::downloadButton(paste0(id, "_png"), "PNG"),
-    shiny::downloadButton(paste0(id, "_pdf"), "PDF")
-  )
-}
-
 help_link <- function(help_id) {
-  help <- help_catalog[[help_id]]
-  if (is.null(help)) stop("No help entry found for ", help_id, call. = FALSE)
-  tooltip <- ctgui_help_tooltip(help)
-  shiny::actionLink(help_id, "?", class = "arg-help", title = tooltip,
-    `aria-label` = paste("Help:", tooltip)
-  )
+  ctgui_help_link(help_catalog, help_id)
 }
 
 arg_label <- function(label, help_id, title = NULL) {
-  help <- help_catalog[[help_id]]
-  if (is.null(help)) stop("No help entry found for ", help_id, call. = FALSE)
-  tooltip <- ctgui_help_tooltip(help)
-  shiny::tagList(
-    shiny::span(label, title = tooltip),
-    help_link(help_id)
-  )
+  ctgui_arg_label(help_catalog, label, help_id, title)
 }
 
 ui <- shiny::fluidPage(
@@ -218,7 +197,7 @@ ui <- shiny::fluidPage(
             shiny::uiOutput("raw_plot_controls")
           ),
           shiny::plotOutput("raw_plot", height = 420),
-          plot_export_controls("raw_plot", 420)
+          ctgui_plot_export_controls("raw_plot", 420)
         )
       )
     ),
@@ -404,7 +383,7 @@ ui <- shiny::fluidPage(
               shiny::actionButton("run_kalman", "Run prediction plots", class = "btn-primary")
             )
           ),
-          shiny::plotOutput("kalman_plot", height = 460), plot_export_controls("kalman_plot", 460)
+          shiny::plotOutput("kalman_plot", height = 460), ctgui_plot_export_controls("kalman_plot", 460)
         ),
         shiny::tabPanel(
           "Post Predictive",
@@ -430,7 +409,7 @@ ui <- shiny::fluidPage(
               shiny::actionButton("run_residual_acf", "Run residual ACF", class = "btn-primary")
             )
           ),
-          shiny::plotOutput("residual_acf_plot", height = 460), plot_export_controls("residual_acf_plot", 460),
+          shiny::plotOutput("residual_acf_plot", height = 460), ctgui_plot_export_controls("residual_acf_plot", 460),
           shiny::verbatimTextOutput("residual_acf_log")
         ),
         shiny::tabPanel(
@@ -449,7 +428,7 @@ ui <- shiny::fluidPage(
               shiny::actionButton("run_dynamics", "Plot dynamics", class = "btn-primary")
             )
           ),
-          shiny::plotOutput("dynamics_plot", height = 460), plot_export_controls("dynamics_plot", 460),
+          shiny::plotOutput("dynamics_plot", height = 460), ctgui_plot_export_controls("dynamics_plot", 460),
           shiny::verbatimTextOutput("dynamics_log")
         ),
         shiny::tabPanel(
