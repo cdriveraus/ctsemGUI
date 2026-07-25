@@ -9,9 +9,33 @@
       event.stopPropagation();
     });
 
+    function specificationPayload() {
+      var payload = {};
+      [
+        "latent_names", "manifest_names", "tdpred_names", "tipred_names",
+        "id", "time", "type", "tipredDefault"
+      ].forEach(function (id) {
+        var control = app.find("#" + id);
+        if (!control.length) return;
+        payload[id] = control.is(":checkbox")
+          ? control.prop("checked")
+          : control.val();
+      });
+      app.find("[id^=\"manifest_type_\"]").each(function () {
+        payload[this.id] = $(this).val();
+      });
+      return payload;
+    }
+
     app.on("show.bs.tab", "a[data-toggle=\"tab\"]", function () {
       if (window.Shiny) {
-        Shiny.setInputValue("tab_commit_nonce", Math.random(), { priority: "event" });
+        // Bootstrap starts changing tabs before Shiny is guaranteed to flush
+        // the control that just lost focus. Carry the authored values in the
+        // same event so the server never rebuilds from stale input bindings.
+        Shiny.setInputValue("tab_commit_nonce", {
+          nonce: Math.random(),
+          specification: specificationPayload()
+        }, { priority: "event" });
       }
     });
 

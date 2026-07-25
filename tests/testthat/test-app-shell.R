@@ -21,6 +21,43 @@ test_that("server construction has a testServer-compatible seam", {
   )))
 })
 
+test_that("page transitions commit the authored specification payload", {
+  skip_if_not_installed("shiny")
+
+  initial <- ctgui_spec(
+    latent_names = "eta", manifest_names = "y", tipredDefault = TRUE
+  )
+  suppressWarnings(shiny::testServer(
+    ctgui_app_server(initial, ctgui_help_catalog()), {
+      # Reproduce the browser race: Shiny's ordinary binding still contains
+      # the old value when Bootstrap begins the page transition.
+      session$setInputs(
+        latent_names = "eta", manifest_names = "y",
+        tdpred_names = character(), tipred_names = character(),
+        id = "id", time = "time", type = "ct", tipredDefault = TRUE
+      )
+      session$setInputs(tab_commit_nonce = list(
+        nonce = 1,
+        specification = list(
+          latent_names = "persisted_eta",
+          manifest_names = "y",
+          tdpred_names = character(),
+          tipred_names = character(),
+          id = "id", time = "time", type = "ct",
+          tipredDefault = TRUE,
+          manifest_type_1 = "0"
+        )
+      ))
+
+      expect_match(
+        output$code_output,
+        'latentNames = "persisted_eta"',
+        fixed = TRUE
+      )
+    }
+  ))
+})
+
 test_that("server delegates workflow code and fit-shape handling to services", {
   server_file <- ctgui_test_source_path("R", "app_server.R")
   server_text <- paste(readLines(server_file, warn = FALSE), collapse = "\n")

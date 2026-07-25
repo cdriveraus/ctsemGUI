@@ -133,11 +133,13 @@ manifest_type_values <- function(manifest_names = parse_names(input$manifest_nam
   )
 }
 
-input_spec_fields <- function() {
-  ctgui_spec_fields(
-    c(shiny::reactiveValuesToList(input), list(Tpoints = NULL)),
-    current_spec()
-  )
+input_spec_fields <- function(committed = NULL) {
+  values <- shiny::reactiveValuesToList(input)
+  if (is.list(committed)) {
+    for (name in names(committed)) values[[name]] <- committed[[name]]
+  }
+  values$Tpoints <- NULL
+  ctgui_spec_fields(values, current_spec())
 }
 
 spec_fields_changed <- ctgui_spec_fields_changed
@@ -628,9 +630,14 @@ shiny::observeEvent(input$measurement_builder_apply, {
   shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(updated), selected = "LAMBDA")
 })
 
-rebuild_spec_if_needed <- function() {
-  if (isTRUE(spec_inputs_suspended())) return(invisible(FALSE))
-  fields <- input_spec_fields()
+rebuild_spec_if_needed <- function(committed = NULL) {
+  # An explicit browser payload contains the values authored before a page
+  # transition and must not be discarded merely because widget synchronization
+  # from an earlier commit is still completing.
+  if (is.null(committed) && isTRUE(spec_inputs_suspended())) {
+    return(invisible(FALSE))
+  }
+  fields <- input_spec_fields(committed)
   spec <- current_spec()
   if (!spec_fields_changed(spec, fields)) return(invisible(FALSE))
 
@@ -663,8 +670,14 @@ matrix_server <- ctgui_matrix_server(
 )
 
 shiny::observeEvent(input$tab_commit_nonce, {
-  matrix_server$apply_current_matrix(show_notification = FALSE)
-  rebuild_spec_if_needed()
+  event <- input$tab_commit_nonce
+  committed <- if (is.list(event)) event$specification else NULL
+  specification_changed <- rebuild_spec_if_needed(committed)
+  # Matrix fields have their own atomic change event. Retain the legacy tab
+  # fallback only when this transition did not rebuild the matrix schema.
+  if (!isTRUE(specification_changed)) {
+    matrix_server$apply_current_matrix(show_notification = FALSE)
+  }
 })
 
 equation_args <- shiny::reactive({

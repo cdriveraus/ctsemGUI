@@ -72,6 +72,21 @@ test_that("matrix commits carry the edited value atomically", {
   ))
 })
 
+test_that("tab commits carry specification values atomically", {
+  app_js <- paste(
+    readLines(
+      ctgui_test_source_path("inst", "www", "app", "app.js"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+
+  expect_match(app_js, "function specificationPayload()", fixed = TRUE)
+  expect_match(app_js, 'specification: specificationPayload()', fixed = TRUE)
+  expect_match(app_js, '"latent_names", "manifest_names"', fixed = TRUE)
+  expect_match(app_js, '[id^=\\"manifest_type_\\"]', fixed = TRUE)
+})
+
 test_that("application stylesheet retains the established UI contracts", {
   css <- paste(
     readLines(ctgui_test_asset_path("www", "app", "app.css")),
