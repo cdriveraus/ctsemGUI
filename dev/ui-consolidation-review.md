@@ -1,6 +1,6 @@
 # ctsemgui UI consolidation: approval review
 
-Status: **proposal only — no UI source changes are authorized by this file.**
+Status: **approved and implemented on 2026-07-25.**
 
 ## Baseline
 
@@ -22,7 +22,7 @@ baseline:
 - [`ui-baseline-fit.png`](ui-baseline-fit.png): Fit > Settings with inline
   messages/warnings and their duplicate tabs.
 
-These images are approval evidence only. They do not authorize source changes.
+These images record the approved pre-consolidation baseline.
 
 ## Approval table
 
@@ -48,7 +48,31 @@ distinct input or output semantics that should survive the initial consolidation
 | Uncertainty | Fit > Uncertainty; optimized-fit controls, eligibility, confirmation for bootstrap, status/messages/warnings. | Retain. It has distinct cost and fit-eligibility behaviour. Keep it separate from routine fit settings. |
 | Diagnostics | Diagnostics > Generate From Fit, Covariance Check, Prediction plots, Post Predictive, Residual ACF, Dynamics, TI moderation. | Retain all action-oriented diagnostics. Only duplicate summaries relocate to Output; preserve precondition guards, action code capture, plot exports, and per-analysis logs. |
 
-## Acceptance checks before implementation
+## Approved after-state
+
+Live-browser evidence captured from the implemented application:
+
+- [`ui-approved-empty.png`](ui-approved-empty.png): the single creatable
+  **Data roles** band and inline validation in Model > Specification with no
+  active data.
+- [`ui-approved-data.png`](ui-approved-data.png): the sole Data > Preview after
+  importing a 16-row, six-column R data frame.
+- [`ui-approved-validation.png`](ui-approved-validation.png): an inline
+  `LAMBDA` validation warning after adding a manifest variable in the visual
+  editor.
+- [`ui-approved-output.png`](ui-approved-output.png): the canonical Output home
+  with Model Code, Model PARS, Fit Summary, Summary Matrices, Fit Comparison,
+  and Generated Code.
+
+The 2026-07-25 smoke pass also exercised manual role creation, live matrix-cell
+editing, visual manifest creation and layout reset, the no-data fit guard, the
+no-fit covariance-diagnostic guard, project download, every consolidated Output
+tab, and application reload. Visual deletion, RDS loading, and active-fit output
+are additionally covered by the browser-independent visual round-trip and
+`testServer` contracts; the in-app browser did not expose its native file
+chooser during this evidence pass.
+
+## Acceptance checks
 
 - With no active data, each Data roles control permits manual entry and produces
   the same specification as today's text inputs. With data, existing selected
