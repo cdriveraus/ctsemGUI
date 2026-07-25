@@ -26,8 +26,10 @@ if (any(grepl("edgehandles", list.files(asset_dir, full.names = FALSE), fixed = 
   stop("Removed cytoscape-edgehandles assets are still present", call. = FALSE)
 }
 
-app_source <- paste(readLines(file.path("R", "app.R"), warn = FALSE), collapse = "\n")
-unreferenced <- expected_assets[!vapply(expected_assets, grepl, logical(1L), x = app_source, fixed = TRUE)]
+app_files <- list.files("R", pattern = "^app.*\\.R$", full.names = TRUE)
+app_source <- paste(unlist(lapply(app_files, readLines, warn = FALSE)), collapse = "\n")
+unreferenced <- expected_assets[!vapply(expected_assets, grepl, logical(1L),
+  x = app_source, fixed = TRUE)]
 if (length(unreferenced)) {
   stop("Unreferenced visual-spec assets: ", paste(unreferenced, collapse = ", "), call. = FALSE)
 }
