@@ -10,6 +10,41 @@ ctgui_visual_state_matrices <- c(
 
 ctgui_visual_initial_matrices <- c("T0MEANS", "T0VAR")
 
+# The browser editor exchanges complete graph snapshots with Shiny.  Keep this
+# protocol separate from `spec$visual$version`: the latter is persisted model
+# layout state, while this version protects the live R/JavaScript boundary.
+ctgui_visual_graph_protocol_version <- 1L
+
+ctgui_visual_graph_contract <- function() {
+  list(
+    protocol_version = ctgui_visual_graph_protocol_version,
+    graph_version = 2L,
+    views = c("state_space", "initial_state", "tipred_effects"),
+    required = c("protocol_version", "version", "view", "nodes", "edges")
+  )
+}
+
+ctgui_visual_validate_graph <- function(graph, strict = TRUE) {
+  if (!is.list(graph)) return(FALSE)
+  contract <- ctgui_visual_graph_contract()
+  if (isTRUE(strict) && !identical(as.integer(graph$protocol_version), contract$protocol_version)) return(FALSE)
+  if (!is.null(graph$protocol_version) && !identical(as.integer(graph$protocol_version), contract$protocol_version)) return(FALSE)
+  if (!identical(as.integer(graph$version), contract$graph_version)) return(FALSE)
+  if (!is.character(graph$view) || length(graph$view) != 1L || !(graph$view %in% contract$views)) return(FALSE)
+  if (!is.list(graph$nodes) || !is.list(graph$edges)) return(FALSE)
+  all(vapply(graph$nodes, function(node) is.list(node) && is.character(node$id) && length(node$id) == 1L,
+    logical(1L))) &&
+    all(vapply(graph$edges, function(edge) is.list(edge) && is.character(edge$id) && length(edge$id) == 1L,
+      logical(1L)))
+}
+
+ctgui_visual_assert_graph_contract <- function(graph, strict = TRUE) {
+  if (!ctgui_visual_validate_graph(graph, strict = strict)) {
+    stop("Unsupported or malformed visual graph protocol.", call. = FALSE)
+  }
+  invisible(graph)
+}
+
 ctgui_visual_empty_layout <- function() list(
   state_space = list(), initial_state = list(), tipred_effects = list()
 )
@@ -279,7 +314,8 @@ ctgui_visual_graph <- function(spec, view = c("state_space", "initial_state", "t
       }
     }
   }
-  list(version = 2L, view = view, nodes = nodes, edges = edges,
+  list(protocol_version = ctgui_visual_graph_protocol_version, version = 2L,
+    view = view, nodes = nodes, edges = edges,
     matrices = if (view == "state_space") ctgui_visual_state_matrices else if (view == "initial_state") ctgui_visual_initial_matrices else unique(vapply(nodes, function(node) node$matrix %||% "", character(1L))))
 }
 
@@ -454,6 +490,7 @@ ctgui_visual_apply_new_tipred_defaults <- function(spec, previous_tipreds, nodes
 
 ctgui_visual_apply_graph <- function(spec, graph) {
   ctgui_check_spec(spec)
+  ctgui_visual_assert_graph_contract(graph)
   view <- graph$view %||% "state_space"
   if (identical(view, "tipred_effects")) {
     # TI view is allowed to add, rename, and delete TI predictor nodes.  Use

@@ -5,6 +5,33 @@
  */
 (function () {
   var editors = {};
+  var GRAPH_PROTOCOL_VERSION = 1;
+  var GRAPH_VERSION = 2;
+
+  function makeElement(tagName, className, text) {
+    var element = document.createElement(tagName);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = text;
+    return element;
+  }
+
+  function clearElement(element) {
+    while (element.firstChild) element.removeChild(element.firstChild);
+  }
+
+  function isSafeColour(colour) {
+    return typeof colour === "string" && /^#[0-9a-f]{6}$/i.test(colour);
+  }
+
+  function validGraph(graph) {
+    return !!graph && typeof graph === "object" &&
+      Number(graph.protocol_version) === GRAPH_PROTOCOL_VERSION &&
+      Number(graph.version) === GRAPH_VERSION &&
+      ["state_space", "initial_state", "tipred_effects"].indexOf(graph.view) >= 0 &&
+      Array.isArray(graph.nodes) && Array.isArray(graph.edges) &&
+      graph.nodes.every(function (node) { return node && typeof node.id === "string"; }) &&
+      graph.edges.every(function (edge) { return edge && typeof edge.id === "string"; });
+  }
 
   function cssClass(edge) {
     if (edge.visual_only && edge.edge_kind === "noise_input") return "directed noise_input";
@@ -38,6 +65,8 @@
   function serialise(editor) {
     var cy = editor.cy;
     return {
+      protocol_version: GRAPH_PROTOCOL_VERSION,
+      version: GRAPH_VERSION,
       view: editor.view,
       nodes: cy.nodes().map(function (node) {
         var data = Object.assign({}, node.data());
@@ -94,7 +123,13 @@
   function updateDataChoices(editor, columns) {
     var used = editor.cy.nodes().map(function (node) { return node.data("name"); });
     var available = (columns || []).filter(function (name) { return used.indexOf(name) < 0; });
-    editor.dataChoice.innerHTML = "<option value=''>select variable</option>" + available.map(function (name) { return "<option value='" + name + "'>" + name + "</option>"; }).join("");
+    clearElement(editor.dataChoice);
+    editor.dataChoice.appendChild(makeElement("option", "", "select variable"));
+    available.forEach(function (name) {
+      var option = makeElement("option", "", String(name));
+      option.value = String(name);
+      editor.dataChoice.appendChild(option);
+    });
   }
 
   function updateTipredActions(editor) {
@@ -141,16 +176,41 @@
         ["node constant", "Constant"], ["node system_noise", "System noise"],
         ["node measurement_noise", "Measurement noise"]].concat(pathItems);
     }
-    var html = "<h5>Legend</h5>" + items.map(function (item) { return "<div class='ctgui-legend-item'><span class='ctgui-legend-mark " + item[0] + "'></span>" + item[1] + "</div>"; }).join("");
+    clearElement(editor.legend);
+    editor.legend.appendChild(makeElement("h5", "", "Legend"));
+    items.forEach(function (item) {
+      var row = makeElement("div", "ctgui-legend-item");
+      row.appendChild(makeElement("span", "ctgui-legend-mark " + item[0]));
+      row.appendChild(document.createTextNode(item[1]));
+      editor.legend.appendChild(row);
+    });
     var tipreds = (graph.nodes || []).filter(function (node) { return node.kind === "tipred"; });
-    if (tipreds.length) html += "<h6>TI effect colours</h6>" + tipreds.map(function (node) { return "<div class='ctgui-legend-item'><span class='ctgui-legend-line' style='border-color:" + (node.colour || "#0f766e") + "'></span>" + node.name + "</div>"; }).join("");
-    editor.legend.innerHTML = html;
+    if (tipreds.length) {
+      editor.legend.appendChild(makeElement("h6", "", "TI effect colours"));
+      tipreds.forEach(function (node) {
+        var row = makeElement("div", "ctgui-legend-item");
+        var line = makeElement("span", "ctgui-legend-line");
+        line.style.borderColor = isSafeColour(node.colour) ? node.colour : "#0f766e";
+        row.appendChild(line);
+        row.appendChild(document.createTextNode(String(node.name || "")));
+        editor.legend.appendChild(row);
+      });
+    }
   }
 
   function updateTiFilters(editor, graph) {
-    if (editor.view !== "tipred_effects") { editor.filters.innerHTML = ""; return; }
+    clearElement(editor.filters);
+    if (editor.view !== "tipred_effects") return;
     var matrices = (graph.matrices || []).filter(function (matrix) { return matrix; });
-    editor.filters.innerHTML = "<span>Show parameter matrices:</span>" + matrices.map(function (matrix) { return "<label><input type='checkbox' data-filter='" + matrix + "' checked> " + matrix + "</label>"; }).join("");
+    editor.filters.appendChild(makeElement("span", "", "Show parameter matrices:"));
+    matrices.forEach(function (matrix) {
+      var label = makeElement("label");
+      var input = makeElement("input");
+      input.type = "checkbox"; input.dataset.filter = String(matrix); input.checked = true;
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(" " + String(matrix)));
+      editor.filters.appendChild(label);
+    });
     var apply = function () {
       var visible = {};
       editor.filters.querySelectorAll("input[data-filter]").forEach(function (input) { visible[input.getAttribute("data-filter")] = input.checked; });
@@ -264,12 +324,57 @@
     send(editor, true);
   }
 
+  function addButton(parent, text, attribute, value) {
+    var button = makeElement("button", "", text);
+    button.type = "button";
+    button.setAttribute(attribute, value);
+    parent.appendChild(button);
+    return button;
+  }
+
+  function addStructureGroup(tools, views) {
+    var group = makeElement("span", "ctgui-structure-tools");
+    group.dataset.views = views;
+    tools.appendChild(group);
+    return group;
+  }
+
+  function buildTools(tools) {
+    var group = addStructureGroup(tools, "state_space");
+    addButton(group, "Add latent", "data-add", "latent");
+
+    group = addStructureGroup(tools, "state_space,tipred_effects");
+    var label = makeElement("label", "", "Dataset variable ");
+    label.appendChild(makeElement("select", "ctgui-data-choice"));
+    group.appendChild(label);
+
+    group = addStructureGroup(tools, "state_space");
+    addButton(group, "Add manifest", "data-add", "manifest");
+    addButton(group, "Add TD predictor", "data-add", "tdpred");
+
+    group = addStructureGroup(tools, "state_space,tipred_effects");
+    addButton(group, "Add TI predictor", "data-add", "tipred");
+    addButton(group, "Rename selected", "data-action", "rename");
+
+    group = makeElement("span");
+    group.dataset.tipredActions = "";
+    group.style.display = "none";
+    addButton(group, "Moderate all", "data-action", "tipred-all");
+    addButton(group, "Moderate none", "data-action", "tipred-none");
+    tools.appendChild(group);
+
+    addButton(tools, "Delete selection", "data-action", "delete");
+    addButton(tools, "Mode: move nodes", "data-action", "mode");
+    addButton(tools, "Reset layout", "data-action", "fit");
+  }
+
   function init(el) {
     if (editors[el.id]) return editors[el.id];
     var shell = document.createElement("div"); shell.className = "ctgui-visual-shell";
     var tools = document.createElement("div"); tools.className = "ctgui-visual-tools";
-    tools.innerHTML = '<span class="ctgui-structure-tools" data-views="state_space"><button type="button" data-add="latent">Add latent</button></span><span class="ctgui-structure-tools" data-views="state_space,tipred_effects"><label>Dataset variable <select class="ctgui-data-choice"></select></label></span><span class="ctgui-structure-tools" data-views="state_space"><button type="button" data-add="manifest">Add manifest</button><button type="button" data-add="tdpred">Add TD predictor</button></span><span class="ctgui-structure-tools" data-views="state_space,tipred_effects"><button type="button" data-add="tipred">Add TI predictor</button><button type="button" data-action="rename">Rename selected</button></span><span data-tipred-actions style="display:none"><button type="button" data-action="tipred-all">Moderate all</button><button type="button" data-action="tipred-none">Moderate none</button></span><button type="button" data-action="delete">Delete selection</button><button type="button" data-action="mode">Mode: move nodes</button><button type="button" data-action="fit">Reset layout</button>';
+    buildTools(tools);
     var canvas = document.createElement("div"); canvas.className = "ctgui-visual-canvas";
+    canvas.tabIndex = 0;
     var filters = document.createElement("div"); filters.className = "ctgui-visual-filters";
     var body = document.createElement("div"); body.className = "ctgui-visual-body";
     var legend = document.createElement("aside"); legend.className = "ctgui-visual-legend";
@@ -307,6 +412,7 @@
     editor.cy.on("unselect", "node.tipred", function () { window.setTimeout(function () { updateTipredActions(editor); }, 0); });
     editor.cy.on("dragfree", "node", function () { send(editor, false, true); });
     canvas.addEventListener("contextmenu", function (event) { event.preventDefault(); });
+    canvas.addEventListener("pointerdown", function () { canvas.focus(); }, true);
     var nodeAtPointer = function (event) {
       var rect = canvas.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top, found = null;
       editor.cy.nodes().forEach(function (node) {
@@ -384,7 +490,7 @@
       editor.pendingSource = null;
       addEdge(editor, source.id(), event.target.id());
     });
-    document.addEventListener("keydown", function (event) {
+    shell.addEventListener("keydown", function (event) {
       var tag = (event.target && event.target.tagName || "").toLowerCase();
       if ((event.key !== "Delete" && event.key !== "Backspace") || tag === "input" || tag === "textarea" || tag === "select") return;
       var selected = editor.cy.$(":selected");
@@ -410,7 +516,16 @@
   }
 
   function load(message) {
-    var editor = init(document.getElementById(message.id)); if (!editor) return;
+    if (!message || typeof message.id !== "string" || !validGraph(message.graph)) {
+      window.console.warn("ctsemgui ignored an unsupported visual graph message.");
+      return;
+    }
+    var target = document.getElementById(message.id);
+    if (!target) {
+      window.console.warn("ctsemgui could not find the visual graph target.");
+      return;
+    }
+    var editor = init(target);
     var graph = message.graph; editor.view = graph.view || "state_space";
     editor.pendingSource = null; editor.drawSource = null; editor.drawTarget = null;
     editor.cy.elements().remove();

@@ -20,6 +20,35 @@ test_that("visual graphs round trip fitted-model matrices without generation mat
   expect_equal(edge$extra_pars, "shape")
 })
 
+test_that("visual graph messages use the versioned protocol contract", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  graph <- ctgui_visual_graph(spec, "state_space")
+
+  expect_equal(graph$protocol_version, ctgui_visual_graph_protocol_version)
+  expect_true(ctgui_visual_validate_graph(graph))
+  expect_equal(ctgui_visual_graph_contract()$graph_version, graph$version)
+
+  hostile <- graph
+  hostile$nodes[[1L]]$label <- "<img src=x onerror=alert('xss')>"
+  expect_true(ctgui_visual_validate_graph(hostile))
+
+  incompatible <- graph
+  incompatible$protocol_version <- graph$protocol_version + 1L
+  expect_false(ctgui_visual_validate_graph(incompatible))
+  expect_error(ctgui_visual_apply_graph(spec, incompatible), "visual graph protocol")
+})
+
+test_that("visual browser renderer does not interpolate graph data as HTML", {
+  asset <- testthat::test_path("..", "..", "inst", "www", "visual-spec", "visual-spec.js")
+  source <- paste(readLines(asset, warn = FALSE), collapse = "\n")
+
+  expect_false(grepl("innerHTML", source, fixed = TRUE))
+  expect_false(grepl('document.addEventListener("keydown"', source, fixed = TRUE))
+  expect_true(grepl("GRAPH_PROTOCOL_VERSION", source, fixed = TRUE))
+  expect_true(grepl("shell.addEventListener(\"keydown\"", source, fixed = TRUE))
+  expect_true(grepl("textContent", source, fixed = TRUE))
+})
+
 test_that("visual graph maps directed paths and lower-triangular noise paths", {
   spec <- ctgui_spec(latent_names = c("eta1", "eta2"), manifest_names = c("y1", "y2"), tdpred_names = "event")
   graph <- ctgui_visual_graph(spec, "state_space")
