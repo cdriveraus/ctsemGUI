@@ -161,13 +161,16 @@ ctgui_ctsem_fit_statistics <- function(fit) {
   if (is.na(loglik)) {
     summary_fit <- tryCatch(summary(fit), error = function(error) NULL)
     if (!is.null(summary_fit)) {
-      loglik <- ctgui_ctsem_numeric_scalar(ctgui_ctsem_object_path(summary_fit, "loglik"))
-      logposterior <- ctgui_ctsem_numeric_scalar(
+      summary_loglik <- ctgui_ctsem_numeric_scalar(
+        ctgui_ctsem_object_path(summary_fit, "loglik"))
+      summary_logposterior <- ctgui_ctsem_numeric_scalar(
         ctgui_ctsem_object_path(summary_fit, "logposterior"))
       summary_npars <- suppressWarnings(as.integer(ctgui_ctsem_numeric_scalar(
         ctgui_ctsem_object_path(summary_fit, "npars"))))
       summary_nobs <- suppressWarnings(as.integer(ctgui_ctsem_numeric_scalar(
         ctgui_ctsem_object_path(summary_fit, "nobs"))))
+      if (is.na(loglik)) loglik <- summary_loglik
+      if (is.na(logposterior)) logposterior <- summary_logposterior
       if (is.na(npars)) npars <- summary_npars
       if (is.na(nobs)) nobs <- summary_nobs
     }
