@@ -124,6 +124,9 @@ ctgui_output_fit_code <- function(options = list()) {
   )
   extra <- ctgui_code_option(options, "extra_args", list())
   if (!is.list(extra)) stop("extra_args must be a named list", call. = FALSE)
+  if (length(extra) && (is.null(names(extra)) || any(!nzchar(names(extra))))) {
+    stop("extra_args must be a named list", call. = FALSE)
+  }
   extra <- extra[!names(extra) %in% c(names(args), "optimcontrol", "plot")]
   arg_lines <- ctgui_code_arg_lines(args, final_comma = TRUE)
 
@@ -170,7 +173,7 @@ ctgui_output_uncertainty_code <- function(options = list()) {
     "# Recompute optimized-fit uncertainty",
     "fit <- ctsem::ctOptimUncertainty(",
     lines,
-    ctgui_code_list_lines("uncertaintyControl",
+    ctgui_code_list_lines("control",
       control[!vapply(control, is.null, logical(1L))]),
     ")"
   )
@@ -181,17 +184,30 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
     "dynamics", "tipred"), options = list()) {
   diagnostic <- match.arg(diagnostic)
   value <- function(name, default = NULL) ctgui_code_option(options, name, default)
+  extra_args <- function(protected) {
+    extra <- value("extra_args", list())
+    if (!is.list(extra) || (length(extra) &&
+        (is.null(names(extra)) || any(!nzchar(names(extra)))))) {
+      stop("extra_args must be a named list", call. = FALSE)
+    }
+    extra[!names(extra) %in% protected]
+  }
 
   switch(diagnostic,
-    generate_from_fit = c(
-      "# Generate from fit for diagnostics",
-      "fit <- ctsem::ctGenerateFromFit(",
-      "  fit = fit,",
-      paste0("  nsamples = ", ctgui_code_value(value("nsamples", 1L)), ","),
-      paste0("  fullposterior = ", ctgui_code_value(isTRUE(value("fullposterior", FALSE))), ","),
-      paste0("  cores = ", ctgui_code_value(as.integer(value("cores", 1L)))),
-      ")"
-    ),
+    generate_from_fit = {
+      args <- list(
+        fit = ctgui_code_symbol("fit"),
+        nsamples = value("nsamples", 1L),
+        fullposterior = isTRUE(value("fullposterior", FALSE)),
+        cores = as.integer(value("cores", 1L))
+      )
+      c(
+        "# Generate from fit for diagnostics",
+        "fit <- ctsem::ctGenerateFromFit(",
+        ctgui_code_arg_lines(c(args, extra_args(names(args)))),
+        ")"
+      )
+    },
     cov_check = {
       lags <- value("lags", quote(0:3))
       if (is.character(lags) && length(lags) == 1L) {
@@ -200,15 +216,18 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
         lags <- parsed
       }
       cor <- isTRUE(value("cor", TRUE))
+      args <- list(
+        fit = ctgui_code_symbol("fit"),
+        cor = cor,
+        lags = ctgui_code_symbol("cov_lags"),
+        plot = FALSE,
+        cores = as.integer(value("cores", 1L))
+      )
       c(
         "# Covariance check",
         paste0("cov_lags <- ", ctgui_code_value(lags)),
         "cov_check <- ctsem::ctFitCovCheck(",
-        "  fit = fit,",
-        paste0("  cor = ", ctgui_code_value(cor), ","),
-        "  lags = cov_lags,",
-        "  plot = FALSE,",
-        paste0("  cores = ", ctgui_code_value(as.integer(value("cores", 1L)))),
+        ctgui_code_arg_lines(c(args, extra_args(names(args)))),
         ")",
         "cov_check_plots <- ctsem::ctFitCovCheckPlot(",
         "  cov_check,",
@@ -226,12 +245,12 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
         removeObs = ctgui_code_optional_expression(value("removeObs"))
       )
       optional <- optional[!vapply(optional, is.null, logical(1L))]
+      args <- c(list(fit = ctgui_code_symbol("fit")), optional)
+      args <- c(args, extra_args(c(names(args), "plot")), list(plot = FALSE))
       c(
         "# Prediction plots using ctPredict",
         "prediction <- ctsem::ctPredict(",
-        "  fit = fit,",
-        ctgui_code_arg_lines(optional, final_comma = length(optional) > 0L),
-        "  plot = FALSE",
+        ctgui_code_arg_lines(args),
         ")",
         "plot(",
         "  prediction,",
@@ -245,16 +264,21 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
       "postpred_plots <- ctsem::ctPostPredPlots(fit)",
       "lapply(postpred_plots, print)"
     ),
-    residual_acf = c(
-      "# Residual autocorrelation",
-      "residual_acf <- ctsem::ctACFresiduals(",
-      "  fit,",
-      paste0("  varnames = ", ctgui_code_value(value("varnames", "auto")), ","),
-      paste0("  nboot = ", ctgui_code_value(as.integer(value("nboot", 100L))), ","),
-      "  plot = FALSE",
-      ")",
-      "print(ctsem::plotctACF(residual_acf))"
-    ),
+    residual_acf = {
+      args <- list(
+        fit = ctgui_code_symbol("fit"),
+        varnames = value("varnames", "auto"),
+        nboot = as.integer(value("nboot", 100L)),
+        plot = FALSE
+      )
+      c(
+        "# Residual autocorrelation",
+        "residual_acf <- ctsem::ctACFresiduals(",
+        ctgui_code_arg_lines(c(args, extra_args(names(args)))),
+        ")",
+        "print(ctsem::plotctACF(residual_acf))"
+      )
+    },
     dynamics = {
       optional <- list(
         subjects = ctgui_code_optional_expression(value("subjects")),
@@ -263,14 +287,20 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
       )
       optional <- optional[!vapply(optional, is.null, logical(1L))]
       ylim <- ctgui_code_optional_expression(value("ylim"))
+      args <- c(
+        list(fit = ctgui_code_symbol("fit")),
+        optional,
+        list(
+          observational = isTRUE(value("observational", FALSE)),
+          plot = TRUE,
+          cores = as.integer(value("cores", 1L))
+        )
+      )
+      args <- c(args, extra_args(names(args)))
       c(
         "# Dynamics / impulse-response style plot",
         "dynamics <- ctsem::ctDiscretePars(",
-        "  fit = fit,",
-        ctgui_code_arg_lines(optional, final_comma = length(optional) > 0L),
-        paste0("  observational = ", ctgui_code_value(isTRUE(value("observational", FALSE))), ","),
-        "  plot = TRUE,",
-        paste0("  cores = ", ctgui_code_value(as.integer(value("cores", 1L)))),
+        ctgui_code_arg_lines(args),
         ")",
         if (!is.null(ylim)) paste0(
           "# Apply y limits post hoc when supported: ylim = ", ctgui_code_value(ylim)),

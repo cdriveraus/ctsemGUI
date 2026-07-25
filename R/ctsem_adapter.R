@@ -75,8 +75,9 @@ ctgui_ctsem_is_fit <- function(x) {
 
 ctgui_ctsem_fit_model <- function(fit, default = NULL) {
   ctgui_ctsem_fit_value(fit, list(
-    c("model"), c("ctstanmodel"), c("stanmodel"),
-    c("stanfit", "model"), c("stanfit", "ctstanmodel")
+    c("modelbase"), c("model"), c("ctstanmodelbase"), c("ctstanmodel"),
+    c("stanmodel"), c("stanfit", "modelbase"), c("stanfit", "model"),
+    c("stanfit", "ctstanmodelbase"), c("stanfit", "ctstanmodel")
   ), default)
 }
 

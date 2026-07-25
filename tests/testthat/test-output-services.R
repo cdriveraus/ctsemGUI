@@ -48,7 +48,8 @@ test_that("fit and uncertainty code reflects controls and remains valid R", {
     cores = 2L, uncertainty_control = control
   )))
   expect_match(uncertainty, "ctsem::ctOptimUncertainty", fixed = TRUE)
-  expect_match(uncertainty, "uncertaintyControl = list", fixed = TRUE)
+  expect_match(uncertainty, "control = list", fixed = TRUE)
+  expect_true("control" %in% names(formals(ctsem::ctOptimUncertainty)))
 })
 
 test_that("every diagnostic emits parseable current ctsem code", {
@@ -136,6 +137,8 @@ test_that("fit accessors hide supported ctsem object-shape variants", {
     list(loglik = -20, logposterior = -22, npars = 2L, nobs = 7L))
   expect_true(ctgui_ctsem_fit_is_sampled(flat))
   expect_false(ctgui_ctsem_is_fit(list(unrelated = TRUE)))
+  base_model <- list(latentNames = "eta", manifestNames = "y")
+  expect_identical(ctgui_ctsem_fit_model(list(modelbase = base_model)), base_model)
 })
 
 test_that("version-sensitive fit paths occur only inside the adapter", {

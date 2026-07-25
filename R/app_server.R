@@ -318,7 +318,6 @@ assign_r_object <- function(object, name, label) {
 }
 
 is_ctsem_model <- function(x) !is.null(x$pars) && !is.null(x$latentNames) && !is.null(x$manifestNames)
-is_ctsem_fit <- function(x) is.list(x) && (!is.null(x$stanfit) || !is.null(x$model) || !is.null(x$ctstanmodel))
 
 shiny::observeEvent(input$fit_uncertainty_method, {
   method <- input$fit_uncertainty_method %||% "hessian"
@@ -368,7 +367,7 @@ shiny::observeEvent(input$load_model_rds, {
 shiny::observeEvent(input$load_fit_rds, {
   path <- input$load_fit_rds$datapath; if (is.null(path)) return()
   fit <- tryCatch(readRDS(path), error = function(e) e)
-  if (inherits(fit, "error") || !is_ctsem_fit(fit)) {
+  if (inherits(fit, "error") || !ctgui_ctsem_is_fit(fit)) {
     shiny::showNotification(if (inherits(fit, "error")) conditionMessage(fit) else "The RDS does not contain a ctsem fit", type = "error"); return()
   }
   current_fit(fit); clear_uncertainty_state(); fit_status_value("Loaded fit from RDS."); shiny::showNotification("Loaded fit RDS", type = "message")
@@ -720,7 +719,7 @@ fit_equation_args <- shiny::reactive({
 })
 
 fit_model_object <- function(fit) {
-  fit$model %||% fit$ctstanmodel %||% fit$modelbase %||% fit$ctstanmodelbase
+  ctgui_ctsem_fit_model(fit)
 }
 
 model_latex_source <- function(model, args, fallback = NULL) {
@@ -850,7 +849,7 @@ output$model_visual_controls <- shiny::renderUI({
 output$model_visual_plot <- shiny::renderPlot({
   spec <- current_spec()
   view <- input$model_visual_type %||% "Temporal dynamics graph"
-  record_output_code("model_visual", model_visual_code_snippet())
+  record_output_code("model_visual", output_code_snippet("model_visual"))
   if (view %in% c("Temporal dynamics graph", "System noise graph", "Measurement graph", "Trend structure graph")) {
     element <- switch(view,
       `Temporal dynamics graph` = "drift",
@@ -931,13 +930,6 @@ output$model_visual_plot <- shiny::renderPlot({
   }
 })
 
-code_value <- function(x) paste(ctgui_deparse(x), collapse = "\n")
-
-optional_arg_line <- function(name, text, comma = TRUE) {
-  if (is.null(text) || !nzchar(trimws(text))) return(character())
-  paste0("  ", name, " = ", code_value(parse_optional_expression(text)), if (comma) "," else "")
-}
-
 set_output_code_snippet <- function(key, lines) {
   snippets <- output_code_snippets()
   snippets[[key]] <- paste(lines, collapse = "\n")
@@ -948,291 +940,109 @@ record_output_code <- function(key, lines) {
   shiny::isolate(set_output_code_snippet(key, lines))
 }
 
-base_output_code <- shiny::reactive({
+output_data_source <- shiny::reactive({
   data <- current_data()
   data_name <- current_data_name()
-  lines <- c(
-    "# Model specification",
-    "# Explanations are shown in the GUI.",
-    ctgui_export_code(current_spec()),
-    "",
-    "# Data"
-  )
-
   if (identical(data_name, "Generated data")) {
-    lines <- c(lines,
-      "# In the app this was generated from the active ctsemgui specification.",
-      "# Recreate from the GUI spec object if available, or use ctsem::ctGenerate()",
-      "# with the exported `model` object after replacing free labels with numeric values.",
-      "# data <- ctsemgui::ctgui_generate_data(",
-      "#   spec,",
-      paste0("#   n.subjects = ", code_value(input$gen_subjects), ","),
-      paste0("#   Tpoints = ", code_value(input$gen_tpoints), ","),
-      paste0("#   burnin = ", code_value(input$gen_burnin), ","),
-      paste0("#   dtmean = ", code_value(input$gen_dtmean), ","),
-      paste0("#   logdtsd = ", code_value(input$gen_logdtsd), ","),
-      paste0("#   free_defaults = ", code_value(input$gen_free_defaults)),
-      "# )"
-    )
-  } else if (startsWith(data_name, "R data.frame: ")) {
-    object_name <- sub("^R data\\.frame: ", "", data_name)
-    lines <- c(lines, paste0("data <- ", object_name))
-  } else if (startsWith(data_name, "CSV: ")) {
-    file_name <- sub("^CSV: ", "", data_name)
-    lines <- c(lines,
-      paste0("# Imported CSV was named ", code_value(file_name), " in the Shiny session."),
-      "data <- utils::read.csv(\"path/to/data.csv\", stringsAsFactors = FALSE)"
-    )
-  } else if (!is.null(data)) {
-    lines <- c(lines, "# Active data exists in the Shiny session; assign it here as `data` before fitting.")
-  } else {
-    lines <- c(lines, "# No data is currently active.")
+    return(ctgui_output_data_source("generated", generation = list(
+      n.subjects = input$gen_subjects,
+      Tpoints = input$gen_tpoints,
+      burnin = input$gen_burnin,
+      dtmean = input$gen_dtmean,
+      logdtsd = input$gen_logdtsd,
+      wide = FALSE
+    )))
   }
-  lines
+  if (startsWith(data_name, "R data.frame: ")) {
+    return(ctgui_output_data_source(
+      "r_object", sub("^R data\\.frame: ", "", data_name)))
+  }
+  if (startsWith(data_name, "CSV: ")) {
+    return(ctgui_output_data_source("csv", sub("^CSV: ", "", data_name)))
+  }
+  if (!is.null(data)) return(ctgui_output_data_source("session"))
+  ctgui_output_data_source("none")
 })
 
-uncertainty_control_code <- function(indent = "    ") {
-  control <- uncertainty_control()
-  control <- control[!vapply(control, is.null, logical(1))]
-  lines <- vapply(names(control), function(name) {
-    paste0(indent, name, " = ", code_value(control[[name]]))
-  }, character(1))
-  if (length(lines) > 1L) lines[-length(lines)] <- paste0(lines[-length(lines)], ",")
-  c(paste0(indent, "uncertaintyControl = list("),
-    paste0(indent, "  ", lines), paste0(indent, ")"))
-}
-
-fit_optimcontrol_code <- function(indent = "  ") {
-  lines <- c(
-    paste0(indent, "uncertainty = ", code_value(input$fit_uncertainty_method), ","),
-    paste0(indent, "uncertaintyDraws = ", code_value(input$fit_uncertainty_draws), ","),
-    paste0(indent, "finishsamples = ", code_value(input$fit_uncertainty_samples), ","),
-    uncertainty_control_code(paste0(indent, "  "))
-  )
-  c(paste0(indent, "optimcontrol = list("), lines, paste0(indent, ")"))
-}
-
-fit_code_snippet <- function() {
-  args <- c(
-    "# Fit",
-    "fit <- ctsem::ctFit(",
-    "  datalong = data,",
-    "  model = model,",
-    paste0("  optimize = ", code_value(input$fit_optimize), ","),
-    paste0("  priors = ", code_value(input$fit_priors), ","),
-    paste0("  cores = ", code_value(input$fit_cores), ",")
-  )
-  if (isTRUE(input$fit_optimize)) {
-    optim_lines <- fit_optimcontrol_code("  ")
-    optim_lines[length(optim_lines)] <- paste0(optim_lines[length(optim_lines)], ",")
-    args <- c(args, optim_lines)
-  }
-  args <- c(args, "  plot = FALSE",
-    ")",
-    "",
-    "# Output",
-    "summary(fit)",
-    "ctsem::ctSummaryMatrices(fit)"
-  )
-  args
-}
-
-uncertainty_code_snippet <- function() {
-  control <- uncertainty_control_code("  ")
-  c(
-    "# Recompute optimized-fit uncertainty",
-    "fit <- ctsem::ctOptimUncertainty(",
-    "  fit = fit,",
-    paste0("  uncertainty = ", code_value(input$fit_uncertainty_method), ","),
-    paste0("  draws = ", code_value(input$fit_uncertainty_draws), ","),
-    paste0("  finishsamples = ", code_value(input$fit_uncertainty_samples), ","),
-    paste0("  cores = ", code_value(input$fit_cores), ","),
-    control,
-    ")"
-  )
-}
-
-summary_code_snippet <- function() {
-  c(
-    "# Fit summary",
-    "summary(fit)"
-  )
-}
-
-summary_matrices_code_snippet <- function() {
-  c(
-    "# Fit summary matrices",
-    "ctsem::ctSummaryMatrices(fit)"
+output_code_options <- function(action) {
+  switch(action,
+    fit = list(
+      optimize = input$fit_optimize,
+      priors = input$fit_priors,
+      cores = input$fit_cores,
+      uncertainty = input$fit_uncertainty_method,
+      uncertainty_draws = input$fit_uncertainty_draws,
+      finishsamples = input$fit_uncertainty_samples,
+      uncertainty_control = uncertainty_control(),
+      extra_args = parse_extra_args(input$fit_extra_args)
+    ),
+    uncertainty = list(
+      uncertainty = input$fit_uncertainty_method,
+      draws = input$fit_uncertainty_draws,
+      finishsamples = input$fit_uncertainty_samples,
+      cores = input$fit_cores,
+      uncertainty_control = uncertainty_control()
+    ),
+    raw_plot = list(
+      plot_type = input$raw_plot_type,
+      time = input$raw_plot_time,
+      variables = input$raw_plot_vars,
+      id = input$raw_plot_subject,
+      colour = input$raw_plot_colour
+    ),
+    model_visual = list(visual_type = input$model_visual_type),
+    generate_from_fit = list(
+      nsamples = input$fit_gen_samples,
+      fullposterior = input$fit_gen_fullposterior,
+      cores = input$fit_gen_cores,
+      extra_args = parse_extra_args(input$fit_gen_extra_args)
+    ),
+    cov_check = list(
+      lags = input$cov_lags,
+      cor = input$cov_cor,
+      cores = 1L,
+      extra_args = parse_extra_args(input$cov_extra_args)
+    ),
+    kalman = list(
+      subjects = input$kalman_subjects,
+      timerange = input$kalman_timerange,
+      timestep = input$kalman_timestep,
+      removeObs = input$kalman_remove_obs,
+      kalmanvec = parse_text_vector(input$kalman_vec, c("y", "yprior")),
+      errorvec = parse_text_vector(input$kalman_error_vec, "auto"),
+      extra_args = parse_extra_args(input$kalman_extra_args)
+    ),
+    residual_acf = list(
+      varnames = parse_text_vector(input$acf_vars, "auto"),
+      nboot = input$acf_boot,
+      extra_args = parse_extra_args(input$acf_extra_args)
+    ),
+    dynamics = list(
+      subjects = input$dynamic_subjects,
+      times = input$dynamic_times,
+      nsamples = input$dynamic_samples,
+      observational = input$dynamic_observational,
+      cores = 1L,
+      ylim = input$dynamic_ylim,
+      extra_args = parse_extra_args(input$dynamic_extra_args)
+    ),
+    tipred = list(
+      tipreds = input$tipred_effects_preds,
+      subject = input$tipred_effects_subject,
+      timestep = input$tipred_effects_timestep,
+      TIPvalues = input$tipred_effects_tipvalues
+    ),
+    list()
   )
 }
 
-fit_pars_code_snippet <- function() {
-  c(
-    "# Model parameter table",
-    "model$pars"
-  )
-}
-
-fit_comparison_code_snippet <- function() {
-  c(
-    "# Fit comparison",
-    "# Save candidate fits in a named list, then use ctsem summaries to compare them.",
-    "fits <- list(fit1 = fit)",
-    "lapply(fits, summary)"
-  )
-}
-
-raw_plot_code_snippet <- function() {
-  c(
-    "# Data visualisation",
-    paste0("# Plot type: ", code_value(input$raw_plot_type %||% "Subject trajectories")),
-    paste0("# Time column: ", code_value(input$raw_plot_time %||% current_spec()$time)),
-    paste0("# Plotted variables: ", code_value(input$raw_plot_vars %||% current_spec()$manifest_names[1L])),
-    paste0("# Subject ID column: ", code_value(input$raw_plot_subject %||% current_spec()$id)),
-    paste0("# Colour variable: ", code_value(input$raw_plot_colour %||% "(plotted variable)")),
-    "# Use the Data > Visuals settings above to reproduce the current GUI plot."
-  )
-}
-
-model_visual_code_snippet <- function() {
-  c(
-    "# Model visualisation",
-    paste0("# Visual type: ", code_value(input$model_visual_type %||% "Temporal dynamics graph")),
-    "# The GUI graph is extracted from the active model matrices.",
-    "# Temporal dynamics use DRIFT, system-noise paths use DIFFUSION, and measurement paths use LAMBDA."
-  )
-}
-
-generate_from_fit_code_snippet <- function() {
-  c(
-    "# Generate from fit for diagnostics",
-    "fit <- ctsem::ctGenerateFromFit(",
-    "  fit = fit,",
-    paste0("  nsamples = ", code_value(input$fit_gen_samples), ","),
-    paste0("  fullposterior = ", code_value(input$fit_gen_fullposterior), ","),
-    paste0("  cores = ", code_value(input$fit_gen_cores)),
-    ")"
-  )
-}
-
-cov_check_code_snippet <- function() {
-  c(
-    "# Covariance check",
-    paste0("cov_lags <- ", input$cov_lags %||% "0:3"),
-    "cov_check <- ctsem::ctFitCovCheck(",
-    "  fit = fit,",
-    paste0("  cor = ", code_value(input$cov_cor), ","),
-    "  lags = cov_lags,",
-    "  plot = FALSE,",
-    "  cores = 1",
-    ")",
-    "cov_check_plots <- ctsem::ctFitCovCheckPlot(",
-    "  cov_check,",
-    "  maxlag = max(cov_lags),",
-    paste0("  cor = ", code_value(input$cov_cor)),
-    ")",
-    "lapply(cov_check_plots, print)"
-  )
-}
-
-kalman_code_snippet <- function() {
-  kalman_optional_lines <- c(
-    optional_arg_line("subjects", input$kalman_subjects),
-    optional_arg_line("timerange", input$kalman_timerange),
-    optional_arg_line("timestep", input$kalman_timestep),
-    optional_arg_line("removeObs", input$kalman_remove_obs)
-  )
-  c(
-    "# Prediction plots using ctPredict",
-    "prediction <- ctsem::ctPredict(",
-    "  fit = fit,",
-    kalman_optional_lines,
-    "  plot = FALSE",
-    ")",
-    "plot(",
-    "  prediction,",
-    paste0("  kalmanvec = ", code_value(parse_text_vector(input$kalman_vec, c("y", "yprior"))), ","),
-    paste0("  errorvec = ", code_value(parse_text_vector(input$kalman_error_vec, "auto"))),
-    ")"
-  )
-}
-
-postpred_code_snippet <- function() {
-  c(
-    "# Posterior predictive checks",
-    "postpred_plots <- ctsem::ctPostPredPlots(fit)",
-    "lapply(postpred_plots, print)"
-  )
-}
-
-residual_acf_code_snippet <- function() {
-  c(
-    "# Residual autocorrelation",
-    "residual_acf <- ctsem::ctACFresiduals(",
-    "  fit,",
-    paste0("  varnames = ", code_value(parse_text_vector(input$acf_vars, "auto")), ","),
-    paste0("  nboot = ", code_value(input$acf_boot), ","),
-    "  plot = FALSE",
-    ")",
-    "print(ctsem::plotctACF(residual_acf))"
-  )
-}
-
-dynamics_code_snippet <- function() {
-  dynamic_optional_lines <- c(
-    optional_arg_line("subjects", input$dynamic_subjects),
-    optional_arg_line("times", input$dynamic_times),
-    optional_arg_line("nsamples", input$dynamic_samples)
-  )
-  c(
-    "# Dynamics / impulse-response style plot",
-    "dynamics <- ctsem::ctDiscretePars(",
-    "  fit = fit,",
-    dynamic_optional_lines,
-    paste0("  observational = ", code_value(input$dynamic_observational), ","),
-    "  plot = TRUE,",
-    "  cores = 1",
-    ")",
-    if (!is_omitted_arg(parse_optional_expression(input$dynamic_ylim))) {
-      paste0("# Apply y limits post hoc when the returned plot object supports it: ylim = ",
-        code_value(parse_optional_expression(input$dynamic_ylim)))
-    },
-    "print(dynamics)"
-  )
-}
-
-tipred_code_snippet <- function() {
-  tipreds <- parse_keyword_or_expression(input$tipred_effects_preds, keywords = "all")
-  subject <- parse_optional_expression(input$tipred_effects_subject)
-  timestep <- parse_keyword_or_expression(input$tipred_effects_timestep, keywords = "auto")
-  tipvalues <- parse_optional_expression(input$tipred_effects_tipvalues)
-  args <- c(
-    "  sf = fit",
-    if (!is_omitted_arg(tipreds)) paste0("  tipreds = ", code_value(tipreds)),
-    if (!is_omitted_arg(subject)) paste0("  subject = ", code_value(subject)),
-    if (!is_omitted_arg(timestep)) paste0("  timestep = ", code_value(timestep)),
-    if (!is_omitted_arg(tipvalues)) paste0("  TIPvalues = ", code_value(tipvalues))
-  )
-  if (length(args) > 1L) args[-length(args)] <- paste0(args[-length(args)], ",")
-  c(
-    "# TI predictor effects",
-    "tip_plots <- ctsem::ctPredictTIP(",
-    args,
-    ")",
-    "# tip_plots$Process and tip_plots$Dynamics contain the returned plot groups."
-  )
+output_code_snippet <- function(action) {
+  ctgui_output_snippet(action, output_code_options(action), current_spec())
 }
 
 workflow_code <- shiny::reactive({
-  snippets <- output_code_snippets()
-  lines <- base_output_code()
-  if (length(snippets)) {
-    lines <- c(lines, "", "# Actions run in the GUI")
-    for (key in names(snippets)) lines <- c(lines, "", snippets[[key]])
-  } else {
-    lines <- c(lines, "", "# Fit or run diagnostics in the GUI to add reproducible action code here.")
-  }
-  paste(lines, collapse = "\n")
+  ctgui_output_workflow_code(
+    current_spec(), output_data_source(), output_code_snippets())
 })
 
 model_code <- shiny::reactive({
@@ -1251,7 +1061,7 @@ output$pars_table <- shiny::renderTable({
 output$output_pars <- shiny::renderTable({
   pars <- current_spec()$pars
   if (is.null(pars)) return(data.frame(message = "No model pars available"))
-  record_output_code("model_pars", fit_pars_code_snippet())
+  record_output_code("model_pars", output_code_snippet("model_pars"))
   pars
 }, rownames = FALSE)
 
@@ -1260,10 +1070,10 @@ fit_comparison_stats <- ctgui_fit_comparison_stats
 output$fit_comparison <- shiny::renderTable({
   registry <- fit_registry()
   if (length(registry) == 0L) return(data.frame(message = "No saved fits. Save current fits from the Fit tab."))
-  record_output_code("fit_comparison", fit_comparison_code_snippet())
+  record_output_code("fit_comparison", output_code_snippet("fit_comparison"))
   do.call(rbind, lapply(names(registry), function(name) {
     fit <- registry[[name]]
-    model_base <- fit$modelbase %||% fit$model %||% fit$ctstanmodelbase %||% fit$ctstanmodel
+    model_base <- ctgui_ctsem_fit_model(fit, list())
     stats <- fit_comparison_stats(fit)
     data.frame(
       fit = name,
@@ -1427,7 +1237,7 @@ output$raw_plot <- shiny::renderPlot({
   on.exit({ plot_cache$raw_plot <- grDevices::recordPlot() }, add = TRUE)
   data <- current_data()
   if (is.null(data) || is.null(input$raw_plot_type)) return(invisible(NULL))
-  record_output_code("raw_plot", raw_plot_code_snippet())
+  record_output_code("raw_plot", output_code_snippet("raw_plot"))
   if (identical(input$raw_plot_type, "Missingness")) {
     miss <- vapply(data, function(x) mean(is.na(x)), numeric(1L))
     graphics::barplot(miss, las = 2, ylab = "Proportion missing", col = "grey70")
@@ -1577,7 +1387,7 @@ shiny::observeEvent(input$run_fit, {
   uncertainty_status_value("Uncertainty was estimated as part of fitting.")
   fit_messages(if (length(result$messages)) paste(result$messages, collapse = "\n") else "Fit complete.")
   fit_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
-  record_output_code("fit", fit_code_snippet())
+  record_output_code("fit", output_code_snippet("fit"))
   shiny::showNotification("Fit complete", type = "message")
 })
 
@@ -1659,7 +1469,7 @@ run_uncertainty_update <- function() {
   uncertainty_status_value("Optimized-fit uncertainty updated.")
   uncertainty_messages(if (length(result$messages)) paste(result$messages, collapse = "\n") else "Uncertainty updated.")
   uncertainty_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
-  record_output_code("uncertainty", uncertainty_code_snippet())
+  record_output_code("uncertainty", output_code_snippet("uncertainty"))
   shiny::showNotification("Optimized-fit uncertainty updated", type = "message")
   invisible(result$value)
 }
@@ -1721,9 +1531,9 @@ shiny::observeEvent(input$generate_from_fit, {
     return()
   }
   replace_active_fit(out$value)
-  generated_fit(out$value$generated)
+  generated_fit(ctgui_ctsem_fit_generated(out$value))
   diagnostics_status(paste(c("Fit-generated data available.", out$messages, out$warnings), collapse = "\n"))
-  record_output_code("generate_from_fit", generate_from_fit_code_snippet())
+  record_output_code("generate_from_fit", output_code_snippet("generate_from_fit"))
 })
 
 shiny::observeEvent(input$run_cov_check, {
@@ -1732,7 +1542,7 @@ shiny::observeEvent(input$run_cov_check, {
     shiny::showNotification("Fit the model first", type = "error")
     return()
   }
-  if (is.null(fit$generated)) {
+  if (is.null(ctgui_ctsem_fit_generated(fit))) {
     shiny::showNotification("Run Generate from fit before ctFitCovCheck", type = "error")
     return()
   }
@@ -1761,7 +1571,7 @@ shiny::observeEvent(input$run_cov_check, {
   }
   cov_check(out$value)
   cov_check_log(paste(c("ctFitCovCheck complete.", out$messages, out$warnings), collapse = "\n"))
-  record_output_code("cov_check", cov_check_code_snippet())
+  record_output_code("cov_check", output_code_snippet("cov_check"))
 })
 
 shiny::observeEvent(input$run_kalman, {
@@ -1795,7 +1605,7 @@ shiny::observeEvent(input$run_kalman, {
   }
   kalman_result(out$value)
   diagnostics_status(paste(c("Prediction plot data available from ctPredict.", out$messages, out$warnings), collapse = "\n"))
-  record_output_code("kalman", kalman_code_snippet())
+  record_output_code("kalman", output_code_snippet("kalman"))
 })
 shiny::observeEvent(input$run_postpred, {
   fit <- active_fit()
@@ -1818,7 +1628,7 @@ shiny::observeEvent(input$run_postpred, {
   }
   postpred_result(out$value)
   postpred_log(paste(c("ctPostPredPlots complete.", out$messages, out$warnings), collapse = "\n"))
-  record_output_code("postpred", postpred_code_snippet())
+  record_output_code("postpred", output_code_snippet("postpred"))
 })
 
 shiny::observeEvent(input$run_residual_acf, {
@@ -1845,7 +1655,7 @@ shiny::observeEvent(input$run_residual_acf, {
   }
   residual_acf(out$value)
   residual_acf_log(paste(c("ctACFresiduals complete.", out$messages, out$warnings), collapse = "\n"))
-  record_output_code("residual_acf", residual_acf_code_snippet())
+  record_output_code("residual_acf", output_code_snippet("residual_acf"))
 })
 
 shiny::observeEvent(input$run_dynamics, {
@@ -1877,7 +1687,7 @@ shiny::observeEvent(input$run_dynamics, {
   }
   dynamics_result(out$value)
   dynamics_log(paste(c("ctDiscretePars complete.", out$messages, out$warnings), collapse = "\n"))
-  record_output_code("dynamics", dynamics_code_snippet())
+  record_output_code("dynamics", output_code_snippet("dynamics"))
 })
 
 shiny::observeEvent(input$run_tipred_effects, {
@@ -1914,7 +1724,7 @@ shiny::observeEvent(input$run_tipred_effects, {
   }
   tipred_effects_result(out$value)
   tipred_effects_log(paste(c("ctPredictTIP complete.", out$messages, out$warnings), collapse = "\n"))
-  record_output_code("tipred", tipred_code_snippet())
+  record_output_code("tipred", output_code_snippet("tipred"))
 })
 
 output$diagnostics_status <- shiny::renderText(diagnostics_status())
@@ -1945,7 +1755,7 @@ output$cov_check_plots <- shiny::renderUI({
   if (is.null(plots)) return(shiny::helpText("Run ctFitCovCheck to show plots."))
   if (inherits(plots, "error")) return(shiny::helpText(conditionMessage(plots)))
   if (length(plots) == 0L) return(shiny::helpText("ctFitCovCheckPlot returned no plots."))
-  record_output_code("cov_check", cov_check_code_snippet())
+  record_output_code("cov_check", output_code_snippet("cov_check"))
   ids <- paste0("cov_check_plot_", seq_along(plots))
   shiny::tagList(lapply(seq_along(plots), function(i) {
     plot_title <- names(plots)[i]
@@ -1975,7 +1785,7 @@ output$kalman_plot <- shiny::renderPlot({
   on.exit({ plot_cache$kalman_plot <- grDevices::recordPlot() }, add = TRUE)
   out <- kalman_result()
   if (is.null(out)) return(invisible(NULL))
-  record_output_code("kalman", kalman_code_snippet())
+  record_output_code("kalman", output_code_snippet("kalman"))
   kalmanvec <- parse_text_vector(input$kalman_vec, c("y", "yprior"))
   errorvec <- parse_text_vector(input$kalman_error_vec, "auto")
   plot_result <- try(plot(out, kalmanvec = kalmanvec, errorvec = errorvec), silent = TRUE)
@@ -1992,7 +1802,7 @@ output$postpred_plots <- shiny::renderUI({
   if (is.null(plots)) return(shiny::helpText("Run ctPostPredPlots to show plots."))
   plots <- ctgui_plot_collection(plots)
   if (length(plots) == 0L) return(shiny::helpText("ctPostPredPlots returned no plots."))
-  record_output_code("postpred", postpred_code_snippet())
+  record_output_code("postpred", output_code_snippet("postpred"))
   ids <- paste0("postpred_plot_", seq_along(plots))
   shiny::tagList(lapply(seq_along(plots), function(i) {
     local({
@@ -2020,7 +1830,7 @@ output$residual_acf_plot <- shiny::renderPlot({
   on.exit({ plot_cache$residual_acf_plot <- grDevices::recordPlot() }, add = TRUE)
   out <- residual_acf()
   if (is.null(out)) return(invisible(NULL))
-  record_output_code("residual_acf", residual_acf_code_snippet())
+  record_output_code("residual_acf", output_code_snippet("residual_acf"))
   plot_result <- try(ctgui_ctsem_call("plotctACF", out), silent = TRUE)
   if (inherits(plot_result, "try-error")) {
     graphics::plot.new()
@@ -2036,7 +1846,7 @@ output$dynamics_plot <- shiny::renderPlot({
   on.exit({ plot_cache$dynamics_plot <- grDevices::recordPlot() }, add = TRUE)
   out <- dynamics_result()
   if (is.null(out)) return(invisible(NULL))
-  record_output_code("dynamics", dynamics_code_snippet())
+  record_output_code("dynamics", output_code_snippet("dynamics"))
   ylim <- parse_optional_expression(input$dynamic_ylim)
   if (!is_omitted_arg(ylim) && inherits(out, "ggplot")) {
     out <- out + getExportedValue("ggplot2", "coord_cartesian")(ylim = ylim)
@@ -2049,7 +1859,7 @@ output$dynamics_log <- shiny::renderText(dynamics_log())
 output$tipred_effects_plots <- shiny::renderUI({
   plots <- tipred_effects_result()
   if (is.null(plots)) return(shiny::helpText("Run ctPredictTIP to show trajectory and dynamics plots."))
-  record_output_code("tipred", tipred_code_snippet())
+  record_output_code("tipred", output_code_snippet("tipred"))
   group_ui <- function(group_name, group_plots) {
     flat <- ctgui_plot_collection(group_plots)
     if (!length(flat)) return(shiny::helpText(paste("No", tolower(group_name), "plots returned.")))
@@ -2095,7 +1905,7 @@ capture_output_wide <- function(expr, width = 240L) {
 fit_summary_text <- function() {
   fit <- active_fit()
   if (is.null(fit)) return("No fit available.")
-  record_output_code("summary", summary_code_snippet())
+  record_output_code("summary", output_code_snippet("summary"))
   paste(capture_output_wide(summary(fit)), collapse = "\n")
 }
 
@@ -2109,7 +1919,7 @@ fit_summary_matrices_text <- function() {
     capture_output_wide(ctgui_ctsem_call("ctSummaryMatrices", fit)),
     error = function(e) paste("ctSummaryMatrices failed:", conditionMessage(e))
   )
-  record_output_code("summary_matrices", summary_matrices_code_snippet())
+  record_output_code("summary_matrices", output_code_snippet("summary_matrices"))
   paste(result, collapse = "\n")
 }
 
