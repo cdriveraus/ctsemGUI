@@ -26,4 +26,4 @@ jobs:
       - name: Check JavaScript syntax
         run: find inst -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Run tests
-        run: Rscript -e 'testthat::test_local(".", reporter = "summary")'
+        run: Rscript tools/run-tests.R
