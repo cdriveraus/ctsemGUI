@@ -3,6 +3,19 @@
 ctgui_app_ui <- function(initial_spec, help_catalog, assets) {
   spec <- initial_spec
   visual_asset_url <- assets$visual_asset_url
+  application_asset_version <- assets$application_asset_version
+  if (is.null(application_asset_version) || !nzchar(application_asset_version)) {
+    application_asset_version <- assets$visual_asset_version
+  }
+  if (is.null(application_asset_version) || !nzchar(application_asset_version)) {
+    application_asset_version <- as.character(utils::packageVersion("ctsemgui"))
+  }
+  application_asset_url <- function(file) {
+    paste0(
+      "ctsemgui-assets/app/", file, "?v=",
+      utils::URLencode(application_asset_version, reserved = TRUE)
+    )
+  }
 plot_export_controls <- function(id, height = 420) {
   shiny::div(class = "plot-export",
     shiny::numericInput(paste0(id, "_export_width"), "Width (px)", value = 700, min = 100, step = 10),
@@ -33,127 +46,10 @@ arg_label <- function(label, help_id, title = NULL) {
 }
 
 ui <- shiny::fluidPage(
+  id = "ctgui-app",
   shiny::tags$head(
-    shiny::tags$style(shiny::HTML("
-    body { background: #f7f8fa; }
-    .container-fluid { max-width: 1440px; }
-    .well { background: #ffffff; border-radius: 6px; box-shadow: none; }
-    table { background: #ffffff; }
-    .tab-pane { padding-top: 12px; }
-    .control-band { background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
-    .control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 14px; align-items: end; }
-    .manifest-type-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; align-items: end; margin-top: 12px; }
-    .help-note { color: #4b5563; margin: 0 0 10px 0; max-width: 860px; }
-    .warning-note { color: #92400e; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 6px; padding: 8px 10px; max-width: 860px; }
-    .app-header { display: flex; gap: 16px; align-items: end; justify-content: space-between; flex-wrap: wrap; }
-    .app-header .form-group { margin-bottom: 0; min-width: 210px; }
-    .matrix-block { background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
-    .matrix-block h4 { margin-top: 0; }
-    .matrix-note { color: #4b5563; margin-bottom: 10px; max-width: 780px; }
-    .matrix-editor { overflow-x: auto; }
-    .matrix-editor table { width: auto; max-width: 100%; }
-    .matrix-editor th, .matrix-editor td { padding: 4px 6px; vertical-align: middle; }
-    .matrix-editor input { min-width: 9em; max-width: 18em; }
-    .matrix-cell { min-width: 10em; }
-    .matrix-cell .form-group { margin-bottom: 3px; }
-    .matrix-cell-metadata { min-height: 56px; color: #4b5563; font-size: 10px; line-height: 14px; }
-    .matrix-cell-metadata div { white-space: nowrap; }
-    .matrix-cell-inspector { margin-top: 14px; padding: 12px; border: 1px solid #bfdbfe; border-radius: 6px; background: #f8fbff; }
-    .matrix-cell-inspector h5 { margin-top: 0; }
-    .matrix-network { min-height: 280px; border-top: 1px solid #e5e7eb; margin-top: 14px; padding-top: 12px; }
-    .matrix-network-layout { display: flex; align-items: flex-start; gap: 18px; }
-    .matrix-network-controls { flex: 0 0 220px; padding: 4px 12px 4px 0; border-right: 1px solid #e5e7eb; }
-    .matrix-network-controls .form-group { margin-bottom: 10px; }
-    .matrix-network-plot { flex: 1 1 420px; min-width: 0; }
-    @media (max-width: 760px) { .matrix-network-layout { display: block; } .matrix-network-controls { border-right: 0; border-bottom: 1px solid #e5e7eb; padding: 0 0 12px; margin-bottom: 12px; } }
-    .plot-export { display: flex; gap: 6px; align-items: end; flex-wrap: wrap; margin: 8px 0; }
-    .plot-export .form-group { margin-bottom: 0; width: 86px; }
-    .matrix-inactive { background: #f3f4f6; color: #6b7280; }
-    .matrix-inactive input { background: #f3f4f6; color: #6b7280; border-color: #d1d5db; }
-    .pars-editor textarea { font-family: Consolas, monospace; }
-    .equation-pane { overflow: auto; background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px; }
-    .data-preview { overflow-x: auto; }
-    .arg-help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 5px; border: 1px solid #9ca3af; border-radius: 50%; background: #ffffff; color: #374151; font-size: 11px; line-height: 1; text-decoration: none; vertical-align: middle; cursor: help; }
-    .arg-help:hover, .arg-help:focus { background: #eef2ff; color: #111827; text-decoration: none; }
-    .disabled-panel { opacity: 0.68; pointer-events: none; }
-    .fit-inline-output { margin-top: 12px; }
-    .fit-capture-note { color: #4b5563; margin-top: 6px; }
-    pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-space: pre; word-break: normal; word-wrap: normal; overflow-x: auto; max-width: 100%; }
-  ")),
-    shiny::tags$script(shiny::HTML("
-      $(document).on('click', '.arg-help', function(event) {
-        event.stopPropagation();
-      });
-      $(document).on('show.bs.tab', 'a[data-toggle=\"tab\"]', function() {
-        if (window.Shiny) {
-          Shiny.setInputValue('tab_commit_nonce', Math.random(), {priority: 'event'});
-        }
-      });
-      $(document).on('focusin click', '.matrix-cell input[type=\"text\"]', function() {
-        var cell = $(this).closest('.matrix-cell');
-        if (window.Shiny && cell.length) {
-          Shiny.setInputValue('matrix_selected_cell', {
-            matrix: cell.data('matrix'), row: cell.data('row'), col: cell.data('col')
-          }, {priority: 'event'});
-        }
-      });
-      // Matrix text edits are saved on blur/change.  This is especially
-      // important when a fixed numeric value becomes a new free label: the
-      // server must create its metadata row before the inspector can render.
-      $(document).on('change', '.matrix-cell input[type=\"text\"]', function() {
-        var cell = $(this).closest('.matrix-cell');
-        if (window.Shiny && cell.length) {
-          Shiny.setInputValue('matrix_selected_cell', {
-            matrix: cell.data('matrix'), row: cell.data('row'), col: cell.data('col')
-          }, {priority: 'event'});
-          window.setTimeout(function() {
-            Shiny.setInputValue('matrix_commit_nonce', Math.random(), {priority: 'event'});
-          }, 0);
-        }
-      });
-      var matrixMetadataTimer;
-      $(document).on('change', '.matrix-cell-inspector:not(.visual-path-inspector) input, .matrix-cell-inspector:not(.visual-path-inspector) select', function() {
-        clearTimeout(matrixMetadataTimer);
-        matrixMetadataTimer = setTimeout(function() {
-          if (window.Shiny) Shiny.setInputValue('matrix_metadata_commit', Math.random(), {priority: 'event'});
-        }, 100);
-      });
-      var visualPathTimer;
-      // Native change fires when edited text is blurred or tabbed away and
-      // immediately for selectors/checkboxes. Avoid focusout itself: Shiny
-      // can remove an inspector during rendering, and that focus loss must
-      // not commit unchanged values and start a model-rebuild loop.
-      $(document).on('change', '.visual-path-inspector input, .visual-path-inspector select', function() {
-        clearTimeout(visualPathTimer);
-        visualPathTimer = setTimeout(function() {
-          if (window.Shiny) {
-            var payload = {nonce: Math.random()};
-            $('.visual-path-inspector input, .visual-path-inspector select').each(function() {
-              if (!this.id) return;
-              if (this.type === 'checkbox') payload[this.id] = this.checked;
-              else payload[this.id] = $(this).val();
-            });
-            Shiny.setInputValue('visual_path_commit', payload, {priority: 'event'});
-          }
-        }, 50);
-      });
-      $(function() {
-        var workflow = $('#workflow');
-        var dataTab = workflow.children('ul.nav').find('a[data-value=\"Data\"]').parent();
-        if (dataTab.length) dataTab.prependTo(workflow.children('ul.nav'));
-      });
-      $(document).on('click', '#run_fit', function() {
-        $('input, select, textarea, button').not('#run_fit').prop('disabled', true);
-        $('#run_fit').prop('disabled', true).text('Fitting...');
-      });
-      if (window.Shiny) Shiny.addCustomMessageHandler('ctgui-fit-finished', function(message) {
-        $('input, select, textarea, button').prop('disabled', false);
-        $('#run_fit').text('Fit model');
-        if (message.beep) {
-          try { var context = new (window.AudioContext || window.webkitAudioContext)(); var oscillator = context.createOscillator(); oscillator.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .15); } catch (e) {}
-        }
-      });
-    ")),
+    shiny::tags$link(rel = "stylesheet", type = "text/css", href = application_asset_url("app.css")),
+    shiny::tags$script(src = application_asset_url("app.js")),
     shiny::tags$script(src = "ctsemgui-assets/visual-spec/cytoscape.min.js"),
     shiny::tags$script(src = visual_asset_url("visual-spec.js")),
     shiny::tags$link(rel = "stylesheet", type = "text/css", href = visual_asset_url("visual-spec.css"))

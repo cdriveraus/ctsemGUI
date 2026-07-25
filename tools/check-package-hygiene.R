@@ -12,26 +12,41 @@ if ("shiny" %in% suggests || !is.na(enhances) || "htmltools" %in% imports) {
   stop("DESCRIPTION must keep shiny and ctsem in Imports and omit htmltools/Enhances", call. = FALSE)
 }
 
-asset_dir <- file.path("inst", "www", "visual-spec")
-expected_assets <- c("cytoscape.min.js", "visual-spec.css", "visual-spec.js")
-assets <- list.files(asset_dir, pattern = "\\.(css|js)$", full.names = FALSE)
-if (!setequal(assets, expected_assets)) {
-  stop(
-    "Unexpected visual-spec assets: expected ", paste(expected_assets, collapse = ", "),
-    "; found ", paste(assets, collapse = ", "),
-    call. = FALSE
-  )
+asset_contract <- list(
+  app = c("app.css", "app.js"),
+  `visual-spec` = c("cytoscape.min.js", "visual-spec.css", "visual-spec.js")
+)
+for (asset_group in names(asset_contract)) {
+  asset_dir <- file.path("inst", "www", asset_group)
+  expected_assets <- asset_contract[[asset_group]]
+  assets <- list.files(asset_dir, pattern = "\\.(css|js)$", full.names = FALSE)
+  if (!setequal(assets, expected_assets)) {
+    stop(
+      "Unexpected ", asset_group, " assets: expected ", paste(expected_assets, collapse = ", "),
+      "; found ", paste(assets, collapse = ", "),
+      call. = FALSE
+    )
+  }
 }
-if (any(grepl("edgehandles", list.files(asset_dir, full.names = FALSE), fixed = TRUE))) {
+if (any(grepl(
+  "edgehandles",
+  list.files(file.path("inst", "www"), recursive = TRUE, full.names = FALSE),
+  fixed = TRUE
+))) {
   stop("Removed cytoscape-edgehandles assets are still present", call. = FALSE)
 }
 
 app_files <- list.files("R", pattern = "^app.*\\.R$", full.names = TRUE)
 app_source <- paste(unlist(lapply(app_files, readLines, warn = FALSE)), collapse = "\n")
-unreferenced <- expected_assets[!vapply(expected_assets, grepl, logical(1L),
+first_party_assets <- unlist(asset_contract, use.names = FALSE)
+unreferenced <- first_party_assets[!vapply(first_party_assets, grepl, logical(1L),
   x = app_source, fixed = TRUE)]
 if (length(unreferenced)) {
-  stop("Unreferenced visual-spec assets: ", paste(unreferenced, collapse = ", "), call. = FALSE)
+  stop("Unreferenced application assets: ", paste(unreferenced, collapse = ", "), call. = FALSE)
+}
+if (grepl("tags$style", app_source, fixed = TRUE) ||
+    grepl("addCustomMessageHandler", app_source, fixed = TRUE)) {
+  stop("Application CSS and general event glue must live in versioned assets", call. = FALSE)
 }
 
 message("Package hygiene checks passed.")
