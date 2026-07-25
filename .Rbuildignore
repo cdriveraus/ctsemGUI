@@ -1,8 +1,8 @@
-^\\.git$
-^\\.gitignore$
-^\\.github$
-^.*\\.Rproj$
-^\\.Rproj\\.user$
-^dev$
-^shiny-.*\\.log$
+^\.git$
+^\.gitignore$
+^\.github$
+^.*\.Rproj$
 ^\.Rproj\.user$
+^dev$
+^shiny-.*\.log$
+^LICENSE\.md$
