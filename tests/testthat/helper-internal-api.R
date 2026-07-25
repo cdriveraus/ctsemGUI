@@ -13,7 +13,13 @@ ctgui_internal_names <- c(
   "ctgui_uncertainty_merge_optimcontrol", "ctgui_optim_uncertainty_eligibility",
   "ctgui_uncertainty_summary", "ctgui_run_result", "ctgui_ctsem_run",
   "ctgui_result_text", "ctgui_plot_collection", "ctgui_draw_plot",
-  "ctgui_fit_comparison_stats"
+  "ctgui_fit_comparison_stats",
+  "ctgui_parse_names", "ctgui_spec_fields", "ctgui_spec_fields_changed",
+  "ctgui_commit_spec_fields", "ctgui_apply_matrix_edits",
+  "ctgui_parse_pars_vector", "ctgui_project_spec",
+  "ctgui_data_role_selection", "ctgui_tipred_subject_data",
+  "ctgui_data_preview", "ctgui_data_summary", "ctgui_missingness_summary",
+  "ctgui_within_between_summary"
 )
 for (ctgui_internal_name in ctgui_internal_names) {
   assign(ctgui_internal_name, getFromNamespace(ctgui_internal_name, "ctsemgui"), envir = environment())

@@ -36,14 +36,10 @@ diagnostics_status <- shiny::reactiveVal("No fit diagnostics have been run.")
 matrix_status <- shiny::reactiveVal("Matrix edits update the current model spec.")
 plot_cache <- shiny::reactiveValues()
 visual_drafts <- shiny::reactiveVal(list())
-visual_dirty <- shiny::reactiveVal(FALSE)
-visual_stale <- shiny::reactiveVal(FALSE)
 visual_status_value <- shiny::reactiveVal("Visual editor is loading the current matrices.")
-matrix_inputs_suspended <- shiny::reactiveVal(FALSE)
 spec_inputs_suspended <- shiny::reactiveVal(FALSE)
 
 sync_matrix_inputs_from_spec <- function(spec) {
-  matrix_inputs_suspended(TRUE)
   spec_inputs_suspended(TRUE)
   for (matrix_name in ctgui_matrix_names(spec)) {
     mat <- spec$matrices[[matrix_name]]
@@ -61,7 +57,7 @@ sync_matrix_inputs_from_spec <- function(spec) {
   shiny::updateTextInput(session, "tipred_names", value = paste(spec$tipred_names, collapse = ", "))
   shiny::updateCheckboxInput(session, "tipredDefault", value = isTRUE(spec$tipredDefault))
   session$onFlushed(function() {
-    matrix_inputs_suspended(FALSE); spec_inputs_suspended(FALSE)
+    spec_inputs_suspended(FALSE)
   }, once = TRUE)
 }
 
@@ -90,7 +86,7 @@ reset_visual_drafts <- function(message = "Reloaded visual editor from matrices.
     initial_state = ctgui_visual_graph(spec, "initial_state"),
     tipred_effects = ctgui_visual_graph(spec, "tipred_effects")
   )
-  visual_drafts(drafts); visual_dirty(FALSE); visual_stale(FALSE); visual_status_value(message)
+  visual_drafts(drafts); visual_status_value(message)
   send_visual_graph()
 }
 
@@ -110,10 +106,7 @@ register_plot_export <- function(id) {
 }
 lapply(c("raw_plot", "kalman_plot", "residual_acf_plot", "dynamics_plot"), register_plot_export)
 
-parse_names <- function(x) {
-  x <- unlist(strsplit(x, ",", fixed = TRUE), use.names = FALSE)
-  trimws(x[nzchar(trimws(x))])
-}
+parse_names <- ctgui_parse_names
 
 parse_optional_integer <- function(x) {
   if (is.null(x) || length(x) == 0L || is.na(x)) return(NULL)
@@ -178,43 +171,20 @@ register_help <- function(help_id) {
 lapply(names(help_catalog), register_help)
 
 manifest_type_values <- function(manifest_names = parse_names(input$manifest_names)) {
-  current <- current_spec()$manifest_type
-  if (length(current) != length(manifest_names)) current <- rep(0L, length(manifest_names))
-  values <- integer(length(manifest_names))
-  for (i in seq_along(manifest_names)) {
-    input_value <- input[[paste0("manifest_type_", i)]]
-    values[i] <- as.integer(input_value %||% current[i] %||% 0L)
-  }
-  values
-}
-
-input_spec_fields <- function() {
-  manifest_names <- parse_names(input$manifest_names)
-  list(
-    type = input$type %||% current_spec()$type,
-    latent_names = parse_names(input$latent_names),
-    manifest_names = manifest_names,
-    tdpred_names = parse_names(input$tdpred_names),
-    tipred_names = parse_names(input$tipred_names),
-    Tpoints = NULL,
-    manifest_type = manifest_type_values(manifest_names),
-    tipredDefault = isTRUE(input$tipredDefault),
-    id = input$id %||% current_spec()$id,
-    time = input$time %||% current_spec()$time
+  ctgui_manifest_type_values(
+    manifest_names, shiny::reactiveValuesToList(input),
+    current_spec()$manifest_type
   )
 }
 
-spec_fields_changed <- function(spec, fields) {
-  !identical(spec$type, fields$type) ||
-    !identical(spec$latent_names, fields$latent_names) ||
-    !identical(spec$manifest_names, fields$manifest_names) ||
-    !identical(spec$tdpred_names, fields$tdpred_names) ||
-    !identical(spec$tipred_names, fields$tipred_names) ||
-    !identical(as.integer(spec$manifest_type), as.integer(fields$manifest_type)) ||
-    !identical(isTRUE(spec$tipredDefault), isTRUE(fields$tipredDefault)) ||
-    !identical(spec$id, fields$id) ||
-    !identical(spec$time, fields$time)
+input_spec_fields <- function() {
+  ctgui_spec_fields(
+    c(shiny::reactiveValuesToList(input), list(Tpoints = NULL)),
+    current_spec()
+  )
 }
+
+spec_fields_changed <- ctgui_spec_fields_changed
 
 parse_r_expression <- function(x, default) {
   if (is.null(x) || !nzchar(trimws(x))) return(default)
@@ -433,14 +403,7 @@ shiny::observeEvent(input$assign_fit, {
 })
 shiny::observeEvent(input$load_model_rds, {
   path <- input$load_model_rds$datapath; if (is.null(path)) return()
-  model <- tryCatch(readRDS(path), error = function(e) e)
-  loaded <- if (inherits(model, "ctsemgui_spec")) {
-    tryCatch(ctgui_visual_ensure(model), error = function(e) e)
-  } else if (!inherits(model, "error") && is_ctsem_model(model)) {
-    tryCatch(ctgui_spec_from_model(model), error = function(e) e)
-  } else {
-    if (inherits(model, "error")) model else simpleError("The RDS does not contain a ctsem model or ctsemgui project")
-  }
+  loaded <- tryCatch(ctgui_project_spec(readRDS(path)), error = function(e) e)
   if (inherits(loaded, "error")) shiny::showNotification(conditionMessage(loaded), type = "error") else {
     commit_current_spec(loaded, reason = "load_project")
     fit_status_value("Loaded ctsem model from RDS."); shiny::showNotification("Loaded model RDS", type = "message")
@@ -474,10 +437,14 @@ clear_diagnostics <- function() {
 # synchronized.
 commit_current_spec <- function(updated, reason = "edit", refresh_visual = NULL,
     refresh_widgets = TRUE) {
-  commit <- ctgui_commit_spec(
-    previous = current_spec(), updated = updated, reason = reason,
-    refresh_visual = refresh_visual, refresh_widgets = refresh_widgets
-  )
+  commit <- if (inherits(updated, "ctgui_spec_commit")) {
+    updated
+  } else {
+    ctgui_commit_spec(
+      previous = current_spec(), updated = updated, reason = reason,
+      refresh_visual = refresh_visual, refresh_widgets = refresh_widgets
+    )
+  }
   current_spec(commit$spec)
   effects <- commit$effects
   if (isTRUE(effects$invalidate_fit)) {
@@ -489,31 +456,27 @@ commit_current_spec <- function(updated, reason = "edit", refresh_visual = NULL,
   invisible(effects)
 }
 
-matrix_id_part <- function(x) gsub("[^A-Za-z0-9_]", "_", x)
-
-matrix_cell_id <- function(matrix_name, row, col) {
-  paste0("matrix_cell_", matrix_id_part(matrix_name), "_", row, "_", col)
-}
+matrix_id_part <- ctgui_matrix_id_part
+matrix_cell_id <- ctgui_matrix_cell_id
 
 shiny::observe(update_data_choices())
 
 output$data_spec_controls <- shiny::renderUI({
   data <- current_data()
   if (is.null(data)) return(shiny::helpText("Load or generate data to select model roles from columns."))
-  names <- names(data)
-  spec <- current_spec()
+  roles <- ctgui_data_role_selection(data, current_spec())
   shiny::div(
     class = "control-grid",
     shiny::selectizeInput("data_manifest_names", "Manifest variables from active data",
-      choices = names, selected = intersect(spec$manifest_names, names), multiple = TRUE),
+      choices = roles$choices, selected = roles$manifest_names, multiple = TRUE),
     shiny::selectizeInput("data_tdpred_names", "Time dependent predictors from active data",
-      choices = names, selected = intersect(spec$tdpred_names, names), multiple = TRUE),
+      choices = roles$choices, selected = roles$tdpred_names, multiple = TRUE),
     shiny::selectizeInput("data_tipred_names", "Time independent predictors from active data",
-      choices = names, selected = intersect(spec$tipred_names, names), multiple = TRUE),
+      choices = roles$choices, selected = roles$tipred_names, multiple = TRUE),
     shiny::selectInput("data_id", "ID column from active data",
-      choices = names, selected = if (spec$id %in% names) spec$id else names[1L]),
+      choices = roles$choices, selected = roles$id),
     shiny::selectInput("data_time", "Time column from active data",
-      choices = names, selected = if (spec$time %in% names) spec$time else names[1L])
+      choices = roles$choices, selected = roles$time)
   )
 })
 
@@ -528,16 +491,7 @@ output$tipred_network <- shiny::renderUI({
   )
 })
 
-tipred_subject_data <- function(data, spec) {
-  if (is.null(data) || !length(spec$tipred_names) || !spec$id %in% names(data)) return(NULL)
-  present <- intersect(spec$tipred_names, names(data))
-  if (!length(present)) return(NULL)
-  first <- data[!duplicated(data[[spec$id]]), c(spec$id, present), drop = FALSE]
-  variation <- vapply(present, function(name) {
-    any(vapply(split(data[[name]], data[[spec$id]]), function(x) length(unique(x[!is.na(x)])) > 1L, logical(1L)))
-  }, logical(1L))
-  list(values = first, varying = names(variation)[variation], missing = setdiff(spec$tipred_names, present))
-}
+tipred_subject_data <- ctgui_tipred_subject_data
 
 output$tipred_network_status <- shiny::renderText({
   info <- tipred_subject_data(current_data(), current_spec())
@@ -694,8 +648,6 @@ shiny::observeEvent(input$matrix_builder_apply, {
     return()
   }
   commit_current_spec(updated, reason = "data_roles")
-  current_fit(NULL)
-  clear_diagnostics()
   fit_status_value("Model matrices changed. Refit when ready.")
   matrix_status(paste("Applied", structure, "matrices without changing specification names."))
   shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(updated), selected = "DRIFT")
@@ -723,8 +675,6 @@ shiny::observeEvent(input$measurement_builder_apply, {
     return()
   }
   commit_current_spec(updated, reason = "specification")
-  current_fit(NULL)
-  clear_diagnostics()
   fit_status_value("Measurement matrices changed. Refit when ready.")
   matrix_status("Applied measurement matrices without changing specification names.")
   shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(updated), selected = "LAMBDA")
@@ -756,30 +706,18 @@ rebuild_spec_if_needed <- function() {
   spec <- current_spec()
   if (!spec_fields_changed(spec, fields)) return(invisible(FALSE))
 
-  new_spec <- tryCatch(
-    ctgui_spec(
-      latent_names = fields$latent_names,
-      manifest_names = fields$manifest_names,
-      type = fields$type,
-      id = fields$id,
-      time = fields$time,
-      Tpoints = fields$Tpoints,
-      manifest_type = fields$manifest_type,
-      tdpred_names = fields$tdpred_names,
-      tipred_names = fields$tipred_names,
-      tipredDefault = fields$tipredDefault
-    ),
+  commit <- tryCatch(
+    ctgui_commit_spec_fields(spec, fields, reason = "specification"),
     error = function(e) e
   )
-  if (inherits(new_spec, "error")) {
-    matrix_status(paste("Specification not rebuilt:", conditionMessage(new_spec)))
-    shiny::showNotification(conditionMessage(new_spec), type = "error")
+  if (inherits(commit, "error")) {
+    matrix_status(paste("Specification not rebuilt:", conditionMessage(commit)))
+    shiny::showNotification(conditionMessage(commit), type = "error")
     return(invisible(FALSE))
   }
 
-  commit_current_spec(new_spec, reason = "builder")
-  current_fit(NULL)
-  clear_diagnostics()
+  commit_current_spec(commit)
+  new_spec <- commit$spec
   fit_status_value("Model changed. Refit when ready.")
   shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(new_spec), selected = "DRIFT")
   matrix_status("Matrix edits update the current model spec.")
@@ -876,7 +814,7 @@ shiny::observeEvent(input$visual_spec_canvas_graph, {
     tipred_effects = ctgui_visual_graph(updated, "tipred_effects")
   )
   visual_drafts(drafts)
-  visual_dirty(FALSE); visual_stale(FALSE); commit_current_spec(updated, reason = "visual_graph")
+  commit_current_spec(updated, reason = "visual_graph")
   sync_matrix_inputs_from_spec(updated)
   fit_status_value("Visual model changed. Refit when ready.")
   matrix_status("Visual change applied to model matrices.")
@@ -944,7 +882,7 @@ update_visual_path <- function() {
     tipred_effects = ctgui_visual_graph(updated, "tipred_effects")
   )
   visual_drafts(drafts)
-  commit_current_spec(updated, reason = "visual_path"); visual_dirty(FALSE); visual_stale(FALSE)
+  commit_current_spec(updated, reason = "visual_path")
   sync_matrix_inputs_from_spec(updated)
   fit_status_value("Visual model changed. Refit when ready.")
   matrix_status("Visual path updated in model matrices.")
@@ -961,70 +899,19 @@ update_visual_path <- function() {
 }
 shiny::observeEvent(input$visual_path_commit, update_visual_path(), ignoreInit = TRUE)
 output$visual_status <- shiny::renderText(visual_status_value())
-shiny::observeEvent(current_spec(), {
-  if (isTRUE(visual_dirty())) {
-    visual_stale(TRUE); visual_status_value("Matrices changed while a visual draft was open. Reset visual editor before applying.")
-  }
-}, ignoreInit = TRUE)
 # onFlushed() itself is not a reactive consumer.  Isolate the initial
 # reactive reads while the browser-side editor is being populated.
 session$onFlushed(function() shiny::isolate(reset_visual_drafts()), once = TRUE)
 
 matrix_group_names <- function(spec, group = input$matrix_group) {
-  present <- ctgui_matrix_names(spec)
-  desired <- switch(group %||% "Dynamics",
-    Dynamics = c("DRIFT", "CINT", "DIFFUSION"),
-    Measurement = c("LAMBDA", "MANIFESTMEANS", "MANIFESTVAR"),
-    Initial = c("T0MEANS", "T0VAR"),
-    Predictors = c("TDPREDEFFECT", "TDPREDMEANS", "TDPREDVAR"),
-    character()
-  )
-  intersect(desired, present)
+  ctgui_matrix_group_names(spec, group)
 }
-
-matrix_note <- function(matrix_name) {
-  switch(matrix_name,
-    DRIFT = "Continuous-time effects among latent processes. Diagonal cells are self-regulation; off-diagonal cells are cross-process effects.",
-    CINT = "Latent process intercepts. Fixed numbers or free labels set constant input to each latent process.",
-    DIFFUSION = "Lower triangular system-noise matrix. Diagonal entries are system-noise standard deviations; lower off-diagonals set unconstrained noise correlations.",
-    LAMBDA = "Measurement loadings. Rows are manifest variables, columns are latent processes.",
-    MANIFESTMEANS = "Manifest intercepts. One entry per manifest variable.",
-    MANIFESTVAR = "Lower triangular measurement-error matrix. Diagonal entries are error standard deviations; lower off-diagonals set unconstrained residual correlations.",
-    T0MEANS = "Initial latent means at the start of each subject series.",
-    T0VAR = "Lower triangular initial-state covariance matrix. Diagonal entries are initial standard deviations; lower off-diagonals set unconstrained initial-state correlations.",
-    TDPREDEFFECT = "Effects of time-dependent predictors on latent processes. Rows are latent processes, columns are TD predictors.",
-    TDPREDMEANS = "Data generation only: means for simulated time-dependent predictors. This matrix is not estimated when fitting a model.",
-    TDPREDVAR = "Data generation only: covariance structure for simulated time-dependent predictors. This matrix is not estimated when fitting a model.",
-    ""
-  )
-}
-
-fixed_matrix_value <- function(value) {
-  value <- trimws(as.character(value %||% ""))
-  if (!nzchar(value)) return(TRUE)
-  if (grepl("\\|\\|\\s*FALSE\\s*$", value, ignore.case = TRUE)) return(TRUE)
-  !is.na(suppressWarnings(as.numeric(value)))
-}
-
-indvarying_t0means <- function(spec) {
-  t0means <- spec$matrices[["T0MEANS"]]
-  if (is.null(t0means)) return(character())
-  values <- as.character(t0means[, 1L, drop = TRUE])
-  rownames(t0means)[!vapply(values, fixed_matrix_value, logical(1L))]
-}
-
-matrix_metadata <- function(spec, matrix_name, row_name, col_name) {
-  metadata <- spec$parameter_metadata
-  if (is.null(metadata) || !nrow(metadata)) return(NULL)
-  found <- metadata[metadata$matrix == matrix_name & metadata$row == row_name & metadata$col == col_name, , drop = FALSE]
-  if (!nrow(found)) NULL else found[1L, , drop = FALSE]
-}
-
-matrix_meta_id <- function(matrix_name, row, col, field) {
-  paste0("matrix_meta_", matrix_id_part(matrix_name), "_", row, "_", col, "_", field)
-}
-
-active_matrix_cell <- function(value) !fixed_matrix_value(value)
+matrix_note <- ctgui_matrix_note
+fixed_matrix_value <- ctgui_fixed_matrix_value
+indvarying_t0means <- ctgui_indvarying_t0means
+matrix_metadata <- ctgui_matrix_metadata_row
+matrix_meta_id <- ctgui_matrix_meta_id
+active_matrix_cell <- ctgui_active_matrix_cell
 
 matrix_network_id <- function(matrix_name, field) {
   paste0("matrix_network_", matrix_id_part(matrix_name), "_", field)
@@ -1333,11 +1220,7 @@ shiny::observe({
   })
 })
 
-pars_vector <- function(spec) {
-  pars <- spec$matrices[["PARS"]]
-  if (is.null(pars)) return(character())
-  as.character(pars[, 1L, drop = TRUE])
-}
+pars_vector <- ctgui_pars_vector
 
 output$matrix_pars_editor <- shiny::renderUI({
   spec <- current_spec()
@@ -1412,30 +1295,11 @@ shiny::observeEvent(input$quick_apply, {
     return()
   }
   commit_current_spec(updated, reason = "matrix_metadata")
-  current_fit(NULL)
-  clear_diagnostics()
   matrix_status(paste("Structured edit applied to", input$quick_matrix))
 })
 
-parse_pars_vector <- function(x) {
-  if (is.null(x)) return(NULL)
-  values <- ctgui_split_pars(x)
-  if (length(values) == 0L) return(NULL)
-  matrix(values, ncol = 1L, dimnames = list(paste0("PARS", seq_along(values)), "PARS"))
-}
-
-set_spec_matrix <- function(spec, matrix_name, value) {
-  if (identical(matrix_name, "PARS")) {
-    if (is.null(value)) {
-      spec$matrices[["PARS"]] <- NULL
-    } else {
-      spec$matrices[["PARS"]] <- value
-    }
-    spec$matrices <- ctgui_order_matrices(spec$matrices)
-    return(ctgui_sync_model_from_matrices(spec))
-  }
-  ctgui_set_matrix(spec, matrix_name, value)
-}
+parse_pars_vector <- ctgui_parse_pars_vector
+set_spec_matrix <- ctgui_set_spec_matrix
 
 matrix_input_values <- shiny::reactive({
   spec <- current_spec()
@@ -1482,7 +1346,8 @@ apply_matrix_metadata_inputs <- function(spec) {
       }
       if (is.null(extra_pars)) extra_pars <- meta$extra_pars %||% ""
       spec <- ctgui_set_parameter_metadata(spec, matrix_name, rownames(mat)[row], colnames(mat)[col],
-        transform = transform, indvarying = indvarying, sdscale = sdscale, tipred_effects = tipreds, extra_pars = extra_pars)
+        transform = transform, indvarying = indvarying, sdscale = sdscale,
+        tipred_effects = tipreds, extra_pars = extra_pars, sync = FALSE)
     }
   }
   spec
@@ -1525,10 +1390,7 @@ apply_current_matrix <- function(show_notification = FALSE) {
     initial_state = ctgui_visual_graph(updated, "initial_state"),
     tipred_effects = ctgui_visual_graph(updated, "tipred_effects")
   ))
-  visual_dirty(FALSE); visual_stale(FALSE)
   send_visual_graph(input$visual_view %||% "state_space")
-  current_fit(NULL)
-  clear_diagnostics()
   fit_status_value("Model changed. Refit when ready.")
   matrix_status(paste("Updated", paste(changed, collapse = ", "), "at", format(Sys.time(), "%H:%M:%S")))
   if (show_notification) shiny::showNotification("Matrix edits applied", type = "message")
@@ -2194,9 +2056,7 @@ output$data_status <- shiny::renderText({
 })
 
 data_preview_table <- function() {
-  data <- current_data()
-  if (is.null(data)) return(data.frame(message = "No data selected"))
-  utils::head(data, 20L)
+  ctgui_data_preview(current_data())
 }
 
 output$data_preview_import <- shiny::renderTable(data_preview_table(), rownames = FALSE)
@@ -2204,54 +2064,15 @@ output$data_preview_generate <- shiny::renderTable(data_preview_table(), rowname
 output$data_preview <- shiny::renderTable(data_preview_table(), rownames = FALSE)
 
 output$data_summary <- shiny::renderTable({
-  data <- current_data()
-  if (is.null(data)) return(data.frame(message = "No data selected"))
-  numeric_names <- names(data)[vapply(data, is.numeric, logical(1L))]
-  if (length(numeric_names) == 0L) return(data.frame(message = "No numeric columns"))
-  do.call(rbind, lapply(numeric_names, function(name) {
-    x <- data[[name]]
-    data.frame(
-      variable = name,
-      n = sum(!is.na(x)),
-      missing = sum(is.na(x)),
-      mean = mean(x, na.rm = TRUE),
-      sd = stats::sd(x, na.rm = TRUE),
-      min = min(x, na.rm = TRUE),
-      max = max(x, na.rm = TRUE),
-      row.names = NULL
-    )
-  }))
+  ctgui_data_summary(current_data())
 }, rownames = FALSE)
 
 output$missingness_summary <- shiny::renderTable({
-  data <- current_data()
-  if (is.null(data)) return(data.frame(message = "No data selected"))
-  data.frame(
-    variable = names(data),
-    missing = vapply(data, function(x) sum(is.na(x)), integer(1L)),
-    percent_missing = round(100 * vapply(data, function(x) mean(is.na(x)), numeric(1L)), 2),
-    row.names = NULL
-  )
+  ctgui_missingness_summary(current_data())
 }, rownames = FALSE)
 
 output$within_between_summary <- shiny::renderTable({
-  data <- current_data()
-  if (is.null(data)) return(data.frame(message = "No data selected"))
-  spec <- current_spec()
-  numeric_names <- names(data)[vapply(data, is.numeric, logical(1L))]
-  if (!spec$id %in% names(data)) return(data.frame(message = "ID column not found in active data"))
-  if (length(numeric_names) == 0L) return(data.frame(message = "No numeric columns"))
-  do.call(rbind, lapply(numeric_names, function(name) {
-    groups <- split(data[[name]], data[[spec$id]])
-    group_means <- vapply(groups, function(x) mean(x, na.rm = TRUE), numeric(1L))
-    group_sds <- vapply(groups, function(x) stats::sd(x, na.rm = TRUE), numeric(1L))
-    data.frame(
-      variable = name,
-      between_sd = stats::sd(group_means, na.rm = TRUE),
-      mean_within_sd = mean(group_sds, na.rm = TRUE),
-      row.names = NULL
-    )
-  }))
+  ctgui_within_between_summary(current_data(), current_spec())
 }, rownames = FALSE)
 
 output$raw_plot_controls <- shiny::renderUI({
