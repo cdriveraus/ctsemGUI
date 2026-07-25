@@ -11,7 +11,9 @@ ctgui_internal_names <- c(
   "ctgui_uncertainty_method_choices", "ctgui_uncertainty_draw_choices",
   "ctgui_uncertainty_control", "ctgui_uncertainty_optimcontrol",
   "ctgui_uncertainty_merge_optimcontrol", "ctgui_optim_uncertainty_eligibility",
-  "ctgui_uncertainty_summary"
+  "ctgui_uncertainty_summary", "ctgui_run_result", "ctgui_ctsem_run",
+  "ctgui_result_text", "ctgui_plot_collection", "ctgui_draw_plot",
+  "ctgui_fit_comparison_stats"
 )
 for (ctgui_internal_name in ctgui_internal_names) {
   assign(ctgui_internal_name, getFromNamespace(ctgui_internal_name, "ctsemgui"), envir = environment())

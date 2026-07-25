@@ -1572,7 +1572,7 @@ fit_model_object <- function(fit) {
 
 model_latex_source <- function(model, args, fallback = NULL) {
   if (is.null(model)) return("No model object is available from the fit.")
-  out <- tryCatch(do.call(getExportedValue("ctsem", "ctModelLatex"), c(list(
+  out <- tryCatch(ctgui_ctsem_call("ctModelLatex", .args = c(list(
     model,
     compile = FALSE,
     open = FALSE,
@@ -1586,7 +1586,7 @@ model_latex_source <- function(model, args, fallback = NULL) {
 model_latex_png <- function(model, args, prefix, fallback = NULL) {
   if (is.null(model)) stop("No model object is available from the fit.", call. = FALSE)
   filename <- paste0(prefix, "_", Sys.getpid(), "_", as.integer(Sys.time()), "_", sample.int(1e6, 1L))
-  out <- tryCatch(do.call(getExportedValue("ctsem", "ctModelLatex"), c(list(
+  out <- tryCatch(ctgui_ctsem_call("ctModelLatex", .args = c(list(
     model,
     compile = TRUE,
     open = FALSE,
@@ -2102,38 +2102,7 @@ output$output_pars <- shiny::renderTable({
   pars
 }, rownames = FALSE)
 
-numeric_scalar <- function(x) {
-  out <- suppressWarnings(as.numeric(x))
-  if (!length(out) || all(is.na(out))) return(NA_real_)
-  out[1L]
-}
-
-fit_comparison_stats <- function(fit) {
-  loglik <- tryCatch(numeric_scalar(fit$stanfit$transformedparsfull$ll), error = function(e) NA_real_)
-  logposterior <- tryCatch(numeric_scalar(fit$stanfit$optimfit$value), error = function(e) NA_real_)
-  npars <- tryCatch(length(fit$stanfit$rawest), error = function(e) NA_integer_)
-  nobs <- tryCatch(length(fit$stanfit$transformedparsfull$llrow[1, ]), error = function(e) NA_integer_)
-
-  if (is.na(loglik)) {
-    summary_fit <- tryCatch(summary(fit), error = function(e) NULL)
-    if (!is.null(summary_fit)) {
-      loglik <- numeric_scalar(summary_fit$loglik)
-      logposterior <- numeric_scalar(summary_fit$logposterior)
-      npars <- suppressWarnings(as.integer(numeric_scalar(summary_fit$npars)))
-    }
-  }
-
-  aic <- if (!is.na(loglik) && !is.na(npars)) 2 * npars - 2 * loglik else NA_real_
-  bic <- if (!is.na(loglik) && !is.na(npars) && !is.na(nobs) && nobs > 0) log(nobs) * npars - 2 * loglik else NA_real_
-  note <- if (is.na(loglik)) {
-    "Likelihood unavailable in this fit object"
-  } else if (is.na(bic)) {
-    "BIC unavailable because observation count was not found"
-  } else {
-    ""
-  }
-  list(loglik = loglik, logposterior = logposterior, npars = npars, nobs = nobs, aic = aic, bic = bic, note = note)
-}
+fit_comparison_stats <- ctgui_fit_comparison_stats
 
 output$fit_comparison <- shiny::renderTable({
   registry <- fit_registry()
@@ -2475,7 +2444,7 @@ shiny::observeEvent(input$run_fit, {
           uncertainty_optimcontrol(), supplied_optimcontrol)
       }
       args <- c(args, extra[!names(extra) %in% names(args)])
-      do.call(getExportedValue("ctsem", "ctFit"), args)
+      ctgui_ctsem_call("ctFit", .args = args)
     }, progress_callback = function(lines) {
       fit_messages(paste(lines, collapse = "\n"))
     })
@@ -2540,8 +2509,7 @@ run_uncertainty_update <- function() {
     shiny::showNotification(eligibility$message, type = "error")
     return(invisible(NULL))
   }
-  if (!requireNamespace("ctsem", quietly = TRUE) ||
-      !exists("ctOptimUncertainty", envir = asNamespace("ctsem"), mode = "function")) {
+  if (!isTRUE(ctgui_ctsem_capabilities()$optional[["ctOptimUncertainty"]])) {
     message <- "The loaded ctsem package does not provide ctOptimUncertainty. Load a current ctsem source tree."
     uncertainty_status_value(message)
     shiny::showNotification(message, type = "error")
@@ -2554,14 +2522,14 @@ run_uncertainty_update <- function() {
   result <- NULL
   shiny::withProgress(message = "Recomputing optimized-fit uncertainty", value = .1, {
     result <- capture_conditions({
-      getExportedValue("ctsem", "ctOptimUncertainty")(
+      ctgui_ctsem_call("ctOptimUncertainty", .args = list(
         fit = fit,
         uncertainty = input$fit_uncertainty_method,
         draws = input$fit_uncertainty_draws,
         finishsamples = input$fit_uncertainty_samples,
         cores = input$fit_cores,
         control = uncertainty_control()
-      )
+      ))
     }, progress_callback = function(lines) {
       uncertainty_messages(paste(lines, collapse = "\n"))
     })
@@ -2631,7 +2599,7 @@ shiny::observeEvent(input$generate_from_fit, {
         cores = input$fit_gen_cores
       )
       args <- append_extra_args(args, input$fit_gen_extra_args)
-      do.call(getExportedValue("ctsem", "ctGenerateFromFit"), args)
+      ctgui_ctsem_call("ctGenerateFromFit", .args = args)
     })
     shiny::incProgress(0.8, detail = "Generation returned")
   })
@@ -2670,7 +2638,7 @@ shiny::observeEvent(input$run_cov_check, {
         cores = 1
       )
       args <- append_extra_args(args, input$cov_extra_args)
-      do.call(getExportedValue("ctsem", "ctFitCovCheck"), args)
+      ctgui_ctsem_call("ctFitCovCheck", .args = args)
     })
     shiny::incProgress(0.8, detail = "Covariance check returned")
   })
@@ -2704,7 +2672,7 @@ shiny::observeEvent(input$run_kalman, {
       if (!is_omitted_arg(timestep)) args$timestep <- timestep
       if (!is_omitted_arg(remove_obs)) args$removeObs <- remove_obs
       args <- append_extra_args(args, input$kalman_extra_args)
-      do.call(getExportedValue("ctsem", "ctPredict"), args)
+      ctgui_ctsem_call("ctPredict", .args = args)
     })
     shiny::incProgress(0.8, detail = "ctPredict returned")
   })
@@ -2727,7 +2695,7 @@ shiny::observeEvent(input$run_postpred, {
   out <- NULL
   shiny::withProgress(message = "Running ctPostPredPlots", value = 0.2, {
     out <- capture_conditions({
-      getExportedValue("ctsem", "ctPostPredPlots")(fit)
+      ctgui_ctsem_call("ctPostPredPlots", fit)
     })
     shiny::incProgress(0.8, detail = "Posterior predictive plots returned")
   })
@@ -2754,7 +2722,7 @@ shiny::observeEvent(input$run_residual_acf, {
     out <- capture_conditions({
       args <- list(fit = fit, varnames = vars, nboot = input$acf_boot, plot = FALSE)
       args <- append_extra_args(args, input$acf_extra_args)
-      do.call(getExportedValue("ctsem", "ctACFresiduals"), args)
+      ctgui_ctsem_call("ctACFresiduals", .args = args)
     })
     shiny::incProgress(0.8, detail = "Residual ACF returned")
   })
@@ -2786,7 +2754,7 @@ shiny::observeEvent(input$run_dynamics, {
       if (!is_omitted_arg(times)) args$times <- times
       if (!is_omitted_arg(nsamples)) args$nsamples <- nsamples
       args <- append_extra_args(args, input$dynamic_extra_args)
-      do.call(getExportedValue("ctsem", "ctDiscretePars"), args)
+      ctgui_ctsem_call("ctDiscretePars", .args = args)
     })
     shiny::incProgress(0.8, detail = "Dynamics plot returned")
   })
@@ -2823,7 +2791,7 @@ shiny::observeEvent(input$run_tipred_effects, {
       if (!is_omitted_arg(subject)) args$subject <- subject
       if (!is_omitted_arg(timestep)) args$timestep <- timestep
       if (!is_omitted_arg(tipvalues)) args$TIPvalues <- tipvalues
-      do.call(getExportedValue("ctsem", "ctPredictTIP"), args)
+      ctgui_ctsem_call("ctPredictTIP", .args = args)
     })
     shiny::incProgress(0.8, detail = "ctPredictTIP returned")
   })
@@ -2850,16 +2818,14 @@ cov_check_plot_list <- shiny::reactive({
   if (is.null(out)) return(NULL)
   lags <- parse_r_expression(input$cov_lags, 0:3)
   plots <- tryCatch(
-    getExportedValue("ctsem", "ctFitCovCheckPlot")(
-      out,
+    ctgui_ctsem_call("ctFitCovCheckPlot", out,
       maxlag = max(lags),
       cor = input$cov_cor
     ),
     error = function(e) e
   )
   if (inherits(plots, "error")) return(plots)
-  if (inherits(plots, "ggplot")) return(list(Covariance = plots))
-  plots
+  ctgui_plot_collection(plots)
 })
 
 output$cov_check_plots <- shiny::renderUI({
@@ -2880,7 +2846,7 @@ output$cov_check_plots <- shiny::renderUI({
         on.exit({ plot_cache[[output_id]] <- grDevices::recordPlot() }, add = TRUE)
         plot_list <- cov_check_plot_list()
         if (is.null(plot_list) || inherits(plot_list, "error")) return(invisible(NULL))
-        print(plot_list[[plot_index]])
+        ctgui_draw_plot(plot_list[[plot_index]])
       }, height = 430)
     })
     shiny::div(
@@ -2912,8 +2878,8 @@ output$kalman_plot <- shiny::renderPlot({
 output$postpred_plots <- shiny::renderUI({
   plots <- postpred_result()
   if (is.null(plots)) return(shiny::helpText("Run ctPostPredPlots to show plots."))
-  if (inherits(plots, "ggplot")) plots <- list(`Posterior predictive` = plots)
-  if (!is.list(plots) || length(plots) == 0L) return(shiny::helpText("ctPostPredPlots returned no plots."))
+  plots <- ctgui_plot_collection(plots)
+  if (length(plots) == 0L) return(shiny::helpText("ctPostPredPlots returned no plots."))
   record_output_code("postpred", postpred_code_snippet())
   ids <- paste0("postpred_plot_", seq_along(plots))
   shiny::tagList(lapply(seq_along(plots), function(i) {
@@ -2923,10 +2889,9 @@ output$postpred_plots <- shiny::renderUI({
       register_plot_export(output_id)
       output[[output_id]] <- shiny::renderPlot({
         on.exit({ plot_cache[[output_id]] <- grDevices::recordPlot() }, add = TRUE)
-        plot_list <- postpred_result()
-        if (inherits(plot_list, "ggplot")) plot_list <- list(plot_list)
+        plot_list <- ctgui_plot_collection(postpred_result())
         if (is.null(plot_list) || length(plot_list) < plot_index) return(invisible(NULL))
-        print(plot_list[[plot_index]])
+        ctgui_draw_plot(plot_list[[plot_index]])
       }, height = 430)
     })
     shiny::div(
@@ -2944,7 +2909,7 @@ output$residual_acf_plot <- shiny::renderPlot({
   out <- residual_acf()
   if (is.null(out)) return(invisible(NULL))
   record_output_code("residual_acf", residual_acf_code_snippet())
-  plot_result <- try(getExportedValue("ctsem", "plotctACF")(out), silent = TRUE)
+  plot_result <- try(ctgui_ctsem_call("plotctACF", out), silent = TRUE)
   if (inherits(plot_result, "try-error")) {
     graphics::plot.new()
     graphics::text(0.5, 0.5, as.character(plot_result), cex = 0.8)
@@ -2973,23 +2938,8 @@ output$tipred_effects_plots <- shiny::renderUI({
   plots <- tipred_effects_result()
   if (is.null(plots)) return(shiny::helpText("Run ctPredictTIP to show trajectory and dynamics plots."))
   record_output_code("tipred", tipred_code_snippet())
-  flatten_plots <- function(x, prefix = character()) {
-    if (inherits(x, "ggplot") || inherits(x, "recordedplot") || is.function(x)) {
-      label <- paste(prefix[nzchar(prefix)], collapse = " / ")
-      if (!nzchar(label)) label <- "Plot"
-      return(stats::setNames(list(x), label))
-    }
-    if (!is.list(x)) return(list())
-    out <- list()
-    for (name in names(x) %||% seq_along(x)) {
-      child <- x[[name]]
-      child_name <- as.character(name)
-      out <- c(out, flatten_plots(child, c(prefix, child_name)))
-    }
-    out
-  }
   group_ui <- function(group_name, group_plots) {
-    flat <- flatten_plots(group_plots)
+    flat <- ctgui_plot_collection(group_plots)
     if (!length(flat)) return(shiny::helpText(paste("No", tolower(group_name), "plots returned.")))
     ids <- paste0("tipred_", tolower(group_name), "_plot_", seq_along(flat))
     shiny::tagList(lapply(seq_along(flat), function(i) {
@@ -3001,9 +2951,9 @@ output$tipred_effects_plots <- shiny::renderUI({
           on.exit({ plot_cache[[output_id]] <- grDevices::recordPlot() }, add = TRUE)
           current <- tipred_effects_result()
           current_group <- if (is.list(current) && group_name %in% names(current)) current[[group_name]] else current
-          current_flat <- flatten_plots(current_group)
+          current_flat <- ctgui_plot_collection(current_group)
           if (length(current_flat) < plot_index) return(invisible(NULL))
-          print(current_flat[[plot_index]])
+          ctgui_draw_plot(current_flat[[plot_index]])
         }, height = 430)
       })
       shiny::div(
@@ -3040,11 +2990,11 @@ fit_summary_text <- function() {
 fit_summary_matrices_text <- function() {
   fit <- active_fit()
   if (is.null(fit)) return("No fit available.")
-  if (!exists("ctSummaryMatrices", envir = asNamespace("ctsem"), mode = "function")) {
+  if (!isTRUE(ctgui_ctsem_capabilities()$optional[["ctSummaryMatrices"]])) {
     return("ctsem::ctSummaryMatrices() is not available in the loaded ctsem version.")
   }
   result <- tryCatch(
-    capture_output_wide(getExportedValue("ctsem", "ctSummaryMatrices")(fit)),
+    capture_output_wide(ctgui_ctsem_call("ctSummaryMatrices", fit)),
     error = function(e) paste("ctSummaryMatrices failed:", conditionMessage(e))
   )
   record_output_code("summary_matrices", summary_matrices_code_snippet())

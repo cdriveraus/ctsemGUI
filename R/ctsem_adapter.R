@@ -2,7 +2,7 @@
 
 ctgui_ctsem_capabilities <- function() {
   required <- c("ctModel", "ctModelMatrices")
-  optional <- c("ctFit", "ctModelLatex", "ctGenerate", "ctOptimUncertainty",
+  optional <- c("ctFit", "ctModelLatex", "ctGenerate", "ctGenerateFromFit", "ctOptimUncertainty",
     "ctSummaryMatrices", "ctFitCovCheck", "ctFitCovCheckPlot", "ctPredict",
     "ctPredictTIP", "ctPostPredPlots", "ctACFresiduals", "ctDiscretePars", "plotctACF")
   installed <- requireNamespace("ctsem", quietly = TRUE)
