@@ -35,8 +35,6 @@ output_code_snippets <- shiny::reactiveVal(list())
 diagnostics_status <- shiny::reactiveVal("No fit diagnostics have been run.")
 matrix_status <- shiny::reactiveVal("Matrix edits update the current model spec.")
 plot_cache <- shiny::reactiveValues()
-visual_drafts <- shiny::reactiveVal(list())
-visual_status_value <- shiny::reactiveVal("Visual editor is loading the current matrices.")
 spec_inputs_suspended <- shiny::reactiveVal(FALSE)
 
 sync_matrix_inputs_from_spec <- function(spec) {
@@ -59,35 +57,6 @@ sync_matrix_inputs_from_spec <- function(spec) {
   session$onFlushed(function() {
     spec_inputs_suspended(FALSE)
   }, once = TRUE)
-}
-
-visual_graph_for_view <- function(view = input$visual_view %||% "state_space") {
-  drafts <- visual_drafts()
-  graph <- drafts[[view]]
-  if (is.null(graph)) graph <- ctgui_visual_graph(current_spec(), view)
-  graph
-}
-visual_data_columns <- function() {
-  data <- shiny::isolate(current_data())
-  if (is.null(data)) character() else names(data)
-}
-send_visual_graph <- function(view = input$visual_view %||% "state_space") {
-  session$sendCustomMessage("ctgui-visual-load", list(
-    id = "visual_spec_canvas", graph = visual_graph_for_view(view),
-    data_columns = visual_data_columns()
-  ))
-}
-reset_visual_drafts <- function(message = "Reloaded visual editor from matrices.") {
-  spec <- ctgui_visual_ensure(current_spec())
-  commit_current_spec(spec, reason = "visual_reset", refresh_visual = FALSE,
-    refresh_widgets = FALSE)
-  drafts <- list(
-    state_space = ctgui_visual_graph(spec, "state_space"),
-    initial_state = ctgui_visual_graph(spec, "initial_state"),
-    tipred_effects = ctgui_visual_graph(spec, "tipred_effects")
-  )
-  visual_drafts(drafts); visual_status_value(message)
-  send_visual_graph()
 }
 
 register_plot_export <- function(id) {
@@ -456,6 +425,14 @@ commit_current_spec <- function(updated, reason = "edit", refresh_visual = NULL,
   invisible(effects)
 }
 
+visual_server <- ctgui_visual_server(
+  input = input, output = output, session = session,
+  current_spec = current_spec, current_data = current_data,
+  commit_current_spec = commit_current_spec,
+  sync_matrix_inputs_from_spec = sync_matrix_inputs_from_spec,
+  fit_status_value = fit_status_value, matrix_status = matrix_status
+)
+
 matrix_id_part <- ctgui_matrix_id_part
 matrix_cell_id <- ctgui_matrix_cell_id
 
@@ -723,185 +700,6 @@ rebuild_spec_if_needed <- function() {
   matrix_status("Matrix edits update the current model spec.")
   invisible(TRUE)
 }
-
-visual_selected_edge <- shiny::reactive({
-  selected <- input$visual_spec_canvas_selection
-  if (is.null(selected) || is.null(selected$id)) return(NULL)
-  graph <- visual_graph_for_view(selected$view %||% input$visual_view %||% "state_space")
-  if (isTRUE(selected$parameter_node)) {
-    spec <- current_spec(); matrix <- as.character(selected$matrix)
-    mat <- spec$matrices[[matrix]]
-    if (is.null(mat)) return(NULL)
-    row <- match(as.character(selected$row), rownames(mat)); col <- match(as.character(selected$col), colnames(mat))
-    if (is.na(row) || is.na(col)) return(NULL)
-    style <- ctgui_visual_edge_style(spec, matrix, rownames(mat)[row], colnames(mat)[col], mat[row, col])
-    return(c(list(id = NULL, matrix = matrix, row = rownames(mat)[row], col = colnames(mat)[col],
-      source = NULL, target = NULL, directed = TRUE, edge_kind = "parameter"), style))
-  }
-  edges <- graph$edges %||% list()
-  index <- which(vapply(edges, function(edge) identical(as.character(edge$id), as.character(selected$id)), logical(1L)))
-  if (!length(index)) return(NULL)
-  edge <- edges[[index[1L]]]
-  if (isTRUE(edge$visual_only) || identical(edge$edge_kind, "noise_input")) return(NULL)
-  edge
-})
-
-output$visual_path_inspector <- shiny::renderUI({
-  edge <- visual_selected_edge()
-  if (is.null(edge)) return(shiny::div(class = "matrix-cell-inspector", shiny::tags$p("Select a path to edit its parameter settings.")))
-  shiny::div(class = "matrix-cell-inspector visual-path-inspector",
-    shiny::tags$h5(paste(edge$matrix, "[", edge$row, ",", edge$col, "]", sep = "")),
-    shiny::div(class = "control-grid",
-      shiny::textInput("visual_path_value", "Value / parameter label / expression", value = if (identical(edge$value, "__free__")) ctgui_auto_label(edge$matrix, edge$row, edge$col) else edge$value %||% ""),
-      shiny::checkboxInput("visual_path_random", "RandomEffects", value = isTRUE(edge$indvarying)),
-      shiny::textInput("visual_path_transform", "Transform", value = ctgui_display_transform(edge$transform)),
-      shiny::numericInput("visual_path_sdscale", "RandomEffectsScale", value = suppressWarnings(as.numeric(edge$sdscale %||% 1)), step = 0.1),
-      if (length(current_spec()$tipred_names)) shiny::selectizeInput("visual_path_tipreds", "Time Independent Predictors", choices = current_spec()$tipred_names, selected = edge$tipred_effects %||% character(), multiple = TRUE),
-      shiny::textInput("visual_path_extra_pars", "PARS (free parameters in expression)", value = edge$extra_pars %||% "", placeholder = "e.g. nonlinear_a, nonlinear_b")
-    )
-  )
-})
-
-output$visual_pars_details <- shiny::renderUI({
-  edge <- visual_selected_edge()
-  if (is.null(edge)) return(NULL)
-  used <- ctgui_split_pars(edge$extra_pars)
-  if (!length(used)) return(NULL)
-  spec <- current_spec(); pars <- spec$matrices[["PARS"]]
-  if (is.null(pars)) return(NULL)
-  rows <- which(as.character(pars[, 1L, drop = TRUE]) %in% used)
-  if (!length(rows)) return(NULL)
-  cards <- lapply(rows, function(row) {
-    meta <- matrix_metadata(spec, "PARS", rownames(pars)[row], colnames(pars)[1L])
-    if (is.null(meta)) return(NULL)
-    tipreds <- spec$tipred_names[vapply(spec$tipred_names, function(tipred) {
-      field <- paste0(tipred, "_effect")
-      field %in% names(meta) && isTRUE(meta[[field]][1L])
-    }, logical(1L))]
-    scale <- suppressWarnings(as.numeric(meta$sdscale[1L])); if (is.na(scale)) scale <- 1
-    prefix <- paste0("visual_pars_", row)
-    shiny::div(class = "matrix-cell-inspector visual-path-inspector",
-      shiny::tags$h5(as.character(pars[row, 1L])),
-      shiny::div(class = "control-grid",
-        shiny::checkboxInput(paste0(prefix, "_indvarying"), "RandomEffects", value = isTRUE(meta$indvarying[1L])),
-        shiny::textInput(paste0(prefix, "_transform"), "Transform", value = ctgui_display_transform(meta$transform[1L])),
-        shiny::numericInput(paste0(prefix, "_sdscale"), "RandomEffectsScale", value = scale, step = 0.1),
-        if (length(spec$tipred_names)) shiny::selectizeInput(paste0(prefix, "_tipreds"), "Time Independent Predictors", choices = spec$tipred_names, selected = tipreds, multiple = TRUE)
-      )
-    )
-  })
-  shiny::div(class = "matrix-pars-details", shiny::tags$h5("PARS parameter metadata"), cards)
-})
-
-shiny::observeEvent(input$visual_spec_canvas_graph, {
-  graph <- input$visual_spec_canvas_graph
-  if (is.null(graph$view)) return()
-  if (isTRUE(graph$layout_only)) {
-    updated <- ctgui_visual_save_layout(current_spec(), graph)
-    drafts <- visual_drafts(); drafts[[graph$view]] <- graph; visual_drafts(drafts)
-    commit_current_spec(updated, reason = "visual_layout", refresh_visual = FALSE)
-    visual_status_value("Visual layout saved.")
-    return()
-  }
-  updated <- tryCatch(ctgui_visual_apply_graph(current_spec(), graph), error = function(e) e)
-  if (inherits(updated, "error")) {
-    shiny::showNotification(conditionMessage(updated), type = "error")
-    return()
-  }
-  drafts <- list(
-    state_space = ctgui_visual_graph(updated, "state_space"),
-    initial_state = ctgui_visual_graph(updated, "initial_state"),
-    tipred_effects = ctgui_visual_graph(updated, "tipred_effects")
-  )
-  visual_drafts(drafts)
-  commit_current_spec(updated, reason = "visual_graph")
-  sync_matrix_inputs_from_spec(updated)
-  fit_status_value("Visual model changed. Refit when ready.")
-  matrix_status("Visual change applied to model matrices.")
-  visual_status_value("Visual changes are applied directly to the current model.")
-  send_visual_graph(graph$view)
-}, ignoreInit = TRUE)
-
-shiny::observeEvent(input$visual_view, {
-  if (!length(visual_drafts())) reset_visual_drafts() else send_visual_graph(input$visual_view)
-}, ignoreInit = TRUE)
-# The visual tab is a view of the current matrix specification. Rebuild its
-# drafts when it is opened so edits made in Specification or Matrices cannot
-# leave the browser showing the startup/default graph.
-shiny::observeEvent(input$model_tabs, {
-  if (identical(input$model_tabs, "Visual Specification")) {
-    reset_visual_drafts("Loaded visual editor from the current model specification.")
-  }
-}, ignoreInit = TRUE)
-shiny::observeEvent(current_data(), {
-  if (length(visual_drafts())) send_visual_graph(input$visual_view %||% "state_space")
-}, ignoreInit = TRUE)
-
-update_visual_path <- function() {
-  selected <- input$visual_spec_canvas_selection; edge <- visual_selected_edge()
-  if (is.null(selected) || is.null(edge)) return(invisible(NULL))
-  committed_input <- function(id) {
-    payload <- input$visual_path_commit
-    if (is.list(payload) && id %in% names(payload)) payload[[id]] else input[[id]]
-  }
-  previous_pars <- current_spec()$matrices[["PARS"]]
-  previous_par_values <- if (is.null(previous_pars)) character() else {
-    as.character(previous_pars[, 1L, drop = TRUE])
-  }
-  drafts <- visual_drafts(); view <- selected$view %||% input$visual_view %||% "state_space"; graph <- drafts[[view]]
-  index <- which(vapply(graph$edges, function(item) identical(as.character(item$id), as.character(edge$id)), logical(1L)))[1L]
-  value <- trimws(committed_input("visual_path_value") %||% "")
-  if (!nzchar(value)) value <- "__free__"
-  item <- if (is.na(index)) edge else graph$edges[[index]]
-  item$value <- value; item$label <- if (identical(value, "__free__")) "free" else value
-  item$fixed <- !is.na(suppressWarnings(as.numeric(strsplit(value, "|", fixed = TRUE)[[1L]][1L])))
-  item$custom <- nzchar(committed_input("visual_path_extra_pars") %||% "")
-  item$indvarying <- isTRUE(committed_input("visual_path_random"))
-  item$transform <- committed_input("visual_path_transform") %||% ""
-  item$sdscale <- committed_input("visual_path_sdscale") %||% 1
-  item$tipred_effects <- committed_input("visual_path_tipreds") %||% character()
-  item$extra_pars <- committed_input("visual_path_extra_pars") %||% ""
-  if (!is.na(index)) { graph$edges[[index]] <- item; drafts[[view]] <- graph; visual_drafts(drafts) }
-  updated <- tryCatch(ctgui_visual_update_edge(current_spec(), item), error = function(e) e)
-  if (inherits(updated, "error")) { shiny::showNotification(conditionMessage(updated), type = "error"); return(invisible(NULL)) }
-  pars <- updated$matrices[["PARS"]]
-  used <- ctgui_split_pars(item$extra_pars)
-  if (!is.null(pars) && length(used)) for (row in which(as.character(pars[, 1L, drop = TRUE]) %in% used)) {
-    parameter_name <- as.character(pars[row, 1L])
-    if (!(parameter_name %in% previous_par_values)) next
-    prefix <- paste0("visual_pars_", row)
-    updated <- ctgui_set_parameter_metadata(updated, "PARS", rownames(pars)[row], colnames(pars)[1L],
-      transform = committed_input(paste0(prefix, "_transform")) %||% NULL,
-      indvarying = committed_input(paste0(prefix, "_indvarying")) %||% NULL,
-      sdscale = committed_input(paste0(prefix, "_sdscale")) %||% NULL,
-      tipred_effects = committed_input(paste0(prefix, "_tipreds")) %||% NULL)
-  }
-  drafts <- list(
-    state_space = ctgui_visual_graph(updated, "state_space"),
-    initial_state = ctgui_visual_graph(updated, "initial_state"),
-    tipred_effects = ctgui_visual_graph(updated, "tipred_effects")
-  )
-  visual_drafts(drafts)
-  commit_current_spec(updated, reason = "visual_path")
-  sync_matrix_inputs_from_spec(updated)
-  fit_status_value("Visual model changed. Refit when ready.")
-  matrix_status("Visual path updated in model matrices.")
-  visual_status_value("Visual changes are applied directly to the current model.")
-  # T0MEANS RandomEffects determines which T0VAR paths are visible in the
-  # initial-state graph. Reload that graph rather than patching only the
-  # edited mean path, so restored variance/correlation edges appear.
-  if (identical(item$matrix, "T0MEANS")) {
-    send_visual_graph("initial_state")
-  } else {
-    session$sendCustomMessage("ctgui-visual-update-edge", list(id = "visual_spec_canvas", edge = item))
-  }
-  invisible(NULL)
-}
-shiny::observeEvent(input$visual_path_commit, update_visual_path(), ignoreInit = TRUE)
-output$visual_status <- shiny::renderText(visual_status_value())
-# onFlushed() itself is not a reactive consumer.  Isolate the initial
-# reactive reads while the browser-side editor is being populated.
-session$onFlushed(function() shiny::isolate(reset_visual_drafts()), once = TRUE)
 
 matrix_group_names <- function(spec, group = input$matrix_group) {
   ctgui_matrix_group_names(spec, group)
@@ -1382,15 +1180,11 @@ apply_current_matrix <- function(show_notification = FALSE) {
   updated <- metadata_updated
   if (length(changed) == 0L) return(invisible(FALSE))
   commit_current_spec(updated, reason = "matrix_edit")
-  # Matrix metadata can change which T0VAR cells ctsem uses. Rebuild all
-  # visual drafts so toggling T0MEANS RandomEffects restores or suppresses
-  # the corresponding initial-state variance and correlation paths.
-  visual_drafts(list(
-    state_space = ctgui_visual_graph(updated, "state_space"),
-    initial_state = ctgui_visual_graph(updated, "initial_state"),
-    tipred_effects = ctgui_visual_graph(updated, "tipred_effects")
-  ))
-  send_visual_graph(input$visual_view %||% "state_space")
+  # Matrix metadata can change which T0VAR cells ctsem uses. Refresh all three
+  # projections so the visual module restores or suppresses initial paths.
+  visual_server$refresh(
+    updated, view = input$visual_view %||% "state_space"
+  )
   fit_status_value("Model changed. Refit when ready.")
   matrix_status(paste("Updated", paste(changed, collapse = ", "), "at", format(Sys.time(), "%H:%M:%S")))
   if (show_notification) shiny::showNotification("Matrix edits applied", type = "message")
