@@ -18,10 +18,11 @@
 #'   `ctgui_validate_data()` returns a validation data frame.
 #'   `ctgui_graph_edges()` returns graph edge data for one model element.
 ctgui_build_matrices <- function(spec,
-    structure = c("dynamic_var", "linear_growth", "dynamic_var_trend"),
+    structure = "dynamic_var",
     options = list()) {
   ctgui_check_spec(spec)
-  structure <- match.arg(structure)
+  previous <- spec
+  structure <- ctgui_match_builder_id(structure, "structure")
   if (is.null(options)) options <- list()
 
   latent_names <- spec$latent_names
@@ -34,71 +35,34 @@ ctgui_build_matrices <- function(spec,
     out
   }
 
-  if (identical(structure, "dynamic_var")) {
-    dyn <- selected_latents(options$dynamic_latents, "dynamic_latents")
-    matrices$DRIFT <- matrix(0, length(latent_names), length(latent_names), dimnames = list(latent_names, latent_names))
-    for (r in dyn) for (c in dyn) {
-      matrices$DRIFT[r, c] <- if (identical(r, c)) paste0("auto_", r) else paste0("cross_", c, "_to_", r)
-    }
-    matrices$DIFFUSION <- ctgui_diffusion_matrix(latent_names, ctgui_free_noise_correlations(options), active_latents = dyn)
-    matrices$CINT <- ctgui_fixed_matrix(0, latent_names, "CINT", ncol = 1L)
-    matrices$T0MEANS <- ctgui_label_matrix("T0MEANS", latent_names, "mean", ncol = 1L)
-    matrices$T0VAR <- ctgui_lower_label_matrix("t0var", latent_names)
-  } else if (identical(structure, "linear_growth")) {
-    level <- selected_latents(options$level_latents, "level_latents")
-    slope <- selected_latents(options$slope_latents, "slope_latents")
-    if (length(level) != length(slope)) stop("level_latents and slope_latents must have the same length", call. = FALSE)
-    if (any(level == slope)) stop("level and slope latent pairs must be distinct", call. = FALSE)
-    matrices$DRIFT <- matrix(0, length(latent_names), length(latent_names), dimnames = list(latent_names, latent_names))
-    for (i in seq_along(level)) matrices$DRIFT[level[i], slope[i]] <- 1
-    matrices$DIFFUSION <- matrix(0, length(latent_names), length(latent_names), dimnames = list(latent_names, latent_names))
-    matrices$CINT <- ctgui_fixed_matrix(0, latent_names, "CINT", ncol = 1L)
-    matrices$T0MEANS <- ctgui_label_matrix("T0MEANS", latent_names, "mean", ncol = 1L)
-    matrices$T0VAR <- ctgui_lower_label_matrix("t0var", latent_names)
-  } else if (identical(structure, "dynamic_var_trend")) {
-    dyn <- selected_latents(options$dynamic_latents, "dynamic_latents")
-    trend <- selected_latents(options$trend_latents, "trend_latents", default = character())
-    if (length(trend) == 0L) stop("trend_latents must be selected for trend structures", call. = FALSE)
-    if (length(dyn) != length(trend)) stop("dynamic_latents and trend_latents must have the same length", call. = FALSE)
-    if (any(dyn == trend)) stop("dynamic and trend latent pairs must be distinct", call. = FALSE)
-    trend_type <- match.arg(options$trend_type %||% "linear", c("linear", "exponential"))
-    matrices$DRIFT <- matrix(0, length(latent_names), length(latent_names), dimnames = list(latent_names, latent_names))
-    for (target in seq_along(dyn)) {
-      for (source in seq_along(dyn)) {
-        matrices$DRIFT[dyn[target], dyn[source]] <- if (target == source) {
-          paste0("auto_", dyn[target])
-        } else {
-          paste0("cross_", dyn[source], "_to_", dyn[target])
-        }
-      }
-      matrices$DRIFT[dyn[target], trend[target]] <- ctgui_trend_coupling_value(options$trend_coupling, dyn[target])
-      matrices$DRIFT[trend[target], trend[target]] <- if (identical(trend_type, "linear")) 0 else paste0("trend_decay_", trend[target])
-    }
-    matrices$DIFFUSION <- ctgui_diffusion_matrix(latent_names, ctgui_free_noise_correlations(options), active_latents = dyn)
-    matrices$CINT <- ctgui_fixed_matrix(0, latent_names, "CINT", ncol = 1L)
-    matrices$T0MEANS <- ctgui_label_matrix("T0MEANS", latent_names, "mean", ncol = 1L)
-    matrices$T0VAR <- ctgui_lower_label_matrix("t0var", latent_names)
-  }
+  context <- ctgui_builder_structure_context(structure, latent_names, options,
+    select_latents = selected_latents)
+  matrices <- ctgui_builder_apply_structure(
+    ctgui_builder_baseline_matrices(latent_names, spec$manifest_names, matrices$LAMBDA),
+    structure, context, options
+  )
 
   spec$matrices <- ctgui_order_matrices(matrices)
   spec$builder <- list(
     structure = structure,
-    dynamic_latents = options$dynamic_latents %||% NULL,
-    level_latents = options$level_latents %||% NULL,
-    slope_latents = options$slope_latents %||% NULL,
-    trend_latents = options$trend_latents %||% NULL,
-    trend_type = if (identical(structure, "dynamic_var_trend")) options$trend_type %||% "linear" else NULL,
+    factor_names = ctgui_builder_context_factor_names(context),
+    dynamic_latents = context$dynamic_latents %||% NULL,
+    level_latents = context$level_latents %||% NULL,
+    slope_latents = context$slope_latents %||% NULL,
+    trend_latents = context$trend_latents %||% NULL,
+    trend_type = context$trend_type %||% NULL,
     options = options
   )
-  ctgui_sync_model_from_matrices(spec)
+  ctgui_commit_result(ctgui_commit_spec(previous, spec, reason = "structure-builder"))
 }
 
 #' @rdname ctgui_build_matrices
 ctgui_build_measurement_matrices <- function(spec,
-    measurement = c("single_indicator", "marker", "fixed_loadings"),
+    measurement = "single_indicator",
     options = list()) {
   ctgui_check_spec(spec)
-  measurement <- match.arg(measurement)
+  previous <- spec
+  measurement <- ctgui_match_builder_id(measurement, "measurement")
   if (is.null(options)) options <- list()
 
   latent_names <- spec$latent_names
@@ -108,10 +72,11 @@ ctgui_build_measurement_matrices <- function(spec,
   if (length(missing_latents)) stop("factor_latents contains unknown latent names: ", paste(missing_latents, collapse = ", "), call. = FALSE)
 
   manifest_blocks <- ctgui_spec_manifest_blocks(options$manifest_blocks, manifest_names, factor_latents)
+  loading_names <- ctgui_builder_loading_names(spec, factor_latents, options)
   lambda <- matrix(0, length(manifest_names), length(latent_names), dimnames = list(manifest_names, latent_names))
   for (i in seq_along(factor_latents)) {
     block <- manifest_blocks[[i]]
-    loadings <- ctgui_measurement_loadings(measurement, block, factor_latents[i], options, i)
+    loadings <- ctgui_measurement_loadings(measurement, block, loading_names[i], options, i)
     lambda[block, factor_latents[i]] <- loadings
   }
 
@@ -124,9 +89,12 @@ ctgui_build_measurement_matrices <- function(spec,
     for (i in seq_along(factor_latents)) lambda[manifest_blocks[[i]], trend_latents[i]] <- lambda[manifest_blocks[[i]], factor_latents[i]]
   }
 
-  spec$matrices$LAMBDA <- lambda
-  spec$matrices$MANIFESTMEANS <- ctgui_fixed_matrix(0, manifest_names, "MANIFESTMEANS", ncol = 1L)
-  spec$matrices$MANIFESTVAR <- ctgui_diag_label_matrix("MANIFESTVAR", manifest_names)
+  measurement_defaults <- ctgui_builder_baseline_matrices(
+    latent_names, manifest_names, lambda
+  )
+  spec$matrices$LAMBDA <- measurement_defaults$LAMBDA
+  spec$matrices$MANIFESTMEANS <- measurement_defaults$MANIFESTMEANS
+  spec$matrices$MANIFESTVAR <- measurement_defaults$MANIFESTVAR
   spec$matrices <- ctgui_order_matrices(spec$matrices)
   spec$measurement_builder <- list(
     measurement = measurement,
@@ -135,17 +103,17 @@ ctgui_build_measurement_matrices <- function(spec,
     manifest_blocks = manifest_blocks,
     options = options
   )
-  ctgui_sync_model_from_matrices(spec)
+  ctgui_commit_result(ctgui_commit_spec(previous, spec, reason = "measurement-builder"))
 }
 
 #' @noRd
-ctgui_build_model <- function(structure = c("dynamic_var", "linear_growth", "dynamic_var_trend"),
-    measurement = c("single_indicator", "marker", "fixed_loadings"),
+ctgui_build_model <- function(structure = "dynamic_var",
+    measurement = "single_indicator",
     names = list(),
     options = list()) {
 
-  structure <- match.arg(structure)
-  measurement <- match.arg(measurement)
+  structure <- ctgui_match_builder_id(structure, "structure")
+  measurement <- ctgui_match_builder_id(measurement, "measurement")
   if (is.null(names)) names <- list()
   if (is.null(options)) options <- list()
 
@@ -188,24 +156,11 @@ ctgui_build_model <- function(structure = c("dynamic_var", "linear_growth", "dyn
     structure = structure
   )
 
-  matrices <- switch(structure,
-    linear_growth = ctgui_linear_growth_matrices(
-      factor_names = factor_names,
-      latent_names = latent_names,
-      measurement_spec = measurement_spec
-    ),
-    dynamic_var = ctgui_dynamic_var_matrices(
-      factor_names = factor_names,
-      latent_names = latent_names,
-      measurement_spec = measurement_spec,
-      options = options
-    ),
-    dynamic_var_trend = ctgui_dynamic_var_trend_matrices(
-      factor_names = factor_names,
-      latent_names = latent_names,
-      measurement_spec = measurement_spec,
-      options = options
-    )
+  context <- ctgui_builder_template_context(structure, factor_names, latent_names, options)
+  matrices <- ctgui_builder_apply_structure(
+    ctgui_builder_baseline_matrices(latent_names, measurement_spec$manifest_names,
+      measurement_spec$LAMBDA),
+    structure, context, options
   )
 
   spec <- ctgui_spec(
@@ -228,38 +183,24 @@ ctgui_build_model <- function(structure = c("dynamic_var", "linear_growth", "dyn
     factor_names = factor_names,
     latent_names = latent_names,
     manifest_blocks = measurement_spec$manifest_blocks,
-    trend_type = if (identical(structure, "dynamic_var_trend")) options$trend_type %||% "linear" else NULL,
+    dynamic_latents = context$dynamic_latents %||% NULL,
+    level_latents = context$level_latents %||% NULL,
+    slope_latents = context$slope_latents %||% NULL,
+    trend_latents = context$trend_latents %||% NULL,
+    trend_type = context$trend_type %||% NULL,
     options = options
   )
-  spec
+  ctgui_commit_result(ctgui_commit_spec(spec, spec, reason = "model-builder", sync_model = FALSE))
 }
 
 #' @rdname ctgui_build_matrices
 ctgui_structures <- function() {
-  data.frame(
-    id = c("linear_growth", "dynamic_var", "dynamic_var_trend"),
-    title = c("Linear growth", "Cross-lagged / VAR dynamics", "Cross-lagged / VAR with trend processes"),
-    description = c(
-      "n-dimensional latent growth structure with level/slope processes and correlated initial individual differences.",
-      "n-dimensional dynamic system with auto-effects on the DRIFT diagonal and cross-effects off diagonal.",
-      "n-dimensional dynamic system with paired trend processes that share the selected measurement model."
-    ),
-    stringsAsFactors = FALSE
-  )
+  ctgui_builder_catalog("structure")
 }
 
 #' @rdname ctgui_build_matrices
 ctgui_measurements <- function() {
-  data.frame(
-    id = c("single_indicator", "marker", "fixed_loadings"),
-    title = c("Single-indicator identity", "Marker-loading factor model", "User-fixed loading factor model"),
-    description = c(
-      "One observed indicator per factor, loading fixed to 1.",
-      "Multiple indicators per factor with the first loading fixed to 1 and remaining loadings free.",
-      "Multiple indicators per factor with loadings supplied through options$fixed_loadings."
-    ),
-    stringsAsFactors = FALSE
-  )
+  ctgui_builder_catalog("measurement")
 }
 
 #' @rdname ctgui_build_matrices
@@ -432,71 +373,139 @@ ctgui_measurement_loadings <- function(measurement, block, factor_name, options,
   fixed
 }
 
-ctgui_linear_growth_matrices <- function(factor_names, latent_names, measurement_spec) {
-  nlatent <- length(latent_names)
-  drift <- matrix(0, nlatent, nlatent, dimnames = list(latent_names, latent_names))
-  for (i in seq_along(factor_names)) drift[(2L * i) - 1L, 2L * i] <- 1
+ctgui_builder_catalog <- function(kind = c("structure", "measurement")) {
+  kind <- match.arg(kind)
+  catalog <- list(
+    structure = data.frame(
+      id = c("linear_growth", "dynamic_var", "dynamic_var_trend"),
+      title = c("Linear growth", "Cross-lagged / VAR dynamics", "Cross-lagged / VAR with trend processes"),
+      description = c(
+        "n-dimensional latent growth structure with level/slope processes and correlated initial individual differences.",
+        "n-dimensional dynamic system with auto-effects on the DRIFT diagonal and cross-effects off diagonal.",
+        "n-dimensional dynamic system with paired trend processes that share the selected measurement model."
+      ),
+      stringsAsFactors = FALSE
+    ),
+    measurement = data.frame(
+      id = c("single_indicator", "marker", "fixed_loadings"),
+      title = c("Single-indicator identity", "Marker-loading factor model", "User-fixed loading factor model"),
+      description = c(
+        "One observed indicator per factor, loading fixed to 1.",
+        "Multiple indicators per factor with the first loading fixed to 1 and remaining loadings free.",
+        "Multiple indicators per factor with loadings supplied through options$fixed_loadings."
+      ),
+      stringsAsFactors = FALSE
+    )
+  )
+  catalog[[kind]]
+}
+
+ctgui_builder_context_factor_names <- function(context) {
+  if (!is.null(context$dynamic_latents)) return(context$dynamic_latents)
+  if (!is.null(context$level_latents)) return(sub("_level$", "", context$level_latents))
+  character()
+}
+
+ctgui_builder_loading_names <- function(spec, factor_latents, options) {
+  labels <- options$factor_label_names %||% spec$builder$factor_names %||% factor_latents
+  labels <- ctgui_as_names(labels, "factor_label_names")
+  if (length(labels) != length(factor_latents)) {
+    stop("factor_label_names must match factor_latents length", call. = FALSE)
+  }
+  labels
+}
+
+ctgui_match_builder_id <- function(id, kind = c("structure", "measurement")) {
+  kind <- match.arg(kind)
+  choices <- ctgui_builder_catalog(kind)$id
+  if (length(id) != 1L || is.na(id) || !(id %in% choices)) {
+    stop(kind, " must be one of: ", paste(choices, collapse = ", "), call. = FALSE)
+  }
+  as.character(id)
+}
+
+# All complete templates start from these shared matrices.  Structure-specific
+# helpers are only allowed to change DRIFT and DIFFUSION; measurement helpers
+# are only allowed to supply LAMBDA.  This makes the guided and new-model
+# paths use exactly the same defaults and parameter labels.
+ctgui_builder_baseline_matrices <- function(latent_names, manifest_names, lambda) {
   list(
-    LAMBDA = measurement_spec$LAMBDA,
+    LAMBDA = lambda,
     T0VAR = ctgui_lower_label_matrix("t0var", latent_names),
     T0MEANS = ctgui_label_matrix("T0MEANS", latent_names, "mean", ncol = 1L),
-    MANIFESTMEANS = ctgui_fixed_matrix(0, measurement_spec$manifest_names, "MANIFESTMEANS", ncol = 1L),
-    MANIFESTVAR = ctgui_diag_label_matrix("MANIFESTVAR", measurement_spec$manifest_names),
-    DRIFT = drift,
+    MANIFESTMEANS = ctgui_fixed_matrix(0, manifest_names, "MANIFESTMEANS", ncol = 1L),
+    MANIFESTVAR = ctgui_diag_label_matrix("MANIFESTVAR", manifest_names),
+    DRIFT = matrix(0, length(latent_names), length(latent_names), dimnames = list(latent_names, latent_names)),
     CINT = ctgui_fixed_matrix(0, latent_names, "CINT", ncol = 1L),
-    DIFFUSION = matrix(0, nlatent, nlatent, dimnames = list(latent_names, latent_names))
+    DIFFUSION = matrix(0, length(latent_names), length(latent_names), dimnames = list(latent_names, latent_names))
   )
 }
 
-ctgui_dynamic_var_matrices <- function(factor_names, latent_names, measurement_spec, options) {
-  nlatent <- length(latent_names)
-  drift <- matrix("", nlatent, nlatent, dimnames = list(latent_names, latent_names))
-  for (r in seq_len(nlatent)) {
-    for (c in seq_len(nlatent)) {
-      drift[r, c] <- if (r == c) paste0("auto_", latent_names[r]) else paste0("cross_", latent_names[c], "_to_", latent_names[r])
-    }
-  }
-  list(
-    LAMBDA = measurement_spec$LAMBDA,
-    T0VAR = ctgui_lower_label_matrix("t0var", latent_names),
-    T0MEANS = ctgui_label_matrix("T0MEANS", latent_names, "mean", ncol = 1L),
-    MANIFESTMEANS = ctgui_fixed_matrix(0, measurement_spec$manifest_names, "MANIFESTMEANS", ncol = 1L),
-    MANIFESTVAR = ctgui_diag_label_matrix("MANIFESTVAR", measurement_spec$manifest_names),
-    DRIFT = drift,
-    CINT = ctgui_fixed_matrix(0, latent_names, "CINT", ncol = 1L),
-    DIFFUSION = ctgui_diffusion_matrix(latent_names, ctgui_free_noise_correlations(options))
+ctgui_builder_template_context <- function(structure, factor_names, latent_names, options) {
+  switch(structure,
+    dynamic_var = list(dynamic_latents = factor_names),
+    linear_growth = list(
+      level_latents = latent_names[seq(1L, length(latent_names), by = 2L)],
+      slope_latents = latent_names[seq(2L, length(latent_names), by = 2L)]
+    ),
+    dynamic_var_trend = list(
+      dynamic_latents = factor_names,
+      trend_latents = latent_names[seq(2L, length(latent_names), by = 2L)],
+      trend_type = match.arg(options$trend_type %||% "linear", c("linear", "exponential"))
+    )
   )
 }
 
-ctgui_dynamic_var_trend_matrices <- function(factor_names, latent_names, measurement_spec, options) {
-  n <- length(factor_names)
-  nlatent <- length(latent_names)
-  trend_type <- match.arg(options$trend_type %||% "linear", c("linear", "exponential"))
-  drift <- matrix(0, nlatent, nlatent, dimnames = list(latent_names, latent_names))
-  for (target in seq_len(n)) {
-    target_row <- (2L * target) - 1L
-    for (source in seq_len(n)) {
-      source_col <- (2L * source) - 1L
-      drift[target_row, source_col] <- if (target == source) {
-        paste0("auto_", factor_names[target])
-      } else {
-        paste0("cross_", factor_names[source], "_to_", factor_names[target])
-      }
-    }
-    trend_col <- 2L * target
-    drift[target_row, trend_col] <- ctgui_trend_coupling_value(options$trend_coupling, factor_names[target])
-    drift[trend_col, trend_col] <- if (trend_type == "linear") 0 else paste0("trend_decay_", factor_names[target])
+ctgui_builder_structure_context <- function(structure, latent_names, options, select_latents) {
+  if (identical(structure, "dynamic_var")) {
+    return(list(dynamic_latents = select_latents(options$dynamic_latents, "dynamic_latents")))
   }
-  list(
-    LAMBDA = measurement_spec$LAMBDA,
-    T0VAR = ctgui_lower_label_matrix("t0var", latent_names),
-    T0MEANS = ctgui_label_matrix("T0MEANS", latent_names, "mean", ncol = 1L),
-    MANIFESTMEANS = ctgui_fixed_matrix(0, measurement_spec$manifest_names, "MANIFESTMEANS", ncol = 1L),
-    MANIFESTVAR = ctgui_diag_label_matrix("MANIFESTVAR", measurement_spec$manifest_names),
-    DRIFT = drift,
-    CINT = ctgui_fixed_matrix(0, latent_names, "CINT", ncol = 1L),
-    DIFFUSION = ctgui_diffusion_matrix(latent_names, ctgui_free_noise_correlations(options))
+  if (identical(structure, "linear_growth")) {
+    level <- select_latents(options$level_latents, "level_latents")
+    slope <- select_latents(options$slope_latents, "slope_latents")
+    if (length(level) != length(slope)) stop("level_latents and slope_latents must have the same length", call. = FALSE)
+    if (any(level == slope)) stop("level and slope latent pairs must be distinct", call. = FALSE)
+    return(list(level_latents = level, slope_latents = slope))
+  }
+  dynamic <- select_latents(options$dynamic_latents, "dynamic_latents")
+  trend <- select_latents(options$trend_latents, "trend_latents", default = character())
+  if (!length(trend)) stop("trend_latents must be selected for trend structures", call. = FALSE)
+  if (length(dynamic) != length(trend)) stop("dynamic_latents and trend_latents must have the same length", call. = FALSE)
+  if (any(dynamic == trend)) stop("dynamic and trend latent pairs must be distinct", call. = FALSE)
+  list(dynamic_latents = dynamic, trend_latents = trend,
+    trend_type = match.arg(options$trend_type %||% "linear", c("linear", "exponential")))
+}
+
+ctgui_builder_apply_structure <- function(matrices, structure, context, options) {
+  latent_names <- rownames(matrices$DRIFT)
+  if (identical(structure, "linear_growth")) {
+    for (i in seq_along(context$level_latents)) {
+      matrices$DRIFT[context$level_latents[i], context$slope_latents[i]] <- 1
+    }
+    return(matrices)
+  }
+
+  dynamic <- context$dynamic_latents
+  for (target in dynamic) for (source in dynamic) {
+    matrices$DRIFT[target, source] <- if (identical(target, source)) {
+      paste0("auto_", target)
+    } else {
+      paste0("cross_", source, "_to_", target)
+    }
+  }
+  matrices$DIFFUSION <- ctgui_diffusion_matrix(
+    latent_names, ctgui_free_noise_correlations(options), active_latents = dynamic
   )
+  if (!identical(structure, "dynamic_var_trend")) return(matrices)
+
+  for (i in seq_along(dynamic)) {
+    trend <- context$trend_latents[i]
+    matrices$DRIFT[dynamic[i], trend] <- ctgui_trend_coupling_value(options$trend_coupling, dynamic[i])
+    matrices$DRIFT[trend, trend] <- if (identical(context$trend_type, "linear")) 0 else {
+      paste0("trend_decay_", dynamic[i])
+    }
+  }
+  matrices
 }
 
 ctgui_free_noise_correlations <- function(options) {
@@ -542,10 +551,13 @@ ctgui_diffusion_matrix <- function(latent_names, free_correlations = FALSE, acti
 }
 
 ctgui_cell_active <- function(x) {
-  if (length(x) == 0L || is.na(x)) return(FALSE)
-  numeric <- suppressWarnings(as.numeric(x))
-  if (!is.na(numeric)) return(numeric != 0)
-  nzchar(trimws(as.character(x))) && trimws(as.character(x)) != "0"
+  if (length(x) == 0L || is.na(x[1L])) return(FALSE)
+  value <- trimws(as.character(x[1L]))
+  if (!nzchar(value)) return(FALSE)
+  decoded <- ctgui_parameter_annotation_decode(value)
+  if (!is.na(decoded$param)) return(TRUE)
+  numeric <- suppressWarnings(as.numeric(value))
+  !is.na(numeric) && numeric != 0
 }
 
 ctgui_edges_from_matrix <- function(mat, directed, element) {
