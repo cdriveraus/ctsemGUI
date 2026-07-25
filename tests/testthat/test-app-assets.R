@@ -27,6 +27,16 @@ test_that("application CSS and event glue are external and versioned", {
   expect_false(grepl("addCustomMessageHandler", rendered$head, fixed = TRUE))
 })
 
+test_that("application and visual assets have independent cache versions", {
+  source <- paste(readLines(testthat::test_path("..", "..", "R", "app.R")),
+    collapse = "\n")
+
+  expect_match(source, 'application_asset_files <- file.path(www_path, "app"',
+    fixed = TRUE)
+  expect_match(source, "application_asset_version = application_asset_version",
+    fixed = TRUE)
+})
+
 test_that("application event handlers are scoped to the application root", {
   javascript <- paste(
     readLines(testthat::test_path("..", "..", "inst", "www", "app", "app.js")),

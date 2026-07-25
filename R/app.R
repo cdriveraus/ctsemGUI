@@ -16,9 +16,17 @@ ctgui_create_app <- function(initial_spec = ctgui_spec(), help_catalog = ctgui_h
   } else {
     as.character(utils::packageVersion("ctsemgui"))
   }
+  application_asset_files <- file.path(www_path, "app", c("app.js", "app.css"))
+  application_asset_version <- if (
+      length(application_asset_files) && all(file.exists(application_asset_files))) {
+    format(max(file.info(application_asset_files)$mtime), "%Y%m%d%H%M%S")
+  } else {
+    as.character(utils::packageVersion("ctsemgui"))
+  }
   assets <- list(
     www_path = www_path,
     visual_asset_version = visual_asset_version,
+    application_asset_version = application_asset_version,
     visual_asset_url = function(file) {
       paste0("ctsemgui-assets/visual-spec/", file, "?v=", visual_asset_version)
     }
