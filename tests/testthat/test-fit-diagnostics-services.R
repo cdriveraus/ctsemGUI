@@ -31,10 +31,11 @@ test_that("fit comparison statistics tolerate partial fits", {
 })
 
 test_that("diagnostic guards fail before any expensive ctsem invocation", {
-  shiny::testServer(ctgui_app_server(ctgui_spec(), ctgui_help_catalog()), {
+  suppressWarnings(shiny::testServer(
+    ctgui_app_server(ctgui_spec(), ctgui_help_catalog()), {
     session$setInputs(run_cov_check = 1)
     expect_equal(output$diagnostics_status, "No fit diagnostics have been run.")
     session$setInputs(run_uncertainty = 1)
     expect_match(output$uncertainty_status, "No fit is available.", fixed = TRUE)
-  })
+  }))
 })

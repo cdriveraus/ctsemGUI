@@ -279,7 +279,10 @@ test_that("visual additions retain standard estimated noise variances", {
 })
 
 test_that("TI visual graph round trips predictor effects", {
-  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y", tipred_names = c("group", "age"), tipredDefault = FALSE)
+  expect_warning(
+    spec <- ctgui_spec(latent_names = "eta", manifest_names = "y", tipred_names = c("group", "age"), tipredDefault = FALSE),
+    "TI predictors included but no effects specified", fixed = TRUE
+  )
   spec <- ctgui_set_parameter_metadata(spec, "DRIFT", "eta", "eta", tipred_effects = "group")
   graph <- ctgui_visual_graph(spec, "tipred_effects")
   expect_true(any(vapply(graph$nodes, function(node) identical(node$kind, "parameter"), logical(1L))))
@@ -287,7 +290,10 @@ test_that("TI visual graph round trips predictor effects", {
   expect_equal(edge$colour, "#0f766e")
   expect_equal(edge$label, "")
   graph$edges <- Filter(function(item) !identical(item$id, edge$id), graph$edges)
-  updated <- ctgui_visual_apply_graph(spec, graph)
+  expect_warning(
+    updated <- ctgui_visual_apply_graph(spec, graph),
+    "TI predictors included but no effects specified", fixed = TRUE
+  )
   meta <- ctgui_visual_metadata(updated, "DRIFT", "eta", "eta")
   expect_false(meta$group_effect[1L])
 })

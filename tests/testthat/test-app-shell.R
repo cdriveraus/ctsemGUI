@@ -15,8 +15,8 @@ test_that("application composition constructs a Shiny application", {
 test_that("server construction has a testServer-compatible seam", {
   skip_if_not_installed("shiny")
 
-  expect_no_error(shiny::testServer(
+  expect_no_error(suppressWarnings(shiny::testServer(
     ctgui_app_server(ctgui_spec(), ctgui_help_catalog()),
     { expect_true(is.function(session$sendCustomMessage)) }
-  ))
+  )))
 })

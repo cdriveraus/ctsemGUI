@@ -80,7 +80,7 @@ test_that("exported matrix code preserves matrix positions", {
   spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta1", "eta2", label = "cross12")
 
   env <- new.env(parent = globalenv())
-  eval(parse(text = ctgui_export_code(spec)), envir = env)
+  suppressWarnings(eval(parse(text = ctgui_export_code(spec)), envir = env))
   drift <- ctsem::ctModelMatrices(env$model)$DRIFT
 
   expect_equal(drift[1, 2], "cross12")
@@ -115,9 +115,12 @@ test_that("latex equations are produced from ctsem", {
 test_that("annotated TI parameter settings survive matrix round trips", {
   skip_if_not_installed("ctsem")
 
-  spec <- ctgui_spec(
-    latent_names = "eta", manifest_names = "Y",
-    tipred_names = c("age", "group"), tipredDefault = FALSE
+  expect_warning(
+    spec <- ctgui_spec(
+      latent_names = "eta", manifest_names = "Y",
+      tipred_names = c("age", "group"), tipredDefault = FALSE
+    ),
+    "TI predictors included but no effects specified", fixed = TRUE
   )
   spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta", label = "auto_eta||TRUE||age")
   expect_equal(ctgui_matrix(spec, "DRIFT")[1, 1], "auto_eta")
@@ -134,11 +137,17 @@ test_that("annotated TI parameter settings survive matrix round trips", {
 })
 
 test_that("parameter metadata retains all selected-cell settings", {
-  spec <- ctgui_spec(
-    latent_names = "eta", manifest_names = "Y",
-    tipred_names = c("age", "group"), tipredDefault = FALSE
+  expect_warning(
+    spec <- ctgui_spec(
+      latent_names = "eta", manifest_names = "Y",
+      tipred_names = c("age", "group"), tipredDefault = FALSE
+    ),
+    "TI predictors included but no effects specified", fixed = TRUE
   )
-  spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta", label = "auto_eta")
+  expect_warning(
+    spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta", label = "auto_eta"),
+    "TI predictors included but no effects specified", fixed = TRUE
+  )
   spec <- ctgui_set_parameter_metadata(
     spec, "DRIFT", "eta", "eta",
     transform = "exp(param)", indvarying = TRUE, sdscale = 0.75,
