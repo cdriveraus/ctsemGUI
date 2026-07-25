@@ -29,21 +29,25 @@
     // Matrix text edits are saved on blur/change. This is especially
     // important when a fixed numeric value becomes a new free label: the
     // server must create its metadata row before the inspector can render.
-    app.on("change", ".matrix-cell input[type=\"text\"]", function () {
+    app.on("change", ".matrix-cell input[type=\"text\"]", function (event) {
       var cell = $(this).closest(".matrix-cell");
+      // updateTextInput() synchronizes widgets after a canonical commit and
+      // can emit a synthetic change. Only native user edits start commits.
+      if (!event.originalEvent) return;
       if (window.Shiny && cell.length) {
-        // This delegated handler runs before Shiny's document-level input
-        // binding. Send the cell value explicitly so the server cannot receive
-        // the commit nonce while it still holds the previous matrix value.
-        Shiny.setInputValue(this.id, $(this).val(), { priority: "event" });
         Shiny.setInputValue("matrix_selected_cell", {
           matrix: cell.data("matrix"),
           row: cell.data("row"),
           col: cell.data("col")
         }, { priority: "event" });
-        window.setTimeout(function () {
-          Shiny.setInputValue("matrix_commit_nonce", Math.random(), { priority: "event" });
-        }, 0);
+        // Keep the edited value and its commit signal in one message. A
+        // document-level Shiny input binding may otherwise deliver the old
+        // value after this delegated change handler has requested a rebuild.
+        Shiny.setInputValue("matrix_commit_nonce", {
+          nonce: Math.random(),
+          id: this.id,
+          value: $(this).val()
+        }, { priority: "event" });
       }
     });
 

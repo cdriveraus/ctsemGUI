@@ -46,3 +46,26 @@ test_that("matrix server renders the retained Matrices tab controls", {
     expect_match(html, "matrix_network_DRIFT", fixed = TRUE)
   })))
 })
+
+test_that("matrix server commits the value carried by its atomic browser event", {
+  skip_if_not_installed("shiny")
+  server <- getFromNamespace("ctgui_app_server", "ctsemgui")(
+    ctgui_spec(latent_names = "eta", manifest_names = "y"),
+    getFromNamespace("ctgui_help_catalog", "ctsemgui")()
+  )
+
+  expect_no_error(suppressWarnings(shiny::testServer(server, {
+    session$setInputs(matrix_group = "Dynamics")
+    session$setInputs(matrix_commit_nonce = list(
+      nonce = 1,
+      id = "matrix_cell_CINT_1_1",
+      value = "cint_smoke"
+    ))
+    session$flushReact()
+
+    expect_equal(
+      current_spec()$matrices$CINT[1, 1],
+      "cint_smoke"
+    )
+  })))
+})

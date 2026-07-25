@@ -1331,14 +1331,22 @@ output$raw_plot <- shiny::renderPlot({
 
 shiny::observeEvent(input$run_fit, {
   if (isTRUE(fit_busy())) return()
+  # The browser disables the fit form immediately on click. Register cleanup
+  # before every precondition so guarded exits restore the form as well.
+  fit_busy(TRUE)
+  on.exit({
+    fit_busy(FALSE)
+    session$sendCustomMessage(
+      "ctgui-fit-finished",
+      list(beep = isTRUE(input$fit_completion_beep))
+    )
+  }, add = TRUE)
   data <- current_data()
   if (is.null(data)) {
     shiny::showNotification("Load or generate data before fitting", type = "error")
     return()
   }
 
-  fit_busy(TRUE)
-  on.exit({ fit_busy(FALSE); session$sendCustomMessage("ctgui-fit-finished", list(beep = isTRUE(input$fit_completion_beep))) }, add = TRUE)
   current_fit(NULL)
   clear_uncertainty_state()
   fit_status_value("Fitting...")

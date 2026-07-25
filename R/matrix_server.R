@@ -763,6 +763,7 @@ ctgui_matrix_server <- function(
 
   matrix_input_values <- shiny::reactive({
     spec <- current_spec()
+    commit <- input$matrix_commit_nonce
     if (identical(input$matrix_group, "PARS")) {
       if (is.null(input$pars_vector)) return(NULL)
       return(list(PARS = ctgui_parse_pars_vector(input$pars_vector)))
@@ -776,7 +777,11 @@ ctgui_matrix_server <- function(
         "", nrow = nrow(mat), ncol = ncol(mat), dimnames = dimnames(mat)
       )
       for (row in seq_len(nrow(mat))) for (col in seq_len(ncol(mat))) {
-        value <- input[[ctgui_matrix_cell_id(matrix_name, row, col)]]
+        input_id <- ctgui_matrix_cell_id(matrix_name, row, col)
+        value <- input[[input_id]]
+        if (is.list(commit) && identical(commit$id, input_id)) {
+          value <- commit$value
+        }
         if (is.null(value)) value <- mat[row, col]
         values[row, col] <- if (!nzchar(value)) "0" else value
       }
