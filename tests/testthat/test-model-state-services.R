@@ -126,6 +126,19 @@ test_that("data role and summary services are deterministic", {
   expect_equal(roles$tipred_names, "group")
   expect_equal(roles$id, "person")
   expect_equal(roles$time, "wave")
+  manual <- ctgui_data_role_selection(
+    data.frame(observed = 1),
+    suppressWarnings(suppressMessages(ctgui_spec(
+      latent_names = "eta", manifest_names = "typed_y",
+      tdpred_names = "typed_event", tipred_names = "typed_group",
+      id = "typed_id", time = "typed_time"
+    )))
+  )
+  expect_true(all(c(
+    "observed", "typed_y", "typed_event", "typed_group",
+    "typed_id", "typed_time"
+  ) %in% manual$choices))
+  expect_equal(manual$manifest_names, "typed_y")
   expect_equal(nrow(ctgui_data_preview(data)), 4L)
   expect_true("y" %in% ctgui_data_summary(data)$variable)
   expect_equal(

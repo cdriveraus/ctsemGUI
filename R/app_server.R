@@ -76,7 +76,7 @@ manifest_type_choices <- c(
 
 explanation_text <- function(key) {
   brief <- switch(key,
-    spec_data = "Map active data columns to ctsem roles; these selectors update the editable name fields.",
+    spec_data = "Choose active-data columns or type new names for each ctsem data role. Typed names remain available when no data are loaded.",
     spec_options = "Core ctModel options control the continuous/discrete time model, manifest variable types, and default TI predictor behavior.",
     matrices = "Use fixed numeric values or free labels; add ||FALSE to disable random effects where ctsem supports it.",
     raw_visuals = "Use these plots to inspect trajectories, variable relationships, time gaps, and missingness before fitting.",
@@ -425,22 +425,7 @@ matrix_cell_id <- ctgui_matrix_cell_id
 shiny::observe(update_data_choices())
 
 output$data_spec_controls <- shiny::renderUI({
-  data <- current_data()
-  if (is.null(data)) return(shiny::helpText("Load or generate data to select model roles from columns."))
-  roles <- ctgui_data_role_selection(data, current_spec())
-  shiny::div(
-    class = "control-grid",
-    shiny::selectizeInput("data_manifest_names", "Manifest variables from active data",
-      choices = roles$choices, selected = roles$manifest_names, multiple = TRUE),
-    shiny::selectizeInput("data_tdpred_names", "Time dependent predictors from active data",
-      choices = roles$choices, selected = roles$tdpred_names, multiple = TRUE),
-    shiny::selectizeInput("data_tipred_names", "Time independent predictors from active data",
-      choices = roles$choices, selected = roles$tipred_names, multiple = TRUE),
-    shiny::selectInput("data_id", "ID column from active data",
-      choices = roles$choices, selected = roles$id),
-    shiny::selectInput("data_time", "Time column from active data",
-      choices = roles$choices, selected = roles$time)
-  )
+  ctgui_data_roles_ui(current_spec(), current_data())
 })
 
 output$tipred_network <- shiny::renderUI({
@@ -643,26 +628,6 @@ shiny::observeEvent(input$measurement_builder_apply, {
   shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(updated), selected = "LAMBDA")
 })
 
-shiny::observeEvent(input$data_manifest_names, {
-  shiny::updateTextInput(session, "manifest_names", value = paste(input$data_manifest_names, collapse = ", "))
-}, ignoreInit = TRUE)
-
-shiny::observeEvent(input$data_tdpred_names, {
-  shiny::updateTextInput(session, "tdpred_names", value = paste(input$data_tdpred_names, collapse = ", "))
-}, ignoreInit = TRUE)
-
-shiny::observeEvent(input$data_tipred_names, {
-  shiny::updateTextInput(session, "tipred_names", value = paste(input$data_tipred_names, collapse = ", "))
-}, ignoreInit = TRUE)
-
-shiny::observeEvent(input$data_id, {
-  shiny::updateTextInput(session, "id", value = input$data_id)
-}, ignoreInit = TRUE)
-
-shiny::observeEvent(input$data_time, {
-  shiny::updateTextInput(session, "time", value = input$data_time)
-}, ignoreInit = TRUE)
-
 rebuild_spec_if_needed <- function() {
   if (isTRUE(spec_inputs_suspended())) return(invisible(FALSE))
   fields <- input_spec_fields()
@@ -812,7 +777,6 @@ output$fit_equation_status <- shiny::renderText({
 })
 
 output$fit_equation_source <- shiny::renderText(fit_latex_source())
-output$validation_table <- shiny::renderTable(ctgui_validate(current_spec()), rownames = FALSE)
 output$validation_table_spec <- shiny::renderTable(ctgui_validate(current_spec()), rownames = FALSE)
 
 output$kalman_default_controls <- shiny::renderUI({
@@ -1052,12 +1016,6 @@ model_code <- shiny::reactive({
 output$code_output <- shiny::renderText(model_code())
 output$output_code <- shiny::renderText(workflow_code())
 
-output$pars_table <- shiny::renderTable({
-  pars <- current_spec()$pars
-  if (is.null(pars)) return(data.frame(message = "Install/load ctsem to show the pars-backed model table"))
-  utils::head(pars, 30L)
-}, rownames = FALSE)
-
 output$output_pars <- shiny::renderTable({
   pars <- current_spec()$pars
   if (is.null(pars)) return(data.frame(message = "No model pars available"))
@@ -1109,6 +1067,7 @@ shiny::observeEvent(input$load_env_data, {
   }
   current_data(data)
   current_data_name(paste0("R data.frame: ", input$env_data))
+  shiny::updateTabsetPanel(session, "data_tabs", selected = "Preview")
 })
 
 shiny::observeEvent(input$csv_file, {
@@ -1119,6 +1078,7 @@ shiny::observeEvent(input$csv_file, {
   }
   current_data(data)
   current_data_name(paste0("CSV: ", input$csv_file$name))
+  shiny::updateTabsetPanel(session, "data_tabs", selected = "Preview")
 })
 
 shiny::observeEvent(input$generate_data, {
@@ -1160,8 +1120,6 @@ data_preview_table <- function() {
   ctgui_data_preview(current_data())
 }
 
-output$data_preview_import <- shiny::renderTable(data_preview_table(), rownames = FALSE)
-output$data_preview_generate <- shiny::renderTable(data_preview_table(), rownames = FALSE)
 output$data_preview <- shiny::renderTable(data_preview_table(), rownames = FALSE)
 
 output$data_summary <- shiny::renderTable({
@@ -1426,8 +1384,6 @@ shiny::observeEvent(input$active_fit_name, {
 }, ignoreInit = TRUE)
 
 output$fit_status <- shiny::renderText(fit_status_value())
-output$fit_log <- shiny::renderText(fit_messages())
-output$fit_warnings <- shiny::renderText(fit_warnings())
 output$fit_log_inline <- shiny::renderText(fit_messages())
 output$fit_warnings_inline <- shiny::renderText(fit_warnings())
 
@@ -1932,8 +1888,6 @@ fit_summary_matrices_text <- function() {
 }
 
 output$fit_summary <- shiny::renderText(fit_summary_text())
-output$fit_summary_diagnostics <- shiny::renderText(fit_summary_text())
 output$fit_summary_matrices <- shiny::renderText(fit_summary_matrices_text())
-output$fit_summary_matrices_diagnostics <- shiny::renderText(fit_summary_matrices_text())
   }
   }

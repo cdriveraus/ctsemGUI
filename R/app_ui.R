@@ -1,5 +1,36 @@
 # Application UI composition -------------------------------------------------
 
+ctgui_data_roles_ui <- function(spec, data = NULL) {
+  roles <- ctgui_data_role_selection(data, spec)
+  creatable <- list(create = TRUE, persist = FALSE)
+  shiny::div(
+    class = "control-grid",
+    shiny::selectizeInput(
+      "manifest_names", "Manifest variables",
+      choices = roles$choices, selected = roles$manifest_names,
+      multiple = TRUE, options = creatable
+    ),
+    shiny::selectizeInput(
+      "tdpred_names", "Time dependent predictors",
+      choices = roles$choices, selected = roles$tdpred_names,
+      multiple = TRUE, options = creatable
+    ),
+    shiny::selectizeInput(
+      "tipred_names", "Time independent predictors",
+      choices = roles$choices, selected = roles$tipred_names,
+      multiple = TRUE, options = creatable
+    ),
+    shiny::selectizeInput(
+      "id", "ID column", choices = roles$choices, selected = roles$id,
+      options = creatable
+    ),
+    shiny::selectizeInput(
+      "time", "Time column", choices = roles$choices, selected = roles$time,
+      options = creatable
+    )
+  )
+}
+
 ctgui_app_ui <- function(initial_spec, help_catalog, assets) {
   spec <- initial_spec
   visual_asset_url <- assets$visual_asset_url
@@ -48,19 +79,16 @@ ui <- shiny::fluidPage(
           "Specification",
           shiny::div(
             class = "control-band",
-            shiny::tags$h4("Data mapping"),
+            shiny::tags$h4("Data roles"),
             shiny::uiOutput("explain_spec_data"),
             shiny::uiOutput("data_spec_controls")
           ),
           shiny::div(
             class = "control-band",
-            shiny::tags$h4("Variables"),
+            shiny::tags$h4("Model variables"),
             shiny::div(
               class = "control-grid",
-              shiny::textInput("manifest_names", "Manifest variables", paste(spec$manifest_names, collapse = ", ")),
-              shiny::textInput("latent_names", "Latent processes", paste(spec$latent_names, collapse = ", ")),
-              shiny::textInput("tdpred_names", "Time dependent predictors", paste(spec$tdpred_names, collapse = ", ")),
-              shiny::textInput("tipred_names", "Time independent predictors", paste(spec$tipred_names, collapse = ", "))
+              shiny::textInput("latent_names", "Latent processes", paste(spec$latent_names, collapse = ", "))
             ),
             shiny::uiOutput("manifest_type_controls"),
             shiny::uiOutput("tipred_network")
@@ -73,9 +101,7 @@ ui <- shiny::fluidPage(
               class = "control-grid",
               shiny::selectInput("type", arg_label("Time model", "help_gui_time_model", "Continuous or discrete time model"),
                 choices = c("Continuous time (ct)" = "ct", "Discrete time (dt)" = "dt"), selected = spec$type),
-              shiny::checkboxInput("tipredDefault", "Default TI predictor effects", value = isTRUE(spec$tipredDefault)),
-              shiny::textInput("id", "ID column", spec$id),
-              shiny::textInput("time", "Time column", spec$time)
+              shiny::checkboxInput("tipredDefault", "Default TI predictor effects", value = isTRUE(spec$tipredDefault))
             )
           ),
           shiny::tableOutput("validation_table_spec")
@@ -136,10 +162,7 @@ ui <- shiny::fluidPage(
             shiny::tags$summary("LaTeX source"),
             shiny::verbatimTextOutput("equation_source")
           )
-        ),
-        shiny::tabPanel("Validation", shiny::tableOutput("validation_table")),
-        shiny::tabPanel("Code", shiny::verbatimTextOutput("code_output")),
-        shiny::tabPanel("Pars", shiny::tableOutput("pars_table"))
+        )
       )
     ),
     shiny::tabPanel(
@@ -158,8 +181,7 @@ ui <- shiny::fluidPage(
               shiny::actionButton("load_env_data", "Use selected data"),
               shiny::fileInput("csv_file", "Import CSV", accept = c(".csv", "text/csv"))
             )
-          ),
-          shiny::div(class = "data-preview", shiny::tableOutput("data_preview_import"))
+          )
         ),
         shiny::tabPanel(
           "Generate",
@@ -176,8 +198,7 @@ ui <- shiny::fluidPage(
               shiny::checkboxInput("gen_free_defaults", arg_label("Preview by replacing free labels with simple numeric values", "help_gui_generation_defaults", "Generation preview with substituted numeric values"), value = TRUE),
               shiny::actionButton("generate_data", "Generate data", class = "btn-primary")
             )
-          ),
-          shiny::div(class = "data-preview", shiny::tableOutput("data_preview_generate"))
+          )
         ),
         shiny::tabPanel("Preview", shiny::div(class = "data-preview", shiny::tableOutput("data_preview"))),
         shiny::tabPanel(
@@ -326,9 +347,7 @@ ui <- shiny::fluidPage(
             shiny::tags$summary("LaTeX source"),
             shiny::verbatimTextOutput("fit_equation_source")
           )
-        ),
-        shiny::tabPanel("Messages", shiny::verbatimTextOutput("fit_log")),
-        shiny::tabPanel("Warnings", shiny::verbatimTextOutput("fit_warnings"))
+        )
       )
     ),
     shiny::tabPanel(
@@ -336,8 +355,6 @@ ui <- shiny::fluidPage(
       shiny::textOutput("diagnostics_status"),
       shiny::tabsetPanel(
         id = "diagnostics_tabs",
-        shiny::tabPanel("Summary", shiny::verbatimTextOutput("fit_summary_diagnostics")),
-        shiny::tabPanel("Summary matrices", shiny::verbatimTextOutput("fit_summary_matrices_diagnostics")),
         shiny::tabPanel(
           "Generate From Fit",
           shiny::div(
@@ -452,9 +469,10 @@ ui <- shiny::fluidPage(
     shiny::tabPanel(
       "Output",
       shiny::tabsetPanel(
+        shiny::tabPanel("Model Code", shiny::verbatimTextOutput("code_output")),
+        shiny::tabPanel("Model PARS", shiny::tableOutput("output_pars")),
         shiny::tabPanel("Fit Summary", shiny::verbatimTextOutput("fit_summary")),
         shiny::tabPanel("Summary Matrices", shiny::verbatimTextOutput("fit_summary_matrices")),
-        shiny::tabPanel("Model Pars", shiny::tableOutput("output_pars")),
         shiny::tabPanel("Fit Comparison", shiny::tableOutput("fit_comparison")),
         shiny::tabPanel("Generated Code", shiny::verbatimTextOutput("output_code"))
       )

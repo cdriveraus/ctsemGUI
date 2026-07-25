@@ -24,15 +24,17 @@ ctgui_sync_matrix_inputs_from_spec <- function(
   shiny::updateTextInput(
     session, "latent_names", value = paste(spec$latent_names, collapse = ", ")
   )
-  shiny::updateTextInput(
-    session, "manifest_names",
-    value = paste(spec$manifest_names, collapse = ", ")
+  shiny::updateSelectizeInput(
+    session, "manifest_names", choices = spec$manifest_names,
+    selected = spec$manifest_names
   )
-  shiny::updateTextInput(
-    session, "tdpred_names", value = paste(spec$tdpred_names, collapse = ", ")
+  shiny::updateSelectizeInput(
+    session, "tdpred_names", choices = spec$tdpred_names,
+    selected = spec$tdpred_names
   )
-  shiny::updateTextInput(
-    session, "tipred_names", value = paste(spec$tipred_names, collapse = ", ")
+  shiny::updateSelectizeInput(
+    session, "tipred_names", choices = spec$tipred_names,
+    selected = spec$tipred_names
   )
   shiny::updateCheckboxInput(
     session, "tipredDefault", value = isTRUE(spec$tipredDefault)

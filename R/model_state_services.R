@@ -231,15 +231,18 @@ ctgui_project_spec <- function(object) {
 }
 
 ctgui_data_role_selection <- function(data, spec) {
-  if (is.null(data)) return(NULL)
-  columns <- names(data)
+  columns <- if (is.null(data)) character() else names(data)
+  selected <- unique(c(
+    spec$manifest_names, spec$tdpred_names, spec$tipred_names,
+    spec$id, spec$time
+  ))
   list(
-    choices = columns,
-    manifest_names = intersect(spec$manifest_names, columns),
-    tdpred_names = intersect(spec$tdpred_names, columns),
-    tipred_names = intersect(spec$tipred_names, columns),
-    id = if (spec$id %in% columns) spec$id else columns[1L],
-    time = if (spec$time %in% columns) spec$time else columns[1L]
+    choices = unique(c(columns, selected[nzchar(selected)])),
+    manifest_names = spec$manifest_names,
+    tdpred_names = spec$tdpred_names,
+    tipred_names = spec$tipred_names,
+    id = spec$id,
+    time = spec$time
   )
 }
 
