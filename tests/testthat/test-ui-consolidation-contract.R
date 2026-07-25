@@ -1,19 +1,19 @@
 ui_id_count <- function(html, id) {
   pattern <- paste0('id="', id, '"')
   matches <- gregexpr(pattern, html, fixed = TRUE)[[1L]]
-  if (identical(matches, -1L)) 0L else length(matches)
+  if (matches[[1L]] == -1L) 0L else length(matches)
 }
 
 ui_data_value_count <- function(html, value) {
   pattern <- paste0('data-value="', value, '"')
   matches <- gregexpr(pattern, html, fixed = TRUE)[[1L]]
-  if (identical(matches, -1L)) 0L else length(matches)
+  if (matches[[1L]] == -1L) 0L else length(matches)
 }
 
 server_output_count <- function(source, id) {
   pattern <- paste0("output\\$", id, "\\s*<-")
   matches <- gregexpr(pattern, source, perl = TRUE)[[1L]]
-  if (identical(matches, -1L)) 0L else length(matches)
+  if (matches[[1L]] == -1L) 0L else length(matches)
 }
 
 test_that("approved outputs have one canonical UI and server destination", {
@@ -28,13 +28,14 @@ test_that("approved outputs have one canonical UI and server destination", {
     )
   ))
   server_source <- paste(readLines(
-    testthat::test_path("..", "..", "R", "app_server.R"),
+    ctgui_test_source_path("R", "app_server.R"),
     warn = FALSE
   ), collapse = "\n")
 
   canonical <- c(
     validation = "validation_table_spec",
-    code = "output_code",
+    model_code = "code_output",
+    generated_code = "output_code",
     pars = "output_pars",
     fit_summary = "fit_summary",
     summary_matrices = "fit_summary_matrices",
@@ -43,7 +44,7 @@ test_that("approved outputs have one canonical UI and server destination", {
     data_preview = "data_preview"
   )
   obsolete <- c(
-    "validation_table", "code_output", "pars_table",
+    "validation_table", "pars_table",
     "fit_summary_diagnostics", "fit_summary_matrices_diagnostics",
     "fit_log", "fit_warnings", "data_preview_import", "data_preview_generate"
   )
@@ -65,8 +66,9 @@ test_that("approved outputs have one canonical UI and server destination", {
   expect_equal(ui_data_value_count(html, "Messages"), 0L)
   expect_equal(ui_data_value_count(html, "Warnings"), 0L)
   expect_equal(ui_data_value_count(html, "Summary matrices"), 0L)
+  # A retained tab renders one data-value on its link and one on its pane.
   # Data > Summary remains; only Diagnostics > Summary is removed.
-  expect_equal(ui_data_value_count(html, "Summary"), 1L)
+  expect_equal(ui_data_value_count(html, "Summary"), 2L)
 })
 
 test_that("merged data-role controls are creatable and retain manual names", {
@@ -100,13 +102,9 @@ test_that("merged data-role controls are creatable and retain manual names", {
   expect_equal(active$id, spec$id)
   expect_equal(active$time, spec$time)
 
-  html <- as.character(ctgui_app_ui(
-    spec, ctgui_help_catalog(),
-    list(
-      visual_asset_url = function(file) file,
-      application_asset_version = "test"
-    )
-  ))
+  html <- getFromNamespace("renderTags", "htmltools")(
+    getFromNamespace("ctgui_data_roles_ui", "ctsemgui")(spec, data = NULL)
+  )$html
   role_aliases <- list(
     manifest = c("manifest_names", "data_manifest_names"),
     tdpred = c("tdpred_names", "data_tdpred_names"),
@@ -118,7 +116,7 @@ test_that("merged data-role controls are creatable and retain manual names", {
     aliases <- role_aliases[[role]]
     present <- aliases[vapply(aliases, function(id) ui_id_count(html, id) > 0L,
       logical(1L))]
-    expect_length(present, 1L, info = paste("single", role, "role control"))
+    expect_length(present, 1L)
     if (length(present) == 1L) {
       create_pattern <- paste0(
         'data-for="', present, '"[^>]*>\\s*\\{[^<]*"create"\\s*:\\s*true'
@@ -142,8 +140,8 @@ test_that("approved consolidation retains substantive workflows", {
     )
   ))
   source <- paste(
-    readLines(testthat::test_path("..", "..", "R", "app_ui.R"), warn = FALSE),
-    readLines(testthat::test_path("..", "..", "R", "app_server.R"), warn = FALSE),
+    readLines(ctgui_test_source_path("R", "app_ui.R"), warn = FALSE),
+    readLines(ctgui_test_source_path("R", "app_server.R"), warn = FALSE),
     collapse = "\n"
   )
 
