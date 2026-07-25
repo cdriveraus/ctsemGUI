@@ -12,9 +12,17 @@ summary/summary-matrix pairs.  This review preserves each retained output ID's
 semantic result; the implementation may rename IDs only with a compatibility
 test covering its consumer.
 
-Reference screenshots: unavailable.  The local Shiny process could not be
-started from this review worktree under the execution policy, so this review is
-based on the rendered UI declarations and server bindings in `R/app.R`.
+Reference screenshots captured from the integrated, behavior-preserving
+baseline:
+
+- [`ui-baseline-model.png`](ui-baseline-model.png): Model > Specification,
+  including the separate Data mapping panel and duplicate Model destinations.
+- [`ui-baseline-data.png`](ui-baseline-data.png): Data > Import and its embedded
+  preview destination.
+- [`ui-baseline-fit.png`](ui-baseline-fit.png): Fit > Settings with inline
+  messages/warnings and their duplicate tabs.
+
+These images are approval evidence only. They do not authorize source changes.
 
 ## Approval table
 
