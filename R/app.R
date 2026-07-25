@@ -1,4 +1,7 @@
-utils::globalVariables(c("label", "loop", "label_pos", "label_size", "node_type", "edge_colour", "edge_linetype"))
+utils::globalVariables(c(
+  "name", "label", "loop", "label_pos", "label_size", "node_type",
+  "edge_colour", "edge_linetype"
+))
 
 #' Create the ctsemgui Shiny application.
 #'

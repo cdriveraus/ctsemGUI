@@ -45,9 +45,6 @@ ctgui_graph_edges(
 
 \item{element}{Graph element: \code{"drift"}, \code{"diffusion"}, \code{"measurement"}, or
 \code{"trend"}.}
-
-\item{names}{Named list of model names. Common entries are
-\code{factor_names}, \code{manifest_names}, \code{id}, and \code{time}.}
 }
 \value{
 \code{ctgui_build_matrices()} and

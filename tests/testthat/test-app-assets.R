@@ -28,7 +28,7 @@ test_that("application CSS and event glue are external and versioned", {
 })
 
 test_that("application and visual assets have independent cache versions", {
-  source <- paste(readLines(testthat::test_path("..", "..", "R", "app.R")),
+  source <- paste(readLines(ctgui_test_source_path("R", "app.R")),
     collapse = "\n")
 
   expect_match(source, 'application_asset_files <- file.path(www_path, "app"',
@@ -39,7 +39,7 @@ test_that("application and visual assets have independent cache versions", {
 
 test_that("application event handlers are scoped to the application root", {
   javascript <- paste(
-    readLines(testthat::test_path("..", "..", "inst", "www", "app", "app.js")),
+    readLines(ctgui_test_asset_path("www", "app", "app.js")),
     collapse = "\n"
   )
 
@@ -53,7 +53,7 @@ test_that("application event handlers are scoped to the application root", {
 
 test_that("matrix commits carry the edited value atomically", {
   javascript <- paste(
-    readLines(testthat::test_path("..", "..", "inst", "www", "app", "app.js")),
+    readLines(ctgui_test_asset_path("www", "app", "app.js")),
     collapse = "\n"
   )
 
@@ -74,7 +74,7 @@ test_that("matrix commits carry the edited value atomically", {
 
 test_that("application stylesheet retains the established UI contracts", {
   css <- paste(
-    readLines(testthat::test_path("..", "..", "inst", "www", "app", "app.css")),
+    readLines(ctgui_test_asset_path("www", "app", "app.css")),
     collapse = "\n"
   )
 

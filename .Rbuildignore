@@ -1,5 +1,6 @@
 ^\\.git$
 ^\\.gitignore$
+^\\.github$
 ^.*\\.Rproj$
 ^\\.Rproj\\.user$
 ^dev$

@@ -8,7 +8,7 @@ Maintainer: Charles Driver <charles.driver2@uzh.ch>
 Description: Provides a Shiny application for specifying, fitting, diagnosing,
     and exporting continuous-time structural equation models with ctsem.
     Internal helpers support the application but are not part of its public API.
-License: GPL-3
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends:
@@ -16,6 +16,7 @@ Depends:
 Imports:
     ctsem (>= 3.11.1),
     shiny,
+    methods,
     utils,
     igraph,
     ggraph,

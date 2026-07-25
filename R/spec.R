@@ -19,6 +19,8 @@ ctgui_optional_matrices <- c("TDPREDEFFECT", "TDPREDMEANS", "TDPREDVAR", "PARS")
 #' @param tipred_names Optional time-independent predictor names.
 #' @param matrices Optional named list of matrix overrides.
 #' @param tipredDefault Passed to `ctsem::ctModel()`.
+#' @param free_defaults Whether data generation should substitute stable
+#'   numeric defaults for free model parameters.
 #'
 #' @return A `ctsemgui_spec` object.
 ctgui_spec <- function(latent_names = "eta1",

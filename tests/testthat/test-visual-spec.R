@@ -39,7 +39,7 @@ test_that("visual graph messages use the versioned protocol contract", {
 })
 
 test_that("visual browser renderer does not interpolate graph data as HTML", {
-  asset <- testthat::test_path("..", "..", "inst", "www", "visual-spec", "visual-spec.js")
+  asset <- ctgui_test_asset_path("www", "visual-spec", "visual-spec.js")
   source <- paste(readLines(asset, warn = FALSE), collapse = "\n")
 
   expect_false(grepl("innerHTML", source, fixed = TRUE))

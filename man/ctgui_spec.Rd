@@ -116,6 +116,9 @@ parameter label.}
 \item{logdtsd}{Log time interval standard deviation.}
 
 \item{wide}{Logical; passed to \code{ctsem::ctGenerate()}.}
+
+\item{free_defaults}{Whether data generation should substitute stable
+numeric defaults for free model parameters.}
 }
 \value{
 A \code{ctsemgui_spec} object.

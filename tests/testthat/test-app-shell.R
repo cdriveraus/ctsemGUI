@@ -22,7 +22,7 @@ test_that("server construction has a testServer-compatible seam", {
 })
 
 test_that("server delegates workflow code and fit-shape handling to services", {
-  server_file <- testthat::test_path("..", "..", "R", "app_server.R")
+  server_file <- ctgui_test_source_path("R", "app_server.R")
   server_text <- paste(readLines(server_file, warn = FALSE), collapse = "\n")
   expect_match(server_text, "ctgui_output_workflow_code", fixed = TRUE)
   expect_match(server_text, "ctgui_output_snippet", fixed = TRUE)

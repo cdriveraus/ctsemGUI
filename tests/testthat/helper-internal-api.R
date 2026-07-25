@@ -31,3 +31,17 @@ ctgui_internal_names <- c(
 for (ctgui_internal_name in ctgui_internal_names) {
   assign(ctgui_internal_name, getFromNamespace(ctgui_internal_name, "ctsemgui"), envir = environment())
 }
+
+ctgui_test_source_path <- function(...) {
+  path <- testthat::test_path("..", "..", ...)
+  if (!file.exists(path)) {
+    testthat::skip("source-only architecture contract")
+  }
+  path
+}
+
+ctgui_test_asset_path <- function(...) {
+  source_path <- testthat::test_path("..", "..", "inst", ...)
+  if (file.exists(source_path)) return(source_path)
+  system.file(..., package = "ctsemgui")
+}

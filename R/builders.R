@@ -5,8 +5,6 @@
 #'   `"dynamic_var"`, or `"dynamic_var_trend"`.
 #' @param measurement Measurement model. One of `"single_indicator"`,
 #'   `"marker"`, or `"fixed_loadings"`.
-#' @param names Named list of model names. Common entries are
-#'   `factor_names`, `manifest_names`, `id`, and `time`.
 #' @param options Named list of builder options, including `n`, `type`,
 #'   `trend_type`, `indicators_per_factor`, `free_noise_correlations`,
 #'   `fixed_loadings`, and `trend_coupling`.

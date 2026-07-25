@@ -144,7 +144,7 @@ test_that("fit accessors hide supported ctsem object-shape variants", {
 test_that("version-sensitive fit paths occur only inside the adapter", {
   service_files <- c("fit_diagnostics_services.R", "fit_uncertainty.R",
     "output_services.R")
-  source_dir <- testthat::test_path("..", "..", "R")
+  source_dir <- dirname(ctgui_test_source_path("R", service_files[[1L]]))
   source_text <- unlist(lapply(file.path(source_dir, service_files), readLines,
     warn = FALSE), use.names = FALSE)
   expect_false(any(grepl("\\$(stanfit|model|generated)\\b", source_text,
