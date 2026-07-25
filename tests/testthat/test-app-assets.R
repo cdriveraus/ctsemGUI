@@ -41,6 +41,26 @@ test_that("application event handlers are scoped to the application root", {
   expect_match(javascript, 'Shiny.addCustomMessageHandler("ctgui-fit-finished"', fixed = TRUE)
 })
 
+test_that("matrix commits flush the edited value before the commit nonce", {
+  javascript <- paste(
+    readLines(testthat::test_path("..", "..", "inst", "www", "app", "app.js")),
+    collapse = "\n"
+  )
+  value_flush <- regexpr(
+    'Shiny.setInputValue(this.id, $(this).val(), { priority: "event" });',
+    javascript,
+    fixed = TRUE
+  )[[1L]]
+  commit_nonce <- regexpr(
+    'Shiny.setInputValue("matrix_commit_nonce"',
+    javascript,
+    fixed = TRUE
+  )[[1L]]
+
+  expect_gt(value_flush, 0L)
+  expect_gt(commit_nonce, value_flush)
+})
+
 test_that("application stylesheet retains the established UI contracts", {
   css <- paste(
     readLines(testthat::test_path("..", "..", "inst", "www", "app", "app.css")),

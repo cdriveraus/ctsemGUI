@@ -32,6 +32,10 @@
     app.on("change", ".matrix-cell input[type=\"text\"]", function () {
       var cell = $(this).closest(".matrix-cell");
       if (window.Shiny && cell.length) {
+        // This delegated handler runs before Shiny's document-level input
+        // binding. Send the cell value explicitly so the server cannot receive
+        // the commit nonce while it still holds the previous matrix value.
+        Shiny.setInputValue(this.id, $(this).val(), { priority: "event" });
         Shiny.setInputValue("matrix_selected_cell", {
           matrix: cell.data("matrix"),
           row: cell.data("row"),
