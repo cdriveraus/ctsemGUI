@@ -73,13 +73,11 @@ ctgui_optim_uncertainty_eligibility <- function(fit) {
   if (!inherits(fit, "ctStanFit")) {
     return(list(ok = FALSE, message = "Uncertainty recomputation requires an optimized ctStanFit object."))
   }
-  stanfit <- tryCatch(fit$stanfit$stanfit, error = function(e) NULL)
-  sim <- tryCatch(stanfit@sim, error = function(e) NULL)
-  if (length(sim) > 0L) {
+  if (ctgui_ctsem_fit_is_sampled(fit)) {
     return(list(ok = FALSE, message = "This is a sampled fit. ctOptimUncertainty applies only to optimized fits."))
   }
   required <- c("stanfit", "stanmodel", "standata")
-  missing <- required[!vapply(required, function(name) !is.null(fit[[name]]), logical(1))]
+  missing <- ctgui_ctsem_fit_missing_components(fit, required)
   if (length(missing)) {
     return(list(ok = FALSE, message = paste("Fit is missing", paste(missing, collapse = ", "), "required for optimized uncertainty.")))
   }
@@ -87,14 +85,15 @@ ctgui_optim_uncertainty_eligibility <- function(fit) {
 }
 
 ctgui_uncertainty_summary <- function(fit) {
-  uncertainty <- tryCatch(fit$stanfit$uncertainty, error = function(e) NULL)
+  uncertainty <- ctgui_ctsem_fit_uncertainty(fit)
   if (is.null(uncertainty)) return("No optimized uncertainty information is stored in this fit.")
   settings <- uncertainty$settings %||% list()
   lines <- c(
     paste("Method:", uncertainty$method %||% settings$method %||% "unknown"),
     paste("Draws:", uncertainty$draws %||% settings$draws %||% "unknown")
   )
-  nsamples <- tryCatch(nrow(fit$stanfit$rawposterior), error = function(e) NA_integer_)
+  rawposterior <- ctgui_ctsem_fit_rawposterior(fit)
+  nsamples <- if (is.null(rawposterior)) NA_integer_ else nrow(rawposterior)
   if (!is.na(nsamples)) lines <- c(lines, paste("Approximate draws:", nsamples))
   importance <- uncertainty$details$importance_sampling
   if (!is.null(importance)) {

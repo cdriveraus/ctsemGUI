@@ -76,23 +76,11 @@ ctgui_draw_plot <- function(plot) {
 }
 
 ctgui_fit_comparison_stats <- function(fit) {
-  numeric_scalar <- function(x) {
-    out <- suppressWarnings(as.numeric(x))
-    if (!length(out) || all(is.na(out))) return(NA_real_)
-    out[1L]
-  }
-  loglik <- tryCatch(numeric_scalar(fit$stanfit$transformedparsfull$ll), error = function(e) NA_real_)
-  logposterior <- tryCatch(numeric_scalar(fit$stanfit$optimfit$value), error = function(e) NA_real_)
-  npars <- tryCatch(length(fit$stanfit$rawest), error = function(e) NA_integer_)
-  nobs <- tryCatch(length(fit$stanfit$transformedparsfull$llrow[1, ]), error = function(e) NA_integer_)
-  if (is.na(loglik)) {
-    summary_fit <- tryCatch(summary(fit), error = function(e) NULL)
-    if (!is.null(summary_fit)) {
-      loglik <- numeric_scalar(summary_fit$loglik)
-      logposterior <- numeric_scalar(summary_fit$logposterior)
-      npars <- suppressWarnings(as.integer(numeric_scalar(summary_fit$npars)))
-    }
-  }
+  statistics <- ctgui_ctsem_fit_statistics(fit)
+  loglik <- statistics$loglik
+  logposterior <- statistics$logposterior
+  npars <- statistics$npars
+  nobs <- statistics$nobs
   aic <- if (!is.na(loglik) && !is.na(npars)) 2 * npars - 2 * loglik else NA_real_
   bic <- if (!is.na(loglik) && !is.na(npars) && !is.na(nobs) && nobs > 0) log(nobs) * npars - 2 * loglik else NA_real_
   list(loglik = loglik, logposterior = logposterior, npars = npars, nobs = nobs,
