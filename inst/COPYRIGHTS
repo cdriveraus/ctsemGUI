@@ -1,0 +1,13 @@
+Cytoscape.js 3.33.1
+Copyright (c) 2016-2025, The Cytoscape Consortium.
+
+The visual specification editor bundles Cytoscape.js in
+www/visual-spec/cytoscape.min.js. The corresponding unminified source is
+included as www/visual-spec/cytoscape.umd.js.
+
+Cytoscape.js is licensed under the MIT License. Its complete license is in
+www/visual-spec/LICENSE-cytoscape.txt and in the headers of both bundled files.
+
+The visual editor is an original ctsemGUI integration. Its product concept and
+selected interaction patterns were informed by lavaangui by Julian D. Karch
+(GPL-3.0-or-later); ctsemGUI does not embed lavaangui or depend on lavaan.

@@ -3,6 +3,8 @@
 `ctsemGUI` provides a Shiny graphical interface for building, fitting, and
 checking `ctsem` models.
 
+![ctsemGUI visual specification editor](inst/figures/visual-specification.png)
+
 The GUI is intended for users who want to work through a model in visible steps:
 load or generate data, specify variables, edit model matrices, fit the model,
 inspect output, and run common diagnostics.

@@ -16,9 +16,12 @@ asset_contract <- list(
   app = c("app.css", "app.js"),
   `visual-spec` = c("cytoscape.min.js", "visual-spec.css", "visual-spec.js")
 )
+source_contract <- list(
+  `visual-spec` = "cytoscape.umd.js"
+)
 for (asset_group in names(asset_contract)) {
   asset_dir <- file.path("inst", "www", asset_group)
-  expected_assets <- asset_contract[[asset_group]]
+  expected_assets <- c(asset_contract[[asset_group]], source_contract[[asset_group]])
   assets <- list.files(asset_dir, pattern = "\\.(css|js)$", full.names = FALSE)
   if (!setequal(assets, expected_assets)) {
     stop(
