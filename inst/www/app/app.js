@@ -4,6 +4,7 @@
   $(function () {
     var app = $("#ctgui-app");
     if (!app.length) return;
+    var specificationDirty = false;
 
     app.on("click", ".arg-help", function (event) {
       event.stopPropagation();
@@ -53,6 +54,16 @@
       return payload;
     }
 
+    // The Specification controls are present while hidden.  A visual-editor
+    // commit updates them asynchronously, so a tab switch must not treat their
+    // older browser values as a newly authored specification.
+    app.on("input change", [
+      "#latent_names", "#manifest_names", "#tdpred_names", "#tipred_names",
+      "#id", "#time", "#type", "#tipredDefault", "[id^='manifest_type_']"
+    ].join(", "), function (event) {
+      if (event.originalEvent) specificationDirty = true;
+    });
+
     app.on("click", ".ctgui-spec-add", function () {
       var kind = $(this).attr("data-add-role");
       var control = app.find("#" + kind + "_names")[0];
@@ -83,8 +94,10 @@
         // same event so the server never rebuilds from stale input bindings.
         Shiny.setInputValue("tab_commit_nonce", {
           nonce: Math.random(),
-          specification: specificationPayload()
+          specification_authored: specificationDirty,
+          specification: specificationDirty ? specificationPayload() : null
         }, { priority: "event" });
+        specificationDirty = false;
       }
     });
 

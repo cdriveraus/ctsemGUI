@@ -45,6 +45,14 @@ ctgui_parameter_is_expression <- function(value, latent_names = character()) {
   !grepl("^[A-Za-z._][A-Za-z0-9._]*$", base) || base %in% latent_names
 }
 
+ctgui_spec_has_expressions <- function(spec) {
+  matrices <- spec$matrices[setdiff(names(spec$matrices), "PARS")]
+  any(vapply(matrices, function(matrix) {
+    any(vapply(as.vector(matrix), ctgui_parameter_is_expression,
+      logical(1L), latent_names = spec$latent_names))
+  }, logical(1L)))
+}
+
 ctgui_expression_metadata_guidance <- function() {
   paste(
     "If this value is an expression (for example, involving latent states,",

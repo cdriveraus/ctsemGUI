@@ -21,6 +21,18 @@ test_that("server construction has a testServer-compatible seam", {
   )))
 })
 
+test_that("fit settings warn when the specification contains an expression", {
+  skip_if_not_installed("shiny")
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta", label = "d1 + m1 * eta")
+
+  suppressWarnings(shiny::testServer(ctgui_app_server(spec, ctgui_help_catalog()), {
+    warning <- paste(as.character(output$fit_expression_warning), collapse = "\n")
+    expect_match(warning, "Model compilation is likely required", fixed = TRUE)
+    expect_match(warning, "can take a few minutes", fixed = TRUE)
+  }))
+})
+
 test_that("page transitions commit the authored specification payload", {
   skip_if_not_installed("shiny")
 
@@ -38,6 +50,7 @@ test_that("page transitions commit the authored specification payload", {
       )
       session$setInputs(tab_commit_nonce = list(
         nonce = 1,
+        specification_authored = TRUE,
         specification = list(
           latent_names = "persisted_eta",
           manifest_names = "y",
@@ -54,6 +67,21 @@ test_that("page transitions commit the authored specification payload", {
         'latentNames = "persisted_eta"',
         fixed = TRUE
       )
+    }
+  ))
+})
+
+test_that("unwritten Specification controls cannot replace a visual model edit", {
+  skip_if_not_installed("shiny")
+  initial <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  suppressWarnings(shiny::testServer(
+    ctgui_app_server(initial, ctgui_help_catalog()), {
+      session$setInputs(tab_commit_nonce = list(
+        nonce = 1, specification_authored = FALSE,
+        specification = list(latent_names = character(), manifest_names = character())
+      ))
+      expect_match(output$code_output, 'manifestNames = "y"', fixed = TRUE)
+      expect_match(output$code_output, 'latentNames = "eta"', fixed = TRUE)
     }
   ))
 })

@@ -87,7 +87,8 @@ test_that("tab commits carry specification values atomically", {
   )
 
   expect_match(app_js, "function specificationPayload()", fixed = TRUE)
-  expect_match(app_js, 'specification: specificationPayload()', fixed = TRUE)
+  expect_match(app_js, 'specification: specificationDirty ? specificationPayload() : null', fixed = TRUE)
+  expect_match(app_js, "specification_authored: specificationDirty", fixed = TRUE)
   expect_match(app_js, '"latent_names", "manifest_names"', fixed = TRUE)
   expect_match(app_js, '[id^=\\"manifest_type_\\"]', fixed = TRUE)
 })

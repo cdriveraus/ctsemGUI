@@ -362,6 +362,14 @@ output$uncertainty_eligibility <- shiny::renderUI({
   shiny::tags$p(class = class, eligibility$message)
 })
 
+output$fit_expression_warning <- shiny::renderUI({
+  if (!ctgui_spec_has_expressions(current_spec())) return(NULL)
+  shiny::tags$p(
+    class = "warning-note",
+    "This model uses expression parameters. Model compilation is likely required for this nonlinear specification. R must be set up to compile the model, and compilation can take a few minutes before fitting begins."
+  )
+})
+
 output$download_model_rds <- shiny::downloadHandler(
   filename = function() "ctsem-model.rds",
   content = function(file) saveRDS(ctgui_to_ctsem_model(current_spec(), silent = TRUE), file)
@@ -669,8 +677,12 @@ matrix_server <- ctgui_matrix_server(
 
 shiny::observeEvent(input$tab_commit_nonce, {
   event <- input$tab_commit_nonce
-  committed <- if (is.list(event)) event$specification else NULL
-  specification_changed <- rebuild_spec_if_needed(committed)
+  # A visual/matrix commit updates the hidden Specification controls
+  # asynchronously.  Only use a tab payload to rebuild canonical state when
+  # the user actually authored one of those controls.
+  specification_authored <- is.list(event) && isTRUE(event$specification_authored)
+  committed <- if (specification_authored) event$specification else NULL
+  specification_changed <- if (specification_authored) rebuild_spec_if_needed(committed) else FALSE
   # Matrix fields have their own atomic change event. Retain the legacy tab
   # fallback only when this transition did not rebuild the matrix schema.
   if (!isTRUE(specification_changed)) {

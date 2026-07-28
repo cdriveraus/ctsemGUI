@@ -275,6 +275,7 @@ ui <- shiny::fluidPage(
           "Settings",
           shiny::div(
             class = "control-band",
+            shiny::uiOutput("fit_expression_warning"),
             shiny::div(
               class = "control-grid",
               shiny::checkboxInput("fit_optimize", arg_label("optimize", "help_fit_optimize", "Whether to optimize or use full Bayesian sampling via Stan (generally very slow!)"), value = TRUE),

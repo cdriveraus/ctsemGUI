@@ -218,23 +218,31 @@ ctgui_visual_graph <- function(spec, view = c("state_space", "initial_state", "t
       nodes[[length(nodes)]]$tipred_default <- isTRUE(spec$visual$tipred_defaults[[spec$tipred_names[i]]] %||% spec$tipredDefault)
     }
     if (!is.null(metadata) && nrow(metadata)) {
-      n <- nrow(metadata)
+      # An expression is a calculated matrix element, not an individual free
+      # parameter.  Its individual differences and TI moderation belong to
+      # the separate PARS elements, so only those elements belong in this
+      # view.
+      expression_row <- vapply(seq_len(nrow(metadata)), function(i) {
+        !identical(metadata$matrix[i], "PARS") && ctgui_parameter_is_expression(
+          spec$matrices[[metadata$matrix[i]]][metadata$row[i], metadata$col[i]],
+          spec$latent_names
+        )
+      }, logical(1L))
+      parameter_rows <- which(!expression_row)
+      n <- length(parameter_rows)
       radius <- max(250, 52 * n / pi)
-      for (i in seq_len(n)) {
+      for (display_index in seq_along(parameter_rows)) {
+        i <- parameter_rows[display_index]
         if (ctgui_visual_t0var_suppressed(
           spec, metadata$matrix[i], metadata$row[i], metadata$col[i]
         )) next
-        angle <- 2 * pi * (i - 1L) / max(1L, n) - pi / 2
+        angle <- 2 * pi * (display_index - 1L) / max(1L, n) - pi / 2
         id <- paste("parameter", metadata$matrix[i], metadata$row[i], metadata$col[i], sep = "\r")
         node <- ctgui_visual_node(spec, view, id, "parameter", metadata$param[i], i, 2,
           paste0(metadata$param[i], "\n", metadata$matrix[i]))
         node$matrix <- metadata$matrix[i]; node$row <- metadata$row[i]; node$col <- metadata$col[i]
         node$random_effect <- isTRUE(metadata$indvarying[i])
-        node$expression <- !identical(metadata$matrix[i], "PARS") &&
-          ctgui_parameter_is_expression(
-            spec$matrices[[metadata$matrix[i]]][metadata$row[i], metadata$col[i]],
-            spec$latent_names
-          )
+        node$expression <- FALSE
         if (!has_saved_position(id)) {
           node$x <- 450 + radius * cos(angle); node$y <- 315 + radius * sin(angle)
         }
@@ -255,7 +263,7 @@ ctgui_visual_graph <- function(spec, view = c("state_space", "initial_state", "t
       # Random-effect covariance is part of ctsem's distributional model, not
       # an editable matrix path.  Make it visible alongside TI moderation:
       # loops are variances and pairwise links are correlations.
-      random_rows <- which(metadata$indvarying)
+      random_rows <- parameter_rows[metadata$indvarying[parameter_rows]]
       if (length(random_rows)) for (i in seq_along(random_rows)) {
         left <- random_rows[i]
         left_id <- paste("parameter", metadata$matrix[left], metadata$row[left], metadata$col[left], sep = "\r")

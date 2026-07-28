@@ -160,6 +160,14 @@ test_that("expression-valued matrix cells never serialize compact metadata", {
   expect_setequal(as.character(spec$matrices$PARS[, 1L]), c("d1", "m1"))
 })
 
+test_that("expression detection identifies specifications requiring compilation", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  expect_false(ctgui_spec_has_expressions(spec))
+
+  spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta", label = "d1 + m1 * eta")
+  expect_true(ctgui_spec_has_expressions(spec))
+})
+
 test_that("parameter metadata retains all selected-cell settings", {
   expect_warning(
     spec <- ctgui_spec(

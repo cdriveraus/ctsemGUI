@@ -444,6 +444,25 @@ test_that("TI graph overlays non-editable random-effect variances and correlatio
   expect_true(all(vapply(overlay, function(edge) isTRUE(edge$visual_only) && identical(edge$selectable, FALSE), logical(1L))))
 })
 
+test_that("Individual Differences view omits expression cells in favour of PARS parameters", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y", tipred_names = "group")
+  spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta", label = "d1 + m1 * eta")
+  spec <- ctgui_set_parameter_metadata(
+    spec, "DRIFT", "eta", "eta", extra_pars = c("d1", "m1")
+  )
+
+  graph <- ctgui_visual_graph(spec, "tipred_effects")
+  parameter_nodes <- Filter(function(node) identical(node$kind, "parameter"), graph$nodes)
+
+  expect_false(any(vapply(parameter_nodes, function(node) {
+    identical(node$matrix, "DRIFT") && identical(node$row, "eta") && identical(node$col, "eta")
+  }, logical(1L))))
+  expect_setequal(
+    vapply(Filter(function(node) identical(node$matrix, "PARS"), parameter_nodes), `[[`, character(1L), "name"),
+    c("d1", "m1")
+  )
+})
+
 test_that("visual deletion can return the specification to an uninstantiated draft", {
   spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
   graph <- ctgui_visual_graph(spec, "state_space")
