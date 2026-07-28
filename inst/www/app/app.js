@@ -9,6 +9,13 @@
       event.stopPropagation();
     });
 
+    app.on("click", "#toggle_app_width", function () {
+      var expanded = app.toggleClass("ctgui-full-width").hasClass("ctgui-full-width");
+      $(this)
+        .attr("aria-pressed", expanded ? "true" : "false")
+        .text(expanded ? "Use readable width" : "Use full width");
+    });
+
     app.on("click", "#choose_fit_rds", function () {
       app.find("#load_fit_rds input[type='file']").trigger("click");
     });

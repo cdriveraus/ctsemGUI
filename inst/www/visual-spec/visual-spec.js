@@ -511,10 +511,9 @@
 
   function buildTools(tools) {
     var group = addStructureGroup(tools, "state_space");
-    addButton(group, "Add latent", "data-add", "latent");
-
-    group = addStructureGroup(tools, "state_space");
     addButton(group, "Add manifest", "data-add", "manifest");
+    group = addStructureGroup(tools, "state_space");
+    addButton(group, "Add latent", "data-add", "latent");
     addButton(group, "Add time-dependent predictor", "data-add", "tdpred");
 
     group = addStructureGroup(tools, "state_space,tipred_effects");
@@ -579,6 +578,11 @@
         { selector: "node.path-source", style: { "border-width": 4, "border-color": "#16a34a" } }
       ]
     });
+    if (window.ResizeObserver) {
+      new window.ResizeObserver(function () {
+        window.requestAnimationFrame(function () { editor.cy.resize(); });
+      }).observe(canvas);
+    }
     editor.cy.on("select", "edge", function (event) { select(editor, event.target); });
     editor.cy.on("select", "node.parameter", function (event) { select(editor, event.target); updateRandomEffectAction(editor); });
     editor.cy.on("select", "node.tipred", function (event) { select(editor, event.target); updateTipredActions(editor); });

@@ -64,3 +64,16 @@ test_that("application exposes each consolidated output once", {
     expect_equal(count_fixed(html, paste0('id="', removed, '"')), 0L)
   }
 })
+
+test_that("data import provides requirements and ctsem test data", {
+  ui <- ctgui_app_ui(
+    ctgui_spec(), ctgui_help_catalog(),
+    list(visual_asset_url = function(file) file, application_asset_version = "ui-contract")
+  )
+  html <- paste(as.character(ui), collapse = "\n")
+
+  expect_match(html, 'id="load_ctsem_test_data"', fixed = TRUE)
+  expect_match(html, "one row per subject and measurement occasion", fixed = TRUE)
+  expect_match(html, "time-dependent predictors", fixed = TRUE)
+  expect_match(html, "time-independent predictors", fixed = TRUE)
+})

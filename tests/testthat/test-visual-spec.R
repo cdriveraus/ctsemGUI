@@ -79,6 +79,19 @@ test_that("visual browser renderer does not interpolate graph data as HTML", {
   expect_true(grepl('"control-point-step-size": 120', source, fixed = TRUE))
   expect_true(grepl("var excluded = options.excluded || []", source, fixed = TRUE))
   expect_true(grepl("roleList(roles.id)", source, fixed = TRUE))
+  expect_true(grepl("window.ResizeObserver", source, fixed = TRUE))
+  expect_true(grepl("editor.cy.resize()", source, fixed = TRUE))
+})
+
+test_that("visual editor canvas has a user-resizable height", {
+  css <- paste(readLines(
+    ctgui_test_asset_path("www", "visual-spec", "visual-spec.css"),
+    warn = FALSE
+  ), collapse = "\n")
+
+  expect_true(grepl(".ctgui-visual-canvas", css, fixed = TRUE))
+  expect_true(grepl("resize: vertical", css, fixed = TRUE))
+  expect_true(grepl("overflow: hidden", css, fixed = TRUE))
 })
 
 test_that("visual graph maps directed paths and lower-triangular noise paths", {

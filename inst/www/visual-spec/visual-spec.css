@@ -3,8 +3,8 @@
 .ctgui-visual-tools button, .ctgui-visual-tools select { font-size: 12px; }
 .ctgui-visual-tools label { margin: 0; font-weight: normal; }
 .ctgui-visual-body { display: flex; min-width: 0; }
-.ctgui-visual-canvas { height: 560px; min-height: 360px; flex: 1 1 auto; min-width: 0; }
-.ctgui-visual-legend { flex: 0 0 205px; border-left: 1px solid #e5e7eb; padding: 10px 12px; font-size: 12px; line-height: 1.35; overflow-y: auto; max-height: 560px; }
+.ctgui-visual-canvas { height: 560px; min-height: 360px; flex: 1 1 auto; min-width: 0; resize: vertical; overflow: hidden; }
+.ctgui-visual-legend { flex: 0 0 205px; border-left: 1px solid #e5e7eb; padding: 10px 12px; font-size: 12px; line-height: 1.35; overflow-y: auto; }
 .ctgui-visual-legend h5, .ctgui-visual-legend h6 { margin: 2px 0 7px; font-weight: 600; }
 .ctgui-visual-legend h6 { margin-top: 12px; }
 .ctgui-legend-item { display: flex; align-items: center; gap: 7px; margin: 4px 0; }

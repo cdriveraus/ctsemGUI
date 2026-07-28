@@ -95,7 +95,11 @@ ui <- shiny::fluidPage(
   ),
   shiny::div(
     class = "app-header",
-    shiny::titlePanel("ctsemGUI")
+    shiny::titlePanel("ctsemGUI"),
+    shiny::tags$button(
+      id = "toggle_app_width", type = "button", class = "btn btn-default app-width-toggle",
+      `aria-pressed` = "false", "Use full width"
+    )
   ),
   shiny::tabsetPanel(
     id = "workflow",
@@ -104,6 +108,30 @@ ui <- shiny::fluidPage(
       "Model",
       shiny::tabsetPanel(
         id = "model_tabs",
+        shiny::tabPanel(
+          "Visual Specification",
+          shiny::div(
+            class = "control-band",
+            shiny::div(class = "control-grid",
+              shiny::selectInput("visual_view", "View", choices = c(
+                "State space" = "state_space", "Initial state" = "initial_state",
+                "Individual Differences" = "tipred_effects"
+              ))
+            ),
+            shiny::textOutput("visual_status"),
+            shiny::tags$p(class = "matrix-note", "To define paths, right click and drag from node to node or set Mode to 'draw paths' then left click and drag."),
+            shiny::conditionalPanel(
+              condition = "input.visual_view == 'initial_state'",
+              shiny::tags$p(
+                class = "matrix-note",
+                "Initial-state noise maps directly to T0VAR. When a T0MEANS parameter has RandomEffects enabled, ctsem ignores the corresponding T0VAR row and column during fitting: its diagonal is fixed to 1e-6 and its off-diagonals to 0. This view shows the ignored diagonal as a dotted 1e-6 loop and omits its zero correlations."
+              )
+            )
+          ),
+          shiny::tags$div(id = "visual_spec_canvas", class = "ctgui-visual-spec"),
+          shiny::uiOutput("visual_path_inspector"),
+          shiny::uiOutput("visual_pars_details")
+        ),
         shiny::tabPanel(
           "Specification",
           shiny::div(
@@ -157,30 +185,6 @@ ui <- shiny::fluidPage(
           )
         ),
         shiny::tabPanel(
-          "Visual Specification",
-          shiny::div(
-            class = "control-band",
-            shiny::div(class = "control-grid",
-              shiny::selectInput("visual_view", "View", choices = c(
-                "State space" = "state_space", "Initial state" = "initial_state",
-                "Individual Differences" = "tipred_effects"
-              ))
-            ),
-            shiny::textOutput("visual_status"),
-            shiny::tags$p(class = "matrix-note", "To define paths, right click and drag from node to node or set Mode to 'draw paths' then left click and drag."),
-            shiny::conditionalPanel(
-              condition = "input.visual_view == 'initial_state'",
-              shiny::tags$p(
-                class = "matrix-note",
-                "Initial-state noise maps directly to T0VAR. When a T0MEANS parameter has RandomEffects enabled, ctsem ignores the corresponding T0VAR row and column during fitting: its diagonal is fixed to 1e-6 and its off-diagonals to 0. This view shows the ignored diagonal as a dotted 1e-6 loop and omits its zero correlations."
-              )
-            )
-          ),
-          shiny::tags$div(id = "visual_spec_canvas", class = "ctgui-visual-spec"),
-          shiny::uiOutput("visual_path_inspector"),
-          shiny::uiOutput("visual_pars_details")
-        ),
-        shiny::tabPanel(
           "Equations",
           shiny::div(
             class = "control-band",
@@ -210,12 +214,17 @@ ui <- shiny::fluidPage(
           "Import",
           shiny::div(
             class = "control-band",
+            shiny::tags$p(
+              class = "help-note",
+              "Data should have one row per subject and measurement occasion, with an ID variable, a time variable, and one or more manifest variables to model. You may also include time-dependent predictors (covariates that change over time and have impulse effects on processes or parameters) and time-independent predictors (subject-stable covariates that linearly moderate one or more parameters)."
+            ),
             shiny::div(
               class = "control-grid",
               shiny::selectInput("env_data", "R data.frame or matrix", choices = character()),
               shiny::fileInput("csv_file", "Browse", accept = c(
                 ".csv", "text/csv", ".rds", "application/octet-stream"
-              ))
+              )),
+              shiny::actionButton("load_ctsem_test_data", "Load ctsem test data")
             )
           )
         ),

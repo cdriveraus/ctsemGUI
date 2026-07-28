@@ -1111,6 +1111,13 @@ shiny::observeEvent(input$csv_file, {
   shiny::updateTabsetPanel(session, "data_tabs", selected = "Preview")
 })
 
+shiny::observeEvent(input$load_ctsem_test_data, {
+  data <- ctsem::ctstantestdat
+  current_data(data)
+  current_data_name("ctsem::ctstantestdat")
+  shiny::updateTabsetPanel(session, "data_tabs", selected = "Preview")
+})
+
 shiny::observeEvent(input$generate_data, {
   current_data_name("Generating data...")
   data <- NULL

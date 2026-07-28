@@ -1,5 +1,7 @@
 body { background: #f7f8fa; }
 .container-fluid { max-width: 1440px; }
+#ctgui-app.ctgui-full-width { max-width: none; }
+.app-width-toggle { margin-bottom: 10px; }
 .well { background: #ffffff; border-radius: 6px; box-shadow: none; }
 table { background: #ffffff; }
 .tab-pane { padding-top: 12px; }

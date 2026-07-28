@@ -13,6 +13,7 @@ test_that("application CSS and event glue are external and versioned", {
   rendered <- render_tags(ui)
 
   expect_match(rendered$html, 'id="ctgui-app"', fixed = TRUE)
+  expect_match(rendered$html, 'id="toggle_app_width"', fixed = TRUE)
   expect_match(
     rendered$head,
     'href="ctsemgui-assets/app/app.css?v=asset-contract"',
@@ -48,6 +49,8 @@ test_that("application event handlers are scoped to the application root", {
   expect_false(grepl("document.addEventListener", javascript, fixed = TRUE))
   expect_false(grepl("innerHTML", javascript, fixed = TRUE))
   expect_match(javascript, 'app.on("click", "#run_fit"', fixed = TRUE)
+  expect_match(javascript, 'app.on("click", "#toggle_app_width"', fixed = TRUE)
+  expect_match(javascript, 'ctgui-full-width', fixed = TRUE)
   expect_match(javascript, 'app.on("mousedown", ".selectize-control"', fixed = TRUE)
   expect_match(javascript, "selectize.open()", fixed = TRUE)
   expect_match(javascript, 'Shiny.addCustomMessageHandler("ctgui-fit-finished"', fixed = TRUE)
@@ -100,5 +103,7 @@ test_that("application stylesheet retains the established UI contracts", {
   expect_match(css, ".arg-help:hover", fixed = TRUE)
   expect_match(css, ".fit-inline-output", fixed = TRUE)
   expect_match(css, ".ctgui-readonly-variable-list", fixed = TRUE)
+  expect_match(css, ".container-fluid { max-width: 1440px; }", fixed = TRUE)
+  expect_match(css, "#ctgui-app.ctgui-full-width", fixed = TRUE)
   expect_match(css, "@media (max-width: 760px)", fixed = TRUE)
 })
