@@ -47,7 +47,7 @@ test_that("matrix edits commit matrices metadata and PARS once", {
     tipred_names = "group", tipredDefault = FALSE
   )))
   drift <- spec$matrices$DRIFT
-  drift["eta", "eta"] <- "custom_a + custom_b"
+  drift["eta", "eta"] <- "custom_a"
   pars <- ctgui_parse_pars_vector("custom_a\ncustom_b")
   commit <- suppressWarnings(suppressMessages(ctgui_apply_matrix_edits(
     spec,
@@ -59,7 +59,7 @@ test_that("matrix edits commit matrices metadata and PARS once", {
     ))
   )))
   expect_true(commit$effects$changed)
-  expect_equal(commit$spec$matrices$DRIFT["eta", "eta"], "custom_a + custom_b")
+  expect_equal(commit$spec$matrices$DRIFT["eta", "eta"], "custom_a")
   expect_setequal(as.character(commit$spec$matrices$PARS), c("custom_a", "custom_b"))
   row <- subset(
     commit$spec$parameter_metadata,
@@ -68,6 +68,30 @@ test_that("matrix edits commit matrices metadata and PARS once", {
   expect_true(row$indvarying)
   expect_equal(row$sdscale, 2)
   expect_true(row$group_effect)
+})
+
+test_that("manifest additions create their latent before the loading", {
+  draft <- ctgui_spec(latent_names = character(), manifest_names = character())
+  commit <- ctgui_add_spec_variable(draft, "manifest", "y", measuring = "eta")
+
+  expect_equal(commit$spec$latent_names, "eta")
+  expect_equal(commit$spec$manifest_names, "y")
+  expect_identical(commit$spec$matrices$LAMBDA["y", "eta"], 1)
+  expect_false(is.null(commit$spec$model))
+})
+
+test_that("additional manifest measurements receive a free loading", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y1")
+  commit <- ctgui_add_spec_variable(spec, "manifest", "y2", measuring = "eta")
+
+  expect_identical(commit$spec$matrices$LAMBDA["y1", "eta"], "1")
+  expect_identical(
+    commit$spec$matrices$LAMBDA["y2", "eta"],
+    ctgui_auto_label("LAMBDA", "y2", "eta")
+  )
+  metadata <- subset(commit$spec$parameter_metadata,
+    matrix == "LAMBDA" & row == "y2" & col == "eta")
+  expect_equal(nrow(metadata), 1L)
 })
 
 test_that("explicit free edits honor persisted TI all and none policies", {
@@ -126,6 +150,10 @@ test_that("data role and summary services are deterministic", {
   expect_equal(roles$tipred_names, "group")
   expect_equal(roles$id, "person")
   expect_equal(roles$time, "wave")
+  expect_false("person" %in% roles$manifest_choices)
+  expect_false("person" %in% roles$tdpred_choices)
+  expect_false("person" %in% roles$tipred_choices)
+  expect_false("wave" %in% roles$manifest_choices)
   manual <- ctgui_data_role_selection(
     data.frame(observed = 1),
     suppressWarnings(suppressMessages(ctgui_spec(
@@ -139,6 +167,8 @@ test_that("data role and summary services are deterministic", {
     "typed_id", "typed_time"
   ) %in% manual$choices))
   expect_equal(manual$manifest_names, "typed_y")
+  expect_false("typed_id" %in% manual$manifest_choices)
+  expect_false("typed_time" %in% manual$manifest_choices)
   expect_equal(nrow(ctgui_data_preview(data)), 4L)
   expect_true("y" %in% ctgui_data_summary(data)$variable)
   expect_equal(
@@ -147,4 +177,11 @@ test_that("data role and summary services are deterministic", {
   )
   expect_true("y" %in% ctgui_within_between_summary(data, spec)$variable)
   expect_equal(nrow(ctgui_tipred_subject_data(data, spec)$values), 2L)
+
+  matrix_data <- as.matrix(data)
+  roles <- ctgui_data_role_selection(matrix_data, spec)
+  expect_true(all(c("person", "wave", "y", "group") %in% roles$choices))
+  expect_false("person" %in% roles$tipred_choices)
+  expect_equal(nrow(ctgui_data_preview(matrix_data)), 4L)
+  expect_true("y" %in% ctgui_data_summary(matrix_data)$variable)
 })

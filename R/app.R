@@ -7,7 +7,9 @@ utils::globalVariables(c(
 #'
 #' @return A `shiny.appobj` ready to run or test.
 #' @keywords internal
-ctgui_create_app <- function(initial_spec = ctgui_spec(), help_catalog = ctgui_help_catalog()) {
+ctgui_create_app <- function(
+    initial_spec = ctgui_spec(latent_names = character(), manifest_names = character()),
+    help_catalog = ctgui_help_catalog()) {
   if (!requireNamespace("shiny", quietly = TRUE)) {
     stop("The shiny package is required to launch the ctsemgui app", call. = FALSE)
   }

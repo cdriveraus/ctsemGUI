@@ -24,17 +24,14 @@ ctgui_sync_matrix_inputs_from_spec <- function(
   shiny::updateTextInput(
     session, "latent_names", value = paste(spec$latent_names, collapse = ", ")
   )
-  shiny::updateSelectizeInput(
-    session, "manifest_names", choices = spec$manifest_names,
-    selected = spec$manifest_names
+  shiny::updateTextInput(
+    session, "manifest_names", value = paste(spec$manifest_names, collapse = ", ")
   )
   shiny::updateSelectizeInput(
-    session, "tdpred_names", choices = spec$tdpred_names,
-    selected = spec$tdpred_names
+    session, "tdpred_names", selected = spec$tdpred_names
   )
   shiny::updateSelectizeInput(
-    session, "tipred_names", choices = spec$tipred_names,
-    selected = spec$tipred_names
+    session, "tipred_names", selected = spec$tipred_names
   )
   shiny::updateCheckboxInput(
     session, "tipredDefault", value = isTRUE(spec$tipredDefault)
@@ -414,6 +411,7 @@ ctgui_matrix_server <- function(
     )]
     scale <- suppressWarnings(as.numeric(meta$sdscale[1L]))
     if (is.na(scale)) scale <- 1
+    expression <- ctgui_parameter_is_expression(value, spec$latent_names)
     id <- function(field) {
       ctgui_matrix_meta_id(
         matrix_name, selected$row, selected$col, field
@@ -430,31 +428,34 @@ ctgui_matrix_server <- function(
           "saved automatically."
         )
       ),
+      shiny::tags$p(class = "matrix-note", ctgui_expression_metadata_guidance()),
       shiny::div(
         class = "control-grid",
-        shiny::checkboxInput(
-          id("indvarying"),
-          arg_label("RandomEffects", "help_matrix_random_effects"),
-          value = isTRUE(meta$indvarying[1L])
-        ),
-        shiny::textInput(
-          id("transform"), arg_label("Transform", "help_matrix_transform"),
-          value = ctgui_display_transform(meta$transform[1L])
-        ),
-        shiny::numericInput(
-          id("sdscale"),
-          arg_label(
-            "RandomEffectsScale", "help_matrix_random_effects_scale"
+        if (!expression) shiny::tagList(
+          shiny::checkboxInput(
+            id("indvarying"),
+            arg_label("RandomEffects", "help_matrix_random_effects"),
+            value = isTRUE(meta$indvarying[1L])
           ),
-          value = scale, step = 0.1
-        ),
-        if (length(spec$tipred_names)) shiny::selectizeInput(
-          id("tipreds"),
-          arg_label(
-            "Time Independent Predictors",
-            "help_matrix_time_independent_predictors"
+          shiny::textInput(
+            id("transform"), arg_label("Transform", "help_matrix_transform"),
+            value = ctgui_display_transform(meta$transform[1L])
           ),
-          choices = spec$tipred_names, selected = tipreds, multiple = TRUE
+          shiny::numericInput(
+            id("sdscale"),
+            arg_label(
+              "RandomEffectsScale", "help_matrix_random_effects_scale"
+            ),
+            value = scale, step = 0.1
+          ),
+          if (length(spec$tipred_names)) shiny::selectizeInput(
+            id("tipreds"),
+            arg_label(
+              "Time Independent Predictors",
+              "help_matrix_time_independent_predictors"
+            ),
+            choices = spec$tipred_names, selected = tipreds, multiple = TRUE
+          )
         ),
         shiny::textInput(
           id("extra_pars"), "PARS (free parameters in expression)",
@@ -689,8 +690,7 @@ ctgui_matrix_server <- function(
       shiny::tags$p(
         class = "matrix-note",
         paste(
-          "Extra parameter vector for nonlinear or custom expressions.",
-          "Enter one fixed value or free label per line."
+          "Extra parameter vector for nonlinear or custom expressions."
         )
       ),
       shiny::textAreaInput(

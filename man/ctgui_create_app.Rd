@@ -5,7 +5,7 @@
 \title{Create the ctsemgui Shiny application.}
 \usage{
 ctgui_create_app(
-  initial_spec = ctgui_spec(),
+  initial_spec = ctgui_spec(latent_names = character(), manifest_names = character()),
   help_catalog = ctgui_help_catalog()
 )
 }

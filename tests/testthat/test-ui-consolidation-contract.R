@@ -118,6 +118,11 @@ test_that("merged data-role controls are creatable and retain manual names", {
       logical(1L))]
     expect_length(present, 1L)
     if (length(present) == 1L) {
+      if (identical(role, "manifest")) {
+        expect_match(html, paste0('id="spec_add_', role, '"'), fixed = TRUE,
+          info = paste(role, "uses the shared add dialog"))
+        next
+      }
       create_pattern <- paste0(
         'data-for="', present, '"[^>]*>\\s*\\{[^<]*"create"\\s*:\\s*true'
       )
@@ -146,7 +151,7 @@ test_that("approved consolidation retains substantive workflows", {
   )
 
   static_ids <- c(
-    "tipred_network", "fit_save_name", "save_fit", "active_fit_name",
+    "fit_save_name", "save_fit", "active_fit_name",
     "fit_comparison", "raw_plot", "raw_plot_png", "raw_plot_pdf",
     "assign_model", "assign_fit", "download_model_rds", "download_project_rds",
     "download_fit_rds", "load_model_rds", "load_fit_rds",
@@ -159,7 +164,6 @@ test_that("approved consolidation retains substantive workflows", {
   }
 
   dynamic_ids <- c(
-    "tipred_network_plot", "tipred_network_status",
     "uncertainty_status", "uncertainty_summary",
     "generated_fit_summary", "cov_check_plots", "kalman_plot",
     "postpred_plots", "residual_acf_plot", "dynamics_plot",

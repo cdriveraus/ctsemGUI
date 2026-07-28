@@ -131,6 +131,14 @@ test_that("data validation reports missing columns and duplicate id/time rows", 
   expect_true(any(validation$field == "id/time"))
 })
 
+test_that("data validation accepts named matrices", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y", id = "id", time = "time")
+  data <- cbind(id = c(1, 1, 2, 2), time = c(0, 1, 0, 1), y = c(2, 3, 4, 6))
+  validation <- ctgui_validate_data(spec, data)
+
+  expect_false(any(validation$severity == "error"))
+})
+
 test_that("workflow code uses modern ctFit model argument", {
   spec <- ctgui_build_model("dynamic_var", "single_indicator", options = list(n = 1))
   code <- ctgui_export_code(spec)

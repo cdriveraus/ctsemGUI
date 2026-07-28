@@ -9,6 +9,21 @@
       event.stopPropagation();
     });
 
+    // Selectize normally focuses its search field first and opens on the
+    // next click in some browser/input-binding combinations.  Opening after
+    // the native mousedown keeps every variable selector one-click while
+    // retaining normal keyboard creation and comma-separated entry.
+    app.on("mousedown", ".selectize-control", function (event) {
+      if ($(event.target).closest(".remove").length) return;
+      var select = $(this).closest(".shiny-input-container").find("select")[0];
+      var selectize = select && select.selectize;
+      if (!selectize || selectize.isLocked) return;
+      window.setTimeout(function () {
+        selectize.focus();
+        selectize.open();
+      }, 0);
+    });
+
     function specificationPayload() {
       var payload = {};
       [
@@ -26,6 +41,29 @@
       });
       return payload;
     }
+
+    app.on("click", ".ctgui-spec-add", function () {
+      var kind = $(this).attr("data-add-role");
+      var control = app.find("#" + kind + "_names")[0];
+      var selectize = control && control.selectize;
+      var dataColumns = app.find("#ctgui-spec-data-choices option").map(function () { return this.value; }).get();
+      var current = selectize ? (selectize.items || []) : [];
+      var latentText = String(app.find("#latent_names").val() || "");
+      var latentNames = latentText.split(",").map(function (name) { return name.trim(); }).filter(Boolean);
+      var manifestNames = String(app.find("#manifest_names").val() || "").split(",").map(function (name) { return name.trim(); }).filter(Boolean);
+      var excluded = current.concat([String(app.find("#id").val() || "")]);
+      if (kind === "manifest") excluded = excluded.concat(manifestNames, [String(app.find("#time").val() || "")]);
+      if (!window.ctguiVariableEntryDialog) return;
+      window.ctguiVariableEntryDialog({
+        host: app[0], id: "specification", kind: kind,
+        used: current, dataColumns: dataColumns, excluded: excluded, latentNames: latentNames,
+        callback: function (name, measuring) {
+          if (window.Shiny) Shiny.setInputValue("spec_add_variable", {
+            kind: kind, name: name, measuring: measuring, nonce: Math.random()
+          }, { priority: "event" });
+        }
+      });
+    });
 
     app.on("show.bs.tab", "a[data-toggle=\"tab\"]", function () {
       if (window.Shiny) {

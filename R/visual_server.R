@@ -36,14 +36,21 @@ ctgui_visual_server <- function(input, output, session, current_spec,
 
   data_columns <- function() {
     data <- shiny::isolate(current_data())
-    if (is.null(data)) character() else names(data)
+    ctgui_data_columns(data)
   }
 
   send <- function(view = input$visual_view %||% "state_space") {
     send_message("ctgui-visual-load", list(
       id = "visual_spec_canvas",
       graph = graph_for_view(view),
-      data_columns = data_columns()
+      data_columns = data_columns(),
+      data_roles = list(
+        id = current_spec()$id,
+        time = current_spec()$time,
+        manifest = current_spec()$manifest_names,
+        tdpred = current_spec()$tdpred_names,
+        tipred = current_spec()$tipred_names
+      )
     ))
   }
 
@@ -107,11 +114,13 @@ ctgui_visual_server <- function(input, output, session, current_spec,
         shiny::tags$p("Select a path to edit its parameter settings.")
       ))
     }
+    expression <- ctgui_parameter_is_expression(edge$value %||% "", current_spec()$latent_names)
     shiny::div(
       class = "matrix-cell-inspector visual-path-inspector",
       shiny::tags$h5(paste(
         edge$matrix, "[", edge$row, ",", edge$col, "]", sep = ""
       )),
+      shiny::tags$p(class = "matrix-note", ctgui_expression_metadata_guidance()),
       shiny::div(
         class = "control-grid",
         shiny::textInput(
@@ -120,25 +129,27 @@ ctgui_visual_server <- function(input, output, session, current_spec,
             ctgui_auto_label(edge$matrix, edge$row, edge$col)
           } else edge$value %||% ""
         ),
-        shiny::checkboxInput(
-          "visual_path_random", "RandomEffects",
-          value = isTRUE(edge$indvarying)
+        if (!expression) shiny::tagList(
+          shiny::checkboxInput(
+            "visual_path_random", "RandomEffects",
+            value = isTRUE(edge$indvarying)
+          ),
+          shiny::textInput(
+            "visual_path_transform", "Transform",
+            value = ctgui_display_transform(edge$transform)
+          ),
+          shiny::numericInput(
+            "visual_path_sdscale", "RandomEffectsScale",
+            value = suppressWarnings(as.numeric(edge$sdscale %||% 1)), step = 0.1
+          ),
+          if (length(current_spec()$tipred_names)) {
+            shiny::selectizeInput(
+              "visual_path_tipreds", "Time Independent Predictors",
+              choices = current_spec()$tipred_names,
+              selected = edge$tipred_effects %||% character(), multiple = TRUE
+            )
+          }
         ),
-        shiny::textInput(
-          "visual_path_transform", "Transform",
-          value = ctgui_display_transform(edge$transform)
-        ),
-        shiny::numericInput(
-          "visual_path_sdscale", "RandomEffectsScale",
-          value = suppressWarnings(as.numeric(edge$sdscale %||% 1)), step = 0.1
-        ),
-        if (length(current_spec()$tipred_names)) {
-          shiny::selectizeInput(
-            "visual_path_tipreds", "Time Independent Predictors",
-            choices = current_spec()$tipred_names,
-            selected = edge$tipred_effects %||% character(), multiple = TRUE
-          )
-        },
         shiny::textInput(
           "visual_path_extra_pars", "PARS (free parameters in expression)",
           value = edge$extra_pars %||% "",

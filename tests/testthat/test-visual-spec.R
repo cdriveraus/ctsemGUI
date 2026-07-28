@@ -20,6 +20,18 @@ test_that("visual graphs round trip fitted-model matrices without generation mat
   expect_equal(edge$extra_pars, "shape")
 })
 
+test_that("default mean constants are offset from their target nodes", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  graph <- ctgui_visual_graph(spec, "state_space")
+  initial <- ctgui_visual_graph(spec, "initial_state")
+  node <- function(id) Filter(function(item) identical(item$id, id), graph$nodes)[[1L]]
+  initial_node <- function(id) Filter(function(item) identical(item$id, id), initial$nodes)[[1L]]
+
+  expect_lt(node("constant:CINT")$y, node("latent:eta")$y)
+  expect_gt(node("constant:MANIFESTMEANS")$y, node("manifest:y")$y)
+  expect_lt(initial_node("constant:T0MEANS")$y, initial_node("latent:eta")$y)
+})
+
 test_that("visual graph messages use the versioned protocol contract", {
   spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
   graph <- ctgui_visual_graph(spec, "state_space")
@@ -47,6 +59,15 @@ test_that("visual browser renderer does not interpolate graph data as HTML", {
   expect_true(grepl("GRAPH_PROTOCOL_VERSION", source, fixed = TRUE))
   expect_true(grepl("shell.addEventListener(\"keydown\"", source, fixed = TRUE))
   expect_true(grepl("textContent", source, fixed = TRUE))
+  expect_true(grepl("Measuring which latent", source, fixed = TRUE))
+  expect_true(grepl("ctgui-combo-menu", source, fixed = TRUE))
+  expect_true(grepl("ctgui-structural-filters", source, fixed = TRUE))
+  expect_true(grepl('"loop-sweep": "25deg"', source, fixed = TRUE))
+  expect_true(grepl("Add time-dependent predictor", source, fixed = TRUE))
+  expect_true(grepl("Add time-independent predictor", source, fixed = TRUE))
+  expect_true(grepl('input.addEventListener("click", renderChoices)', source, fixed = TRUE))
+  expect_true(grepl("var excluded = options.excluded || []", source, fixed = TRUE))
+  expect_true(grepl("roleList(roles.id)", source, fixed = TRUE))
 })
 
 test_that("visual graph maps directed paths and lower-triangular noise paths", {
@@ -298,6 +319,24 @@ test_that("TI visual graph round trips predictor effects", {
   expect_false(meta$group_effect[1L])
 })
 
+test_that("TI-effect deletion preserves submitted node positions", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y", tipred_names = "group")
+  spec <- ctgui_set_parameter_metadata(spec, "DRIFT", "eta", "eta", tipred_effects = "group")
+  graph <- ctgui_visual_graph(spec, "tipred_effects")
+  graph$nodes[[1L]]$x <- 125; graph$nodes[[1L]]$y <- 225
+  parameter_index <- which(vapply(graph$nodes, function(node) identical(node$kind, "parameter"), logical(1L)))[1L]
+  graph$nodes[[parameter_index]]$x <- 725; graph$nodes[[parameter_index]]$y <- 325
+  graph$edges <- Filter(function(edge) !identical(edge$edge_kind, "tipred_effect"), graph$edges)
+
+  updated <- ctgui_visual_apply_graph(spec, graph)
+  refreshed <- ctgui_visual_graph(updated, "tipred_effects")
+  expect_equal(refreshed$nodes[[1L]]$x, 125)
+  expect_equal(refreshed$nodes[[1L]]$y, 225)
+  parameter <- Filter(function(node) identical(node$kind, "parameter"), refreshed$nodes)[[1L]]
+  expect_equal(parameter$x, 725)
+  expect_equal(parameter$y, 325)
+})
+
 test_that("TI predictors added in the state-space visual graph update the specification", {
   spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
   graph <- ctgui_visual_graph(spec, "state_space")
@@ -329,4 +368,24 @@ test_that("TI view adds and deletes predictors in the specification", {
   expect_false(any(updated$parameter_metadata$cohort_effect))
   updated <- ctgui_set_matrix_value(updated, "CINT", "eta", colnames(updated$matrices$CINT)[1L], label = "cint_eta")
   expect_false(ctgui_visual_metadata(updated, "CINT", "eta", colnames(updated$matrices$CINT)[1L])$cohort_effect[1L])
+})
+
+test_that("TI graph overlays non-editable random-effect variances and correlations", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y", tipred_names = "group")
+  spec <- ctgui_set_parameter_metadata(spec, "DRIFT", "eta", "eta", indvarying = TRUE)
+  graph <- ctgui_visual_graph(spec, "tipred_effects")
+  overlay <- Filter(function(edge) grepl("^random_effect_", edge$edge_kind %||% ""), graph$edges)
+  expect_true(any(vapply(overlay, function(edge) identical(edge$edge_kind, "random_effect_variance"), logical(1L))))
+  expect_true(all(vapply(overlay, function(edge) isTRUE(edge$visual_only) && identical(edge$selectable, FALSE), logical(1L))))
+})
+
+test_that("visual deletion can return the specification to an uninstantiated draft", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  graph <- ctgui_visual_graph(spec, "state_space")
+  graph$nodes <- Filter(function(node) !(node$kind %in% c("latent", "manifest")), graph$nodes)
+  updated <- ctgui_visual_apply_graph(spec, graph)
+  expect_length(updated$latent_names, 0L)
+  expect_length(updated$manifest_names, 0L)
+  expect_null(updated$model)
+  expect_identical(updated$source, "draft")
 })

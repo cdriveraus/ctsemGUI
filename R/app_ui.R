@@ -2,37 +2,66 @@
 
 ctgui_data_roles_ui <- function(spec, data = NULL) {
   roles <- ctgui_data_role_selection(data, spec)
-  creatable <- list(create = TRUE, persist = FALSE)
+  creatable <- list(create = TRUE, persist = FALSE, openOnFocus = TRUE)
   shiny::div(
     class = "control-grid",
-    shiny::selectizeInput(
-      "manifest_names", "Manifest variables",
-      choices = roles$choices, selected = roles$manifest_names,
-      multiple = TRUE, options = creatable
+    shiny::tags$select(
+      id = "ctgui-spec-data-choices", style = "display:none",
+      lapply(roles$choices, function(name) shiny::tags$option(value = name, name))
+    ),
+    shiny::div(
+      shiny::tags$div(
+        class = "form-group shiny-input-container",
+        shiny::tags$label(`for` = "manifest_names", class = "control-label", "Manifest variables"),
+        shiny::tags$input(
+          id = "manifest_names", type = "text", class = "form-control ctgui-readonly-variable-list",
+          value = paste(roles$manifest_names, collapse = ", "), readonly = "readonly",
+          `aria-readonly` = "true", title = "Use Add manifest to choose the measured latent process."
+        )
+      ),
+      shiny::tags$p(class = "help-note", "Add manifest and choose the latent process it measures."),
+      shiny::actionButton("spec_add_manifest", "Add manifest", class = "ctgui-spec-add", `data-add-role` = "manifest")
+    ),
+    shiny::div(
+      shiny::selectizeInput(
+        "tdpred_names", "Time dependent predictors",
+        choices = roles$tdpred_choices, selected = roles$tdpred_names,
+        multiple = TRUE, options = creatable
+      ),
+      shiny::tags$p(class = "help-note", "Choose a dataset variable or type new names, separated by commas.")
+    ),
+    shiny::div(
+      shiny::selectizeInput(
+        "tipred_names", "Time independent predictors",
+        choices = roles$tipred_choices, selected = roles$tipred_names,
+        multiple = TRUE, options = creatable
+      ),
+      shiny::tags$p(class = "help-note", "Choose a dataset variable or type new names, separated by commas.")
     ),
     shiny::selectizeInput(
-      "tdpred_names", "Time dependent predictors",
-      choices = roles$choices, selected = roles$tdpred_names,
-      multiple = TRUE, options = creatable
-    ),
-    shiny::selectizeInput(
-      "tipred_names", "Time independent predictors",
-      choices = roles$choices, selected = roles$tipred_names,
-      multiple = TRUE, options = creatable
-    ),
-    shiny::selectizeInput(
-      "id", "ID column", choices = roles$choices, selected = roles$id,
+      "id", "ID column", choices = roles$id_choices, selected = roles$id,
       options = creatable
     ),
     shiny::selectizeInput(
-      "time", "Time column", choices = roles$choices, selected = roles$time,
+      "time", "Time column", choices = roles$time_choices, selected = roles$time,
       options = creatable
     )
   )
 }
 
+ctgui_available_cores <- function() {
+  detected <- suppressWarnings(as.integer(parallel::detectCores(logical = TRUE)))
+  if (is.na(detected) || detected < 1L) 1L else detected
+}
+
+ctgui_core_label <- function(argument, available = ctgui_available_cores()) {
+  paste0(argument, " (of ", available, " CPU cores)")
+}
+
 ctgui_app_ui <- function(initial_spec, help_catalog, assets) {
   spec <- initial_spec
+  available_cores <- ctgui_available_cores()
+  default_cores <- min(2L, available_cores)
   visual_asset_url <- assets$visual_asset_url
   application_asset_version <- assets$application_asset_version
   if (is.null(application_asset_version) || !nzchar(application_asset_version)) {
@@ -90,18 +119,16 @@ ui <- shiny::fluidPage(
               class = "control-grid",
               shiny::textInput("latent_names", "Latent processes", paste(spec$latent_names, collapse = ", "))
             ),
-            shiny::uiOutput("manifest_type_controls"),
-            shiny::uiOutput("tipred_network")
+            shiny::uiOutput("manifest_type_controls")
           ),
           shiny::div(
             class = "control-band",
             shiny::tags$h4("Options"),
-            shiny::uiOutput("explain_spec_options"),
             shiny::div(
               class = "control-grid",
               shiny::selectInput("type", arg_label("Time model", "help_gui_time_model", "Continuous or discrete time model"),
                 choices = c("Continuous time (ct)" = "ct", "Discrete time (dt)" = "dt"), selected = spec$type),
-              shiny::checkboxInput("tipredDefault", "Default TI predictor effects", value = isTRUE(spec$tipredDefault))
+              shiny::checkboxInput("tipredDefault", "Time independent predictors moderate all parameters by default (uncheck for no moderation unless specified)", value = isTRUE(spec$tipredDefault))
             )
           ),
           shiny::tableOutput("validation_table_spec")
@@ -127,7 +154,7 @@ ui <- shiny::fluidPage(
             shiny::div(class = "control-grid",
               shiny::selectInput("visual_view", "View", choices = c(
                 "State space" = "state_space", "Initial state" = "initial_state",
-                "TI predictor effects" = "tipred_effects"
+                "Individual Differences" = "tipred_effects"
               ))
             ),
             shiny::textOutput("visual_status"),
@@ -176,10 +203,10 @@ ui <- shiny::fluidPage(
             class = "control-band",
             shiny::div(
               class = "control-grid",
-              shiny::selectInput("env_data", "R data.frame", choices = character()),
-              shiny::actionButton("refresh_env_data", "Refresh data list"),
-              shiny::actionButton("load_env_data", "Use selected data"),
-              shiny::fileInput("csv_file", "Import CSV", accept = c(".csv", "text/csv"))
+              shiny::selectInput("env_data", "R data.frame or matrix", choices = character()),
+              shiny::fileInput("csv_file", "Browse", accept = c(
+                ".csv", "text/csv", ".rds", "application/octet-stream"
+              ))
             )
           )
         ),
@@ -232,9 +259,9 @@ ui <- shiny::fluidPage(
             class = "control-band",
             shiny::div(
               class = "control-grid",
-              shiny::checkboxInput("fit_optimize", arg_label("optimize", "help_fit_optimize", "ctFit argument: optimize"), value = TRUE),
-              shiny::checkboxInput("fit_priors", arg_label("priors", "help_fit_priors", "ctFit argument: priors"), value = TRUE),
-              shiny::numericInput("fit_cores", arg_label("cores", "help_fit_cores", "ctFit argument: cores"), value = 1, min = 1, step = 1),
+              shiny::checkboxInput("fit_optimize", arg_label("optimize", "help_fit_optimize", "Whether to optimize or use full Bayesian sampling via Stan (generally very slow!)"), value = TRUE),
+              shiny::checkboxInput("fit_priors", arg_label("priors", "help_fit_priors", "ctFit argument: priors"), value = FALSE),
+              shiny::numericInput("fit_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_cores", "ctFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::textAreaInput("fit_extra_args", arg_label("Extra ctFit arguments", "help_ctFit", "Full ctFit help"), value = "", height = "70px"),
               shiny::checkboxInput("fit_completion_beep", "Play a sound when fitting finishes", value = FALSE),
               shiny::textInput("fit_save_name", "Fit name", value = "fit1"),
@@ -362,7 +389,8 @@ ui <- shiny::fluidPage(
             shiny::div(
               class = "control-grid",
               shiny::numericInput("fit_gen_samples", arg_label("nsamples", "help_fit_gen_nsamples", "ctGenerateFromFit argument: nsamples"), value = 200, min = 1, step = 1),
-              shiny::numericInput("fit_gen_cores", arg_label("cores", "help_fit_gen_cores", "ctGenerateFromFit argument: cores"), value = 1, min = 1, step = 1),
+              shiny::checkboxInput("fit_gen_follow_cores", "Use fit core selection", value = TRUE),
+              shiny::numericInput("fit_gen_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_gen_cores", "ctGenerateFromFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::checkboxInput("fit_gen_fullposterior", arg_label("fullposterior", "help_fit_gen_fullposterior", "ctGenerateFromFit argument: fullposterior"), value = FALSE),
               shiny::textAreaInput("fit_gen_extra_args", arg_label("Extra ctGenerateFromFit arguments", "help_ctGenerateFromFit", "Full ctGenerateFromFit help"), value = "", height = "70px"),
               shiny::actionButton("generate_from_fit", "Generate from fit", class = "btn-primary")
@@ -376,7 +404,7 @@ ui <- shiny::fluidPage(
             class = "control-band",
             shiny::div(
               class = "control-grid",
-              shiny::textInput("cov_lags", arg_label("lags", "help_cov_lags", "ctFitCovCheck argument: lags"), value = "0:3"),
+              shiny::textInput("cov_lags", arg_label("lags", "help_cov_lags", "ctFitCovCheck argument: lags"), value = ""),
               shiny::checkboxInput("cov_cor", arg_label("cor", "help_cov_cor", "ctFitCovCheck argument: cor"), value = TRUE),
               shiny::textAreaInput("cov_extra_args", arg_label("Extra ctFitCovCheck arguments", "help_ctFitCovCheck", "Full ctFitCovCheck help"), value = "", height = "70px"),
               shiny::actionButton("run_cov_check", "Run ctFitCovCheck", class = "btn-primary")

@@ -77,7 +77,6 @@ manifest_type_choices <- c(
 explanation_text <- function(key) {
   brief <- switch(key,
     spec_data = "Choose active-data columns or type new names for each ctsem data role. Typed names remain available when no data are loaded.",
-    spec_options = "Core ctModel options control the continuous/discrete time model, manifest variable types, and default TI predictor behavior.",
     matrices = "Use fixed numeric values or free labels; add ||FALSE to disable random effects where ctsem supports it.",
     raw_visuals = "Use these plots to inspect trajectories, variable relationships, time gaps, and missingness before fitting.",
     model_visuals = "These plots show what the current model structure implies before any fit is run.",
@@ -98,7 +97,6 @@ explain_ui <- function(key) {
 }
 
 output$explain_spec_data <- shiny::renderUI(explain_ui("spec_data"))
-output$explain_spec_options <- shiny::renderUI(explain_ui("spec_options"))
 output$explain_raw_visuals <- shiny::renderUI(explain_ui("raw_visuals"))
 output$explain_model_visuals <- shiny::renderUI(explain_ui("model_visuals"))
 output$explain_fit_registry <- shiny::renderUI(explain_ui("fit_registry"))
@@ -112,7 +110,13 @@ show_help <- function(help) {
   title <- help$title %||% if (is.null(help$param)) paste0("ctsem::", help$topic) else paste(help$topic, "-", help$param)
   shiny::showModal(shiny::modalDialog(
     title = title,
-    if (!is.null(help$topic)) shiny::tags$pre(style = "white-space: pre-wrap;", text) else text,
+    if (!is.null(help$text)) {
+      shiny::tags$p(text)
+    } else if (!is.null(help$topic)) {
+      shiny::tags$div(class = "ctgui-rd-help", text)
+    } else {
+      text
+    },
     size = if (!is.null(help$topic)) "l" else "m",
     easyClose = TRUE,
     footer = shiny::modalButton("Close")
@@ -172,6 +176,16 @@ parse_text_vector <- function(x, default = character()) {
 }
 
 is_omitted_arg <- function(x) inherits(x, "ctgui_omitted_arg")
+
+generate_from_fit_cores <- function() {
+  if (!identical(input$fit_gen_follow_cores, FALSE)) input$fit_cores else input$fit_gen_cores
+}
+
+cov_check_lags <- function() {
+  text <- input$cov_lags
+  if (is.null(text) || !nzchar(trimws(text))) return(NULL)
+  parse_r_expression(text, 0:3)
+}
 
 parse_extra_args <- function(x) {
   if (is.null(x) || !nzchar(trimws(x))) return(list())
@@ -239,16 +253,24 @@ capture_conditions <- function(expr, progress_callback = NULL) {
   list(value = value, messages = compact_condition_messages(messages, progress), warnings = warnings)
 }
 
-data_frame_names <- function() {
+r_data_names <- function() {
   objects <- ls(envir = .GlobalEnv)
   objects[vapply(objects, function(name) {
-    is.data.frame(get(name, envir = .GlobalEnv))
+    object <- get(name, envir = .GlobalEnv)
+    is.data.frame(object) || is.matrix(object)
   }, logical(1L))]
 }
 
-update_data_choices <- function() {
-  choices <- data_frame_names()
-  shiny::updateSelectInput(session, "env_data", choices = choices, selected = choices[1L])
+update_data_choices <- function(selected = NULL) {
+  choices <- r_data_names()
+  current <- selected %||% shiny::isolate(input$env_data)
+  if (is.null(current) || !nzchar(current) || !current %in% choices) current <- ""
+  shiny::updateSelectInput(
+    session,
+    "env_data",
+    choices = c("Select R data" = "", choices),
+    selected = current
+  )
 }
 
 update_fit_choices <- function(selected = NULL) {
@@ -430,66 +452,24 @@ output$data_spec_controls <- shiny::renderUI({
   ctgui_data_roles_ui(current_spec(), current_data())
 })
 
-output$tipred_network <- shiny::renderUI({
-  spec <- current_spec()
-  if (!length(spec$tipred_names)) return(shiny::helpText("Add time-independent predictors to show their subject-level correlations and moderated parameters."))
-  shiny::div(class = "control-band",
-    shiny::tags$h4("Time-independent predictor network"),
-    shiny::tags$p(class = "help-note", "Undirected edges are Pearson correlations between the first available value for each subject. Directed arrows show which free model parameters are moderated by each predictor."),
-    shiny::plotOutput("tipred_network_plot", height = 320),
-    shiny::textOutput("tipred_network_status")
+shiny::observeEvent(input$spec_add_variable, {
+  item <- input$spec_add_variable
+  if (!is.list(item)) return()
+  commit <- tryCatch(
+    ctgui_add_spec_variable(
+      current_spec(), as.character(item$kind %||% ""),
+      as.character(item$name %||% ""), as.character(item$measuring %||% "")
+    ),
+    error = function(e) e
   )
-})
-
-tipred_subject_data <- ctgui_tipred_subject_data
-
-output$tipred_network_status <- shiny::renderText({
-  info <- tipred_subject_data(current_data(), current_spec())
-  if (is.null(info)) return("Load data with the selected ID column and TI predictors to calculate correlations.")
-  notes <- character()
-  if (length(info$missing)) notes <- c(notes, paste("Missing from data:", paste(info$missing, collapse = ", ")))
-  if (length(info$varying)) notes <- c(notes, paste("These selected TI predictors vary within subject; correlations use each subject's first row:", paste(info$varying, collapse = ", ")))
-  if (!length(notes)) "" else paste(notes, collapse = " ")
-})
-
-output$tipred_network_plot <- shiny::renderPlot({
-  spec <- current_spec(); info <- tipred_subject_data(current_data(), spec)
-  metadata <- spec$parameter_metadata
-  predictors <- spec$tipred_names
-  targets <- character()
-  if (!is.null(metadata) && nrow(metadata)) for (tipred in predictors) {
-    field <- paste0(tipred, "_effect")
-    if (field %in% names(metadata)) targets <- c(targets, paste(metadata$matrix[metadata[[field]]], metadata$row[metadata[[field]]], metadata$col[metadata[[field]]], sep = ":"))
+  if (inherits(commit, "error")) {
+    shiny::showNotification(conditionMessage(commit), type = "error")
+    return()
   }
-  nodes <- unique(c(predictors, targets))
-  graphics::plot.new()
-  if (!length(nodes)) { graphics::text(.5, .5, "No TI predictor effects are selected yet."); return(invisible(NULL)) }
-  theta <- seq(0, 2*pi, length.out = length(nodes) + 1L)[-length(nodes) - 1L]
-  coords <- data.frame(name = nodes, x = cos(theta), y = sin(theta))
-  graphics::plot.window(xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5), asp = 1)
-  if (!is.null(info) && length(predictors) > 1L) {
-    numeric <- predictors[vapply(predictors, function(x) x %in% names(info$values) && is.numeric(info$values[[x]]), logical(1L))]
-    if (length(numeric) > 1L) {
-      cor <- stats::cor(info$values[numeric], use = "pairwise.complete.obs")
-      for (r in 2:length(numeric)) for (c in seq_len(r - 1L)) if (is.finite(cor[r, c])) {
-        a <- coords[coords$name == numeric[r], ]; b <- coords[coords$name == numeric[c], ]
-        graphics::segments(a$x, a$y, b$x, b$y, col = grDevices::adjustcolor("#7c3aed", .45), lwd = 1 + 2 * abs(cor[r,c]))
-        graphics::text((a$x+b$x)/2, (a$y+b$y)/2, sprintf("r = %.2f", cor[r,c]), cex = .65, col = "#5b21b6", pos = 3)
-      }
-    }
-  }
-  if (!is.null(metadata) && nrow(metadata)) for (tipred in predictors) {
-    field <- paste0(tipred, "_effect"); if (!field %in% names(metadata)) next
-    for (i in which(metadata[[field]])) {
-      target <- paste(metadata$matrix[i], metadata$row[i], metadata$col[i], sep = ":")
-      a <- coords[coords$name == tipred, ]; b <- coords[coords$name == target, ]; dx <- b$x-a$x; dy <- b$y-a$y; d <- sqrt(dx^2+dy^2)
-      if (d > 0) graphics::arrows(a$x+.16*dx/d, a$y+.16*dy/d, b$x-.16*dx/d, b$y-.16*dy/d, length=.08, col="#0f766e", lwd=1.6)
-    }
-  }
-  is_pred <- nodes %in% predictors
-  graphics::points(coords$x, coords$y, pch = 21, bg = ifelse(is_pred, "#dbeafe", "#dcfce7"), cex = 3.2)
-  graphics::text(coords$x, coords$y, nodes, cex = .72)
-})
+  commit_current_spec(commit)
+  fit_status_value("Model changed. Refit when ready.")
+  matrix_status("Added variable to the current model specification.")
+}, ignoreInit = TRUE)
 
 output$manifest_type_controls <- shiny::renderUI({
   manifest_names <- parse_names(input$manifest_names)
@@ -930,12 +910,19 @@ output_data_source <- shiny::reactive({
       wide = FALSE
     )))
   }
+  if (startsWith(data_name, "R data: ")) {
+    return(ctgui_output_data_source(
+      "r_object", sub("^R data: ", "", data_name)))
+  }
   if (startsWith(data_name, "R data.frame: ")) {
     return(ctgui_output_data_source(
       "r_object", sub("^R data\\.frame: ", "", data_name)))
   }
   if (startsWith(data_name, "CSV: ")) {
     return(ctgui_output_data_source("csv", sub("^CSV: ", "", data_name)))
+  }
+  if (startsWith(data_name, "RDS: ")) {
+    return(ctgui_output_data_source("rds", sub("^RDS: ", "", data_name)))
   }
   if (!is.null(data)) return(ctgui_output_data_source("session"))
   ctgui_output_data_source("none")
@@ -971,11 +958,11 @@ output_code_options <- function(action) {
     generate_from_fit = list(
       nsamples = input$fit_gen_samples,
       fullposterior = input$fit_gen_fullposterior,
-      cores = input$fit_gen_cores,
+      cores = generate_from_fit_cores(),
       extra_args = parse_extra_args(input$fit_gen_extra_args)
     ),
     cov_check = list(
-      lags = input$cov_lags,
+      lags = cov_check_lags(),
       cor = input$cov_cor,
       cores = 1L,
       extra_args = parse_extra_args(input$cov_extra_args)
@@ -1065,32 +1052,44 @@ output$fit_comparison <- shiny::renderTable({
   }))
 }, rownames = FALSE)
 
-shiny::observeEvent(input$refresh_env_data, update_data_choices())
-
-shiny::observeEvent(input$load_env_data, {
+shiny::observeEvent(input$env_data, {
   if (is.null(input$env_data) || !nzchar(input$env_data)) {
-    shiny::showNotification("No data.frame selected", type = "error")
     return()
   }
   data <- get(input$env_data, envir = .GlobalEnv)
-  if (!is.data.frame(data)) {
-    shiny::showNotification("Selected object is no longer a data.frame", type = "error")
+  if (!is.data.frame(data) && !is.matrix(data)) {
+    shiny::showNotification("Selected object is no longer a data.frame or matrix", type = "error")
     update_data_choices()
     return()
   }
   current_data(data)
-  current_data_name(paste0("R data.frame: ", input$env_data))
+  current_data_name(paste0("R data: ", input$env_data))
   shiny::updateTabsetPanel(session, "data_tabs", selected = "Preview")
-})
+}, ignoreInit = TRUE)
 
 shiny::observeEvent(input$csv_file, {
-  data <- tryCatch(utils::read.csv(input$csv_file$datapath, stringsAsFactors = FALSE), error = function(e) e)
+  file_name <- input$csv_file$name %||% ""
+  extension <- tolower(tools::file_ext(file_name))
+  data <- tryCatch(
+    if (identical(extension, "rds")) {
+      readRDS(input$csv_file$datapath)
+    } else if (identical(extension, "csv")) {
+      utils::read.csv(input$csv_file$datapath, stringsAsFactors = FALSE)
+    } else {
+      stop("Browse accepts .csv or .rds files.", call. = FALSE)
+    },
+    error = function(e) e
+  )
   if (inherits(data, "error")) {
     shiny::showNotification(conditionMessage(data), type = "error")
     return()
   }
+  if (!is.data.frame(data) && !is.matrix(data)) {
+    shiny::showNotification("The selected file must contain a data.frame or matrix", type = "error")
+    return()
+  }
   current_data(data)
-  current_data_name(paste0("CSV: ", input$csv_file$name))
+  current_data_name(paste0(if (identical(extension, "rds")) "RDS: " else "CSV: ", file_name))
   shiny::updateTabsetPanel(session, "data_tabs", selected = "Preview")
 })
 
@@ -1495,7 +1494,7 @@ shiny::observeEvent(input$generate_from_fit, {
         fit = fit,
         nsamples = input$fit_gen_samples,
         fullposterior = input$fit_gen_fullposterior,
-        cores = input$fit_gen_cores
+        cores = generate_from_fit_cores()
       )
       args <- append_extra_args(args, input$fit_gen_extra_args)
       ctgui_ctsem_call("ctGenerateFromFit", .args = args)
@@ -1523,7 +1522,7 @@ shiny::observeEvent(input$run_cov_check, {
     shiny::showNotification("Run Generate from fit before ctFitCovCheck", type = "error")
     return()
   }
-  lags <- parse_r_expression(input$cov_lags, 0:3)
+  lags <- cov_check_lags()
   diagnostics_status("Running covariance check...")
   cov_check_log("Running ctFitCovCheck...")
   out <- NULL
@@ -1532,10 +1531,10 @@ shiny::observeEvent(input$run_cov_check, {
       args <- list(
         fit = fit,
         cor = input$cov_cor,
-        lags = lags,
         plot = FALSE,
         cores = 1
       )
+      if (!is.null(lags)) args$lags <- lags
       args <- append_extra_args(args, input$cov_extra_args)
       ctgui_ctsem_call("ctFitCovCheck", .args = args)
     })
@@ -1715,12 +1714,11 @@ output$generated_fit_summary <- shiny::renderText({
 cov_check_plot_list <- shiny::reactive({
   out <- cov_check()
   if (is.null(out)) return(NULL)
-  lags <- parse_r_expression(input$cov_lags, 0:3)
+  lags <- cov_check_lags()
+  plot_args <- c(list(out), if (is.null(lags)) list() else list(maxlag = max(lags)),
+    list(cor = input$cov_cor))
   plots <- tryCatch(
-    ctgui_ctsem_call("ctFitCovCheckPlot", out,
-      maxlag = max(lags),
-      cor = input$cov_cor
-    ),
+    do.call(ctgui_ctsem_call, c(list("ctFitCovCheckPlot"), plot_args)),
     error = function(e) e
   )
   if (inherits(plots, "error")) return(plots)

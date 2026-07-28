@@ -41,7 +41,7 @@ ctgui_graph_edges(
 \item{measurement}{Measurement model. One of \code{"single_indicator"},
 \code{"marker"}, or \code{"fixed_loadings"}.}
 
-\item{data}{A data frame to check against the model specification.}
+\item{data}{A data frame or named matrix to check against the model specification.}
 
 \item{element}{Graph element: \code{"drift"}, \code{"diffusion"}, \code{"measurement"}, or
 \code{"trend"}.}

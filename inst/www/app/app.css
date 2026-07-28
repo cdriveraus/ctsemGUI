@@ -7,6 +7,7 @@ table { background: #ffffff; }
 .control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 14px; align-items: end; }
 .manifest-type-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; align-items: end; margin-top: 12px; }
 .help-note { color: #4b5563; margin: 0 0 10px 0; max-width: 860px; }
+.ctgui-readonly-variable-list { background: #f3f4f6; color: #4b5563; cursor: default; }
 .warning-note { color: #92400e; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 6px; padding: 8px 10px; max-width: 860px; }
 .app-header { display: flex; gap: 16px; align-items: end; justify-content: space-between; flex-wrap: wrap; }
 .app-header .form-group { margin-bottom: 0; min-width: 210px; }
@@ -41,6 +42,7 @@ table { background: #ffffff; }
 .data-preview { overflow-x: auto; }
 .arg-help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 5px; border: 1px solid #9ca3af; border-radius: 50%; background: #ffffff; color: #374151; font-size: 11px; line-height: 1; text-decoration: none; vertical-align: middle; cursor: help; }
 .arg-help:hover, .arg-help:focus { background: #eef2ff; color: #111827; text-decoration: none; }
+.ctgui-rd-help { max-height: 65vh; overflow-y: auto; white-space: pre-wrap; font-family: inherit; line-height: 1.5; }
 .disabled-panel { opacity: 0.68; pointer-events: none; }
 .fit-inline-output { margin-top: 12px; }
 .fit-capture-note { color: #4b5563; margin-top: 6px; }

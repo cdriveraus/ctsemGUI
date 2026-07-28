@@ -31,6 +31,29 @@ ctgui_parameter_annotation_decode <- function(value, tipred_names = character())
   out
 }
 
+ctgui_parameter_annotation_base <- function(value) {
+  trimws(strsplit(as.character(value)[1L], "|", fixed = TRUE)[[1L]][1L])
+}
+
+# ctsem only permits compact `|` annotations for a single free parameter.
+# Expressions (including references to a named latent process) must carry
+# their own transform and have any individual-difference metadata attached to
+# the separate PARS elements instead.
+ctgui_parameter_is_expression <- function(value, latent_names = character()) {
+  base <- ctgui_parameter_annotation_base(value)
+  if (!nzchar(base) || !is.na(suppressWarnings(as.numeric(base)))) return(FALSE)
+  !grepl("^[A-Za-z._][A-Za-z0-9._]*$", base) || base %in% latent_names
+}
+
+ctgui_expression_metadata_guidance <- function() {
+  paste(
+    "If this value is an expression (for example, involving latent states,",
+    "time-dependent predictors, multiple free parameters, or mathematical",
+    "operations), the other metadata settings are ignored. Set any needed",
+    "metadata on its individual free parameter elements below instead."
+  )
+}
+
 ctgui_parameter_annotation_encode <- function(param, transform = "",
     indvarying = FALSE, sdscale = 1, tipreds = character()) {
   param <- trimws(as.character(param)[1L])

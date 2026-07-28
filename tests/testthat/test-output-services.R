@@ -22,6 +22,9 @@ test_that("data-source code covers every GUI source without private API calls", 
   csv <- ctgui_output_data_code(ctgui_output_data_source("csv", "observations.csv"))
   expect_parseable_code(csv)
   expect_match(paste(csv, collapse = "\n"), "utils::read.csv", fixed = TRUE)
+  rds <- ctgui_output_data_code(ctgui_output_data_source("rds", "observations.rds"))
+  expect_parseable_code(rds)
+  expect_match(paste(rds, collapse = "\n"), "readRDS", fixed = TRUE)
   expect_match(ctgui_output_data_code(ctgui_output_data_source("session")), "Shiny session")
   expect_match(ctgui_output_data_code(ctgui_output_data_source("none")), "No data")
 })
@@ -81,6 +84,14 @@ test_that("every diagnostic emits parseable current ctsem code", {
     expect_match(code, expected_calls[[diagnostic]], fixed = TRUE,
       info = diagnostic)
   }
+})
+
+test_that("blank covariance lags preserve ctsem defaults in exported code", {
+  code <- expect_parseable_code(ctgui_output_diagnostic_code(
+    "cov_check", list(lags = NULL, cor = TRUE, cores = 1L)
+  ))
+  expect_false(grepl("cov_lags", code, fixed = TRUE))
+  expect_false(grepl("maxlag", code, fixed = TRUE))
 })
 
 test_that("complete workflow code combines model, source, and recorded actions", {

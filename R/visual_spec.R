@@ -119,7 +119,7 @@ ctgui_visual_position <- function(spec, view, id, index, column, kind = NULL) {
       measurement_noise = list(x = 340 + (index - 1L) * 190, y = 570),
       tdpred = list(x = 85, y = 150 + (index - 1L) * 105),
       tipred = list(x = 85, y = 430 + (index - 1L) * 85),
-      constant = list(x = 1080, y = if (grepl("MANIFEST", id)) 430 else 255),
+      constant = list(x = 1080, y = if (grepl("MANIFEST", id)) 505 else 180),
       list(x = column * 200, y = 90 + index * 105)
     ))
   }
@@ -127,7 +127,7 @@ ctgui_visual_position <- function(spec, view, id, index, column, kind = NULL) {
     return(switch(kind,
       latent = list(x = 360 + (index - 1L) * 190, y = 275),
       initial_noise = list(x = 360 + (index - 1L) * 190, y = 95),
-      constant = list(x = 105, y = 275),
+      constant = list(x = 105, y = 180),
       list(x = column * 200, y = 90 + index * 105)
     ))
   }
@@ -174,12 +174,19 @@ ctgui_visual_graph <- function(spec, view = c("state_space", "initial_state", "t
   }
   latent <- spec$latent_names; manifest <- spec$manifest_names; tdpred <- spec$tdpred_names
   if (identical(view, "tipred_effects")) {
+    has_saved_position <- function(id) {
+      position <- spec$visual$layouts[[view]][[id]]
+      is.list(position) && all(c("x", "y") %in% names(position))
+    }
     metadata <- spec$parameter_metadata
     tipred_colours <- ctgui_visual_tipred_colours(spec$tipred_names)
     for (i in seq_along(spec$tipred_names)) {
-      add_node(paste0("tipred:", spec$tipred_names[i]), "tipred", spec$tipred_names[i], i, 2)
-      nodes[[length(nodes)]]$x <- 360 + (i - 1L) * 180
-      nodes[[length(nodes)]]$y <- 315
+      id <- paste0("tipred:", spec$tipred_names[i])
+      add_node(id, "tipred", spec$tipred_names[i], i, 2)
+      if (!has_saved_position(id)) {
+        nodes[[length(nodes)]]$x <- 360 + (i - 1L) * 180
+        nodes[[length(nodes)]]$y <- 315
+      }
       nodes[[length(nodes)]]$colour <- unname(tipred_colours[[spec$tipred_names[i]]])
       nodes[[length(nodes)]]$tipred_default <- isTRUE(spec$visual$tipred_defaults[[spec$tipred_names[i]]] %||% spec$tipredDefault)
     }
@@ -192,7 +199,10 @@ ctgui_visual_graph <- function(spec, view = c("state_space", "initial_state", "t
         node <- ctgui_visual_node(spec, view, id, "parameter", metadata$param[i], i, 2,
           paste0(metadata$param[i], "\n", metadata$matrix[i]))
         node$matrix <- metadata$matrix[i]; node$row <- metadata$row[i]; node$col <- metadata$col[i]
-        node$x <- 450 + radius * cos(angle); node$y <- 315 + radius * sin(angle)
+        node$random_effect <- isTRUE(metadata$indvarying[i])
+        if (!has_saved_position(id)) {
+          node$x <- 450 + radius * cos(angle); node$y <- 315 + radius * sin(angle)
+        }
         nodes[[length(nodes) + 1L]] <- node
         for (tipred in spec$tipred_names) {
           field <- paste0(tipred, "_effect")
@@ -205,6 +215,24 @@ ctgui_visual_graph <- function(spec, view = c("state_space", "initial_state", "t
               value = "1", label = "", fixed = FALSE
             )
           }
+        }
+      }
+      # Random-effect covariance is part of ctsem's distributional model, not
+      # an editable matrix path.  Make it visible alongside TI moderation:
+      # loops are variances and pairwise links are correlations.
+      random_rows <- which(metadata$indvarying)
+      if (length(random_rows)) for (i in seq_along(random_rows)) {
+        left <- random_rows[i]
+        left_id <- paste("parameter", metadata$matrix[left], metadata$row[left], metadata$col[left], sep = "\r")
+        for (j in seq_len(i)) {
+          right <- random_rows[j]
+          right_id <- paste("parameter", metadata$matrix[right], metadata$row[right], metadata$col[right], sep = "\r")
+          edges[[length(edges) + 1L]] <- list(
+            id = paste("random_effect", left_id, right_id, sep = "\r"),
+            source = left_id, target = right_id, directed = FALSE,
+            edge_kind = if (left == right) "random_effect_variance" else "random_effect_correlation",
+            visual_only = TRUE, selectable = FALSE, fixed = TRUE
+          )
         }
       }
     }
@@ -361,16 +389,20 @@ ctgui_visual_update_edge <- function(spec, edge) {
   new_parameter <- !(key %in% previous_keys)
   index <- which(spec$parameter_metadata$matrix == matrix &
     spec$parameter_metadata$row == row & spec$parameter_metadata$col == col)
-  if (length(index) && !new_parameter) {
+  expression <- matrix %in% names(spec$matrices) && ctgui_parameter_is_expression(
+    spec$matrices[[matrix]][match(row, rownames(spec$matrices[[matrix]])), match(col, colnames(spec$matrices[[matrix]]))],
+    spec$latent_names
+  )
+  if (length(index) && (!new_parameter || expression)) {
     index <- index[1L]
-    if (!is.null(edge$transform)) spec$parameter_metadata$transform[index] <- trimws(as.character(edge$transform))
-    if (!is.null(edge$indvarying)) spec$parameter_metadata$indvarying[index] <- isTRUE(edge$indvarying)
-    if (!is.null(edge$sdscale)) {
+    if (!expression && !is.null(edge$transform)) spec$parameter_metadata$transform[index] <- trimws(as.character(edge$transform))
+    if (!expression && !is.null(edge$indvarying)) spec$parameter_metadata$indvarying[index] <- isTRUE(edge$indvarying)
+    if (!expression && !is.null(edge$sdscale)) {
       scale <- suppressWarnings(as.numeric(edge$sdscale)[1L])
       if (is.na(scale)) scale <- 1
       spec$parameter_metadata$sdscale[index] <- scale
     }
-    if (!is.null(edge$tipred_effects)) for (tipred in spec$tipred_names) {
+    if (!expression && !is.null(edge$tipred_effects)) for (tipred in spec$tipred_names) {
       spec$parameter_metadata[[paste0(tipred, "_effect")]][index] <- tipred %in% edge$tipred_effects
     }
     if (!is.null(edge$extra_pars)) {
@@ -386,7 +418,6 @@ ctgui_visual_update_edge <- function(spec, edge) {
 
 ctgui_visual_resize_spec <- function(spec, nodes, enforce_model_nodes = TRUE) {
   variables <- Filter(function(node) node$kind %in% c("latent", "manifest", "tdpred", "tipred"), nodes %||% list())
-  if (!length(variables)) return(spec)
   names_for <- function(kind) {
     value <- vapply(Filter(function(node) identical(node$kind, kind), variables), function(node) as.character(node$name), character(1L))
     value
@@ -398,9 +429,8 @@ ctgui_visual_resize_spec <- function(spec, nodes, enforce_model_nodes = TRUE) {
   if (anyDuplicated(c(latent, manifest, tdpred, tipred))) {
     stop("Visual variable names must be unique", call. = FALSE)
   }
-  if (isTRUE(enforce_model_nodes) && (!length(latent) || !length(manifest))) {
-    stop("Visual variables must include at least one unique latent and manifest name", call. = FALSE)
-  }
+  # The visual editor is also the draft authoring surface.  A ctsem model is
+  # constructed only once both node classes have been supplied.
   unchanged <- identical(latent, spec$latent_names) && identical(manifest, spec$manifest_names) &&
     identical(tdpred, spec$tdpred_names) && identical(tipred, spec$tipred_names)
   if (unchanged) return(spec)
@@ -538,7 +568,7 @@ ctgui_visual_apply_graph <- function(spec, graph) {
   new_latents <- genuinely_added("latent", previous_latents)
   new_manifests <- genuinely_added("manifest", previous_manifests)
   if (identical(view, "state_space")) {
-    spec <- ctgui_visual_resize_spec(spec, graph$nodes)
+    spec <- ctgui_visual_resize_spec(spec, graph$nodes, enforce_model_nodes = FALSE)
   }
   spec <- ctgui_visual_save_layout(spec, graph)
   matrices <- if (identical(view, "initial_state")) ctgui_visual_initial_matrices else ctgui_visual_state_matrices

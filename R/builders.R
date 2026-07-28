@@ -203,7 +203,7 @@ ctgui_measurements <- function() {
 
 #' @rdname ctgui_build_matrices
 #' @param spec A `ctsemgui_spec`.
-#' @param data A data frame to check against the model specification.
+#' @param data A data frame or named matrix to check against the model specification.
 ctgui_validate_data <- function(spec, data) {
   ctgui_check_spec(spec)
   messages <- list()
@@ -214,10 +214,11 @@ ctgui_validate_data <- function(spec, data) {
     )
   }
 
-  if (!is.data.frame(data)) {
-    return(data.frame(severity = "error", field = "data", message = "data must be a data.frame",
+  if (!is.data.frame(data) && !is.matrix(data)) {
+    return(data.frame(severity = "error", field = "data", message = "data must be a data.frame or matrix",
       stringsAsFactors = FALSE))
   }
+  data <- ctgui_data_as_frame(data)
 
   required <- unique(c(spec$id, spec$time, spec$manifest_names, spec$tdpred_names, spec$tipred_names))
   missing <- setdiff(required, names(data))

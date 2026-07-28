@@ -33,6 +33,7 @@ test_that("code export includes ctsem model construction", {
   code <- ctgui_export_code(spec)
 
   expect_match(code, "ctsem::ctModel", fixed = TRUE)
+  expect_match(code, "silent = TRUE", fixed = TRUE)
   expect_match(code, "LAMBDA", fixed = TRUE)
   expect_match(code, "DRIFT", fixed = TRUE)
 })
@@ -134,6 +135,23 @@ test_that("annotated TI parameter settings survive matrix round trips", {
   restored <- ctgui_spec_from_model(model)
   metadata <- restored$parameter_metadata[restored$parameter_metadata$matrix == "DRIFT", , drop = FALSE]
   expect_true(isTRUE(metadata$age_effect[1]))
+})
+
+test_that("expression-valued matrix cells never serialize compact metadata", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y", tipred_names = "group")
+  spec$matrices$DRIFT["eta", "eta"] <- "d1+m1*eta"
+  spec <- ctgui_refresh_parameter_metadata(spec)
+  spec <- ctgui_set_parameter_metadata(
+    spec, "DRIFT", "eta", "eta", transform = "exp(param)",
+    indvarying = TRUE, sdscale = 0.5, tipred_effects = "group",
+    extra_pars = "d1, m1", sync = FALSE
+  )
+
+  exported <- ctgui_matrices_with_metadata(spec)
+  expect_true(ctgui_parameter_is_expression(spec$matrices$DRIFT["eta", "eta"], "eta"))
+  expect_identical(exported$DRIFT["eta", "eta"], "d1+m1*eta")
+  expect_false(grepl("|", exported$DRIFT["eta", "eta"], fixed = TRUE))
+  expect_setequal(as.character(spec$matrices$PARS[, 1L]), c("d1", "m1"))
 })
 
 test_that("parameter metadata retains all selected-cell settings", {

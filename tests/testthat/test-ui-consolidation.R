@@ -2,7 +2,7 @@ count_fixed <- function(text, pattern) {
   (length(strsplit(text, pattern, fixed = TRUE)[[1L]]) - 1L)
 }
 
-test_that("data roles are creatable and retain manual names", {
+test_that("data-role add dialogs retain manual names", {
   spec <- suppressWarnings(suppressMessages(ctgui_spec(
     latent_names = "eta", manifest_names = "typed_y",
     tdpred_names = "typed_event", tipred_names = "typed_group",
@@ -19,15 +19,19 @@ test_that("data roles are creatable and retain manual names", {
   )) {
     expect_equal(count_fixed(html, paste0('id="', id, '"')), 1L)
   }
-  expect_equal(count_fixed(html, '"create":true'), 5L)
+  expect_equal(count_fixed(html, '"create":true'), 4L)
+  expect_match(html, 'id="spec_add_manifest"', fixed = TRUE)
+  expect_false(grepl('id="spec_add_tdpred"', html, fixed = TRUE))
+  expect_false(grepl('id="spec_add_tipred"', html, fixed = TRUE))
   expect_match(html, 'value="observed"', fixed = TRUE)
-  expect_match(html, 'value="typed_y" selected', fixed = TRUE)
+  expect_match(html, 'value="typed_y"', fixed = TRUE)
+  expect_match(html, 'readonly="readonly"', fixed = TRUE)
   expect_match(html, 'value="typed_id" selected', fixed = TRUE)
 
   no_data <- render_tags(
     getFromNamespace("ctgui_data_roles_ui", "ctsemgui")(spec)
   )$html
-  expect_match(no_data, 'value="typed_y" selected', fixed = TRUE)
+  expect_match(no_data, 'value="typed_y"', fixed = TRUE)
   expect_match(no_data, 'value="typed_time" selected', fixed = TRUE)
 })
 

@@ -48,7 +48,7 @@ ctgui_code_optional_expression <- function(x) {
   if (inherits(parsed, "error")) x else parsed
 }
 
-ctgui_output_data_source <- function(type = c("none", "generated", "r_object", "csv", "session"),
+ctgui_output_data_source <- function(type = c("none", "generated", "r_object", "csv", "rds", "session"),
     name = NULL, generation = list()) {
   type <- match.arg(type)
   if (!is.list(generation)) stop("generation must be a list", call. = FALSE)
@@ -94,6 +94,10 @@ ctgui_output_data_code <- function(source = ctgui_output_data_source()) {
     csv = c(
       paste0("# Imported CSV was named ", ctgui_code_value(name), " in the Shiny session."),
       "data <- utils::read.csv(\"path/to/data.csv\", stringsAsFactors = FALSE)"
+    ),
+    rds = c(
+      paste0("# Imported RDS was named ", ctgui_code_value(name), " in the Shiny session."),
+      "data <- readRDS(\"path/to/data.rds\")"
     ),
     session = "# Active data exists only in the Shiny session; assign it here as `data` before fitting.",
     none = "# No data is currently active.",
@@ -209,8 +213,9 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
       )
     },
     cov_check = {
-      lags <- value("lags", quote(0:3))
-      if (is.character(lags) && length(lags) == 1L) {
+      lags <- value("lags", NULL)
+      has_lags <- !is.null(lags) && !(is.character(lags) && length(lags) == 1L && !nzchar(trimws(lags)))
+      if (has_lags && is.character(lags) && length(lags) == 1L) {
         parsed <- tryCatch(parse(text = lags)[[1L]], error = function(error) error)
         if (inherits(parsed, "error")) stop("lags must be valid R code", call. = FALSE)
         lags <- parsed
@@ -219,20 +224,23 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
       args <- list(
         fit = ctgui_code_symbol("fit"),
         cor = cor,
-        lags = ctgui_code_symbol("cov_lags"),
         plot = FALSE,
         cores = as.integer(value("cores", 1L))
       )
+      if (has_lags) args$lags <- ctgui_code_symbol("cov_lags")
+      plot_args <- c(
+        list("  cov_check,"),
+        if (has_lags) "  maxlag = max(cov_lags)," else character(),
+        paste0("  cor = ", ctgui_code_value(cor))
+      )
       c(
         "# Covariance check",
-        paste0("cov_lags <- ", ctgui_code_value(lags)),
+        if (has_lags) paste0("cov_lags <- ", ctgui_code_value(lags)) else character(),
         "cov_check <- ctsem::ctFitCovCheck(",
         ctgui_code_arg_lines(c(args, extra_args(names(args)))),
         ")",
         "cov_check_plots <- ctsem::ctFitCovCheckPlot(",
-        "  cov_check,",
-        "  maxlag = max(cov_lags),",
-        paste0("  cor = ", ctgui_code_value(cor)),
+        plot_args,
         ")",
         "lapply(cov_check_plots, print)"
       )

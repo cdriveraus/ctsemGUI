@@ -36,8 +36,11 @@ ctgui_spec <- function(latent_names = "eta1",
     tipredDefault = TRUE) {
 
   type <- match.arg(type)
-  latent_names <- ctgui_as_names(latent_names, "latent_names")
-  manifest_names <- ctgui_as_names(manifest_names, "manifest_names")
+  # A GUI session deliberately begins as a draft.  ctsem itself needs both
+  # kinds of variables, so defer model construction until that structure is
+  # present rather than creating a placeholder model.
+  latent_names <- ctgui_as_names(latent_names, "latent_names", allow_empty = TRUE)
+  manifest_names <- ctgui_as_names(manifest_names, "manifest_names", allow_empty = TRUE)
   tdpred_names <- ctgui_as_names(tdpred_names, "tdpred_names", allow_empty = TRUE)
   tipred_names <- ctgui_as_names(tipred_names, "tipred_names", allow_empty = TRUE)
 
@@ -51,7 +54,7 @@ ctgui_spec <- function(latent_names = "eta1",
   parameter_metadata <- NULL
   source <- "fallback"
 
-  if (ctgui_has_ctsem()) {
+  if (ctgui_has_ctsem() && length(latent_names) && length(manifest_names)) {
     model <- ctgui_new_ctsem_model(
       latent_names = latent_names,
       manifest_names = manifest_names,
@@ -87,6 +90,9 @@ ctgui_spec <- function(latent_names = "eta1",
       latent_names = latent_names,
       manifest_names = manifest_names,
       tdpred_names = tdpred_names)
+    if (ctgui_has_ctsem() && (!length(latent_names) || !length(manifest_names))) {
+      source <- "draft"
+    }
   }
 
   spec <- list(
@@ -339,6 +345,9 @@ ctgui_set_matrix_value <- function(spec, matrix, row, col = 1, value = NULL,
 ctgui_to_ctsem_model <- function(spec, silent = TRUE, tipredDefault = spec$tipredDefault) {
   ctgui_check_spec(spec)
   if (!ctgui_has_ctsem()) stop("ctsem must be installed to create a ctsem model", call. = FALSE)
+  if (!length(spec$latent_names) || !length(spec$manifest_names)) {
+    stop("Specify at least one latent process and one manifest variable before creating a ctsem model.", call. = FALSE)
+  }
 
   errors <- ctgui_validate(spec)
   errors <- errors[errors$severity == "error", , drop = FALSE]
@@ -395,8 +404,7 @@ ctgui_spec_from_model <- function(model) {
 #' @param object_name Name used for the model object in exported code.
 ctgui_export_code <- function(spec, object_name = "model") {
   ctgui_check_spec(spec)
-  args <- ctgui_ctmodel_args(spec, matrices = ctgui_matrices_with_metadata(spec), silent = FALSE)
-  args$silent <- NULL
+  args <- ctgui_ctmodel_args(spec, matrices = ctgui_matrices_with_metadata(spec), silent = TRUE)
 
   lines <- c(
     "library(ctsem)",
@@ -655,10 +663,19 @@ ctgui_fixed_matrix <- function(value, row_names, col_names, ncol = length(col_na
   if (ncol == 1L) {
     col_names <- col_names[1L]
   }
+  if (length(row_names) * ncol == 0L) {
+    return(matrix(numeric(), nrow = length(row_names), ncol = ncol,
+      dimnames = list(row_names, col_names)))
+  }
   matrix(value, nrow = length(row_names), ncol = ncol, dimnames = list(row_names, col_names))
 }
 
 ctgui_label_matrix <- function(prefix, row_names, col_names, ncol = length(col_names)) {
+  if (length(row_names) * ncol == 0L) {
+    if (ncol == 1L) col_names <- col_names[1L]
+    return(matrix(character(), nrow = length(row_names), ncol = ncol,
+      dimnames = list(row_names, col_names)))
+  }
   if (ncol == 1L) {
     labels <- if (toupper(prefix) %in% c("T0MEANS", "MANIFESTMEANS", "CINT")) {
       vapply(row_names, function(row) ctgui_auto_label(prefix, row, col_names[1L]), character(1L))
@@ -912,6 +929,13 @@ ctgui_matrices_with_metadata <- function(spec) {
     r <- match(metadata$row[i], rownames(mat))
     c <- match(metadata$col[i], colnames(mat))
     if (is.na(r) || is.na(c)) next
+    if (ctgui_parameter_is_expression(mat[r, c], spec$latent_names)) {
+      # Do not serialize `|` metadata on expressions: ctsem rejects it and
+      # requires any settings to live on the expression's singular PARS rows.
+      mat[r, c] <- ctgui_parameter_annotation_base(mat[r, c])
+      matrices[[matrix_name]] <- mat
+      next
+    }
     transform <- metadata$transform[i] %||% ""
     indvarying <- isTRUE(metadata$indvarying[i])
     sdscale <- suppressWarnings(as.numeric(metadata$sdscale[i]))
@@ -943,6 +967,16 @@ ctgui_set_parameter_metadata <- function(spec, matrix, row, col, transform = NUL
     spec$parameter_metadata$row == row & spec$parameter_metadata$col == col)
   if (!length(index)) return(spec)
   index <- index[1L]
+  value <- spec$matrices[[matrix]][match(row, rownames(spec$matrices[[matrix]])), match(col, colnames(spec$matrices[[matrix]]))]
+  expression <- !identical(matrix, "PARS") && ctgui_parameter_is_expression(value, spec$latent_names)
+  if (expression) {
+    # Keep the parent expression's PARS association, but its transform,
+    # random-effects, scale, and TI moderation belong to individual PARS rows.
+    transform <- NULL
+    indvarying <- NULL
+    sdscale <- NULL
+    tipred_effects <- NULL
+  }
   if (!is.null(transform)) spec$parameter_metadata$transform[index] <- trimws(as.character(transform))
   if (!is.null(indvarying)) spec$parameter_metadata$indvarying[index] <- isTRUE(indvarying)
   if (!is.null(sdscale)) {
@@ -964,6 +998,13 @@ ctgui_sync_model_from_matrices <- function(spec, ctsem_default_keys = character(
   if (isTRUE(normalize)) {
     spec$matrices <- ctgui_normalize_matrices(spec)
     spec <- ctgui_refresh_parameter_metadata(spec)
+  }
+  if (!length(spec$latent_names) || !length(spec$manifest_names)) {
+    spec$model <- NULL
+    spec$pars <- NULL
+    spec$parameter_metadata <- NULL
+    spec$source <- "draft"
+    return(spec)
   }
   if (!is.null(spec$model) && ctgui_has_ctsem()) {
     synced <- tryCatch({

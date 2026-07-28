@@ -78,6 +78,58 @@ ctgui_commit_spec_fields <- function(previous, fields, reason = "specification")
   ctgui_commit_spec(previous, updated, reason = reason)
 }
 
+ctgui_add_spec_variable <- function(previous, kind, name, measuring = "") {
+  ctgui_check_spec(previous)
+  kind <- match.arg(kind, c("manifest", "tdpred", "tipred"))
+  name <- trimws(as.character(name)[1L])
+  measuring <- trimws(as.character(measuring)[1L])
+  valid_name <- function(value) grepl("^[A-Za-z._][A-Za-z0-9._]*$", value)
+  if (!valid_name(name)) stop("Use a valid R variable name.", call. = FALSE)
+  if (kind == "manifest" && !valid_name(measuring)) {
+    stop("Choose or type the latent process measured by this manifest variable.", call. = FALSE)
+  }
+  field <- paste0(kind, "_names")
+  if (name %in% previous[[field]]) stop("This variable is already in the specification.", call. = FALSE)
+  latent_names <- previous$latent_names
+  if (kind == "manifest" && !measuring %in% latent_names) latent_names <- c(latent_names, measuring)
+  manifest_names <- previous$manifest_names
+  if (kind == "manifest") manifest_names <- c(manifest_names, name)
+  manifest_type <- vapply(manifest_names, function(manifest) {
+    index <- match(manifest, previous$manifest_names)
+    if (is.na(index)) 0L else as.integer(previous$manifest_type[index])
+  }, integer(1L))
+  fields <- list(
+    latent_names = latent_names, manifest_names = manifest_names,
+    manifest_type = manifest_type,
+    tdpred_names = if (kind == "tdpred") c(previous$tdpred_names, name) else previous$tdpred_names,
+    tipred_names = if (kind == "tipred") c(previous$tipred_names, name) else previous$tipred_names,
+    type = previous$type, Tpoints = previous$Tpoints,
+    tipredDefault = previous$tipredDefault, id = previous$id, time = previous$time
+  )
+  commit <- ctgui_commit_spec_fields(previous, fields, reason = paste0("add-", kind))
+  if (kind != "manifest") return(commit)
+  updated <- commit$spec
+  loading <- updated$matrices$LAMBDA
+  loading[name, ] <- 0
+  existing_manifests <- setdiff(rownames(loading), name)
+  has_measurement <- length(existing_manifests) && any(vapply(
+    loading[existing_manifests, measuring],
+    function(value) {
+      value <- trimws(as.character(value))
+      nzchar(value) && !identical(value, "0")
+    },
+    logical(1L)
+  ))
+  loading[name, measuring] <- if (has_measurement) {
+    ctgui_auto_label("LAMBDA", name, measuring)
+  } else {
+    1
+  }
+  updated$matrices$LAMBDA <- loading
+  updated <- ctgui_sync_model_from_matrices(updated)
+  ctgui_commit_spec(previous, updated, reason = "add-manifest")
+}
+
 ctgui_matrix_group_names <- function(spec, group = "Dynamics") {
   present <- ctgui_matrix_names(spec)
   desired <- switch(group %||% "Dynamics",
@@ -230,14 +282,42 @@ ctgui_project_spec <- function(object) {
   ctgui_visual_ensure(loaded)
 }
 
+ctgui_data_columns <- function(data) {
+  if (is.null(data)) return(character())
+  if (is.matrix(data)) return(colnames(data) %||% character())
+  names(data)
+}
+
+ctgui_data_as_frame <- function(data) {
+  if (!is.matrix(data)) return(data)
+  out <- as.data.frame(data, stringsAsFactors = FALSE)
+  if (!is.null(colnames(data))) names(out) <- colnames(data)
+  out
+}
+
 ctgui_data_role_selection <- function(data, spec) {
-  columns <- if (is.null(data)) character() else names(data)
-  selected <- unique(c(
-    spec$manifest_names, spec$tdpred_names, spec$tipred_names,
-    spec$id, spec$time
-  ))
+  columns <- ctgui_data_columns(data)
+  choices_for <- function(exclude = character(), selected = character()) {
+    unique(c(setdiff(columns, exclude[nzchar(exclude)]), selected[nzchar(selected)]))
+  }
   list(
-    choices = unique(c(columns, selected[nzchar(selected)])),
+    # Kept for callers that need the complete union; UI controls use the
+    # role-specific choice vectors below.
+    choices = unique(c(
+      columns, spec$manifest_names, spec$tdpred_names, spec$tipred_names,
+      spec$id, spec$time
+    )),
+    manifest_choices = choices_for(
+      c(spec$manifest_names, spec$id, spec$time), spec$manifest_names
+    ),
+    tdpred_choices = choices_for(
+      c(spec$tdpred_names, spec$id), spec$tdpred_names
+    ),
+    tipred_choices = choices_for(
+      c(spec$tipred_names, spec$id), spec$tipred_names
+    ),
+    id_choices = choices_for(selected = spec$id),
+    time_choices = choices_for(c(spec$id), spec$time),
     manifest_names = spec$manifest_names,
     tdpred_names = spec$tdpred_names,
     tipred_names = spec$tipred_names,
@@ -247,6 +327,7 @@ ctgui_data_role_selection <- function(data, spec) {
 }
 
 ctgui_tipred_subject_data <- function(data, spec) {
+  data <- ctgui_data_as_frame(data)
   if (is.null(data) || !length(spec$tipred_names) ||
       !spec$id %in% names(data)) return(NULL)
   present <- intersect(spec$tipred_names, names(data))
@@ -270,11 +351,12 @@ ctgui_tipred_subject_data <- function(data, spec) {
 
 ctgui_data_preview <- function(data, n = 20L) {
   if (is.null(data)) return(data.frame(message = "No data selected"))
-  utils::head(data, n)
+  utils::head(ctgui_data_as_frame(data), n)
 }
 
 ctgui_data_summary <- function(data) {
   if (is.null(data)) return(data.frame(message = "No data selected"))
+  data <- ctgui_data_as_frame(data)
   numeric_names <- names(data)[vapply(data, is.numeric, logical(1L))]
   if (!length(numeric_names)) return(data.frame(message = "No numeric columns"))
   do.call(rbind, lapply(numeric_names, function(name) {
@@ -290,6 +372,7 @@ ctgui_data_summary <- function(data) {
 
 ctgui_missingness_summary <- function(data) {
   if (is.null(data)) return(data.frame(message = "No data selected"))
+  data <- ctgui_data_as_frame(data)
   data.frame(
     variable = names(data),
     missing = vapply(data, function(x) sum(is.na(x)), integer(1L)),
@@ -302,6 +385,7 @@ ctgui_missingness_summary <- function(data) {
 
 ctgui_within_between_summary <- function(data, spec) {
   if (is.null(data)) return(data.frame(message = "No data selected"))
+  data <- ctgui_data_as_frame(data)
   if (!spec$id %in% names(data)) {
     return(data.frame(message = "ID column not found in active data"))
   }

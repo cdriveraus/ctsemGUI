@@ -49,7 +49,7 @@
     if (editor.view === "initial_state") {
       if (kind === "latent") return { x: 360 + index * 190, y: 275 };
       if (kind === "initial_noise") return { x: 360 + index * 190, y: 95 };
-      if (kind === "constant") return { x: 105, y: 275 };
+      if (kind === "constant") return { x: 105, y: 180 };
       return { x: 140, y: 275 };
     }
     if (kind === "latent") return { x: 340 + index * 190, y: 255 };
@@ -58,7 +58,7 @@
     if (kind === "measurement_noise") return { x: 340 + index * 190, y: 570 };
     if (kind === "tdpred") return { x: 85, y: 150 + index * 105 };
     if (kind === "tipred") return { x: 85, y: 430 + index * 85 };
-    if (kind === "constant") return { x: 1080, y: id.indexOf("MANIFEST") >= 0 ? 430 : 255 };
+    if (kind === "constant") return { x: 1080, y: id.indexOf("MANIFEST") >= 0 ? 505 : 180 };
     return { x: 180, y: 180 + index * 80 };
   }
 
@@ -68,12 +68,12 @@
       protocol_version: GRAPH_PROTOCOL_VERSION,
       version: GRAPH_VERSION,
       view: editor.view,
-      nodes: cy.nodes().map(function (node) {
+      nodes: cy.nodes().filter(function (node) { return !node.data("preview"); }).map(function (node) {
         var data = Object.assign({}, node.data());
         var position = node.position(); data.x = position.x; data.y = position.y;
         return data;
       }),
-      edges: cy.edges().map(function (edge) { return Object.assign({}, edge.data()); })
+      edges: cy.edges().filter(function (edge) { return !edge.data("preview"); }).map(function (edge) { return Object.assign({}, edge.data()); })
     };
   }
 
@@ -104,32 +104,124 @@
     return name;
   }
 
-  function addVariable(editor, kind, prefix) {
-    var name = (kind === "manifest" || kind === "tdpred" || kind === "tipred") && editor.dataChoice.value ? editor.dataChoice.value : window.prompt("Variable name", uniqueName(editor, prefix));
-    if (!name) return;
-    name = name.trim();
-    if (!/^[A-Za-z._][A-Za-z0-9._]*$/.test(name)) { window.alert("Use a valid R variable name."); return; }
-    if (editor.cy.nodes().some(function (node) { return node.data("name") === name; })) { window.alert("Names must be unique."); return; }
-    var index = editor.cy.nodes("node." + kind).length;
-    var data = { id: kind + ":" + name, kind: kind, name: name, label: name, original_name: name };
-    if (kind === "tipred") {
-      data.tipred_default = window.confirm("Should " + name + " moderate all free parameters by default?\n\nOK: moderate all parameters\nCancel: moderate none");
-      data.tipred_apply_default = true;
+  function variableEntryDialog(options) {
+    var kind = options.kind, callback = options.callback;
+    var overlay = makeElement("div", "ctgui-visual-dialog-backdrop");
+    var dialog = makeElement("div", "ctgui-visual-dialog");
+    var title = kind === "latent" ? "Add latent process" : kind === "manifest" ? "Add manifest variable" : kind === "tdpred" ? "Add time-dependent predictor" : "Add time-independent predictor";
+    var excluded = options.excluded || [];
+    var available = (options.dataColumns || []).filter(function (name) {
+      return excluded.indexOf(name) < 0;
+    });
+    dialog.appendChild(makeElement("h5", "", title));
+    var comboInput = function (label, names, placeholder) {
+      var choiceLabel = makeElement("label", "", label);
+      var combo = makeElement("div", "ctgui-combo");
+      var input = makeElement("input"); input.type = "text"; input.placeholder = placeholder; input.autocomplete = "off";
+      var menu = makeElement("div", "ctgui-combo-menu");
+      var renderChoices = function () {
+        clearElement(menu);
+        var query = input.value.trim().toLowerCase();
+        var matches = names.filter(function (name) { return !query || String(name).toLowerCase().indexOf(query) >= 0; });
+        matches.forEach(function (name) {
+          var option = makeElement("button", "ctgui-combo-option", String(name));
+          option.type = "button";
+          option.addEventListener("mousedown", function (event) { event.preventDefault(); });
+          option.addEventListener("click", function () { input.value = String(name); menu.classList.remove("is-open"); input.focus(); });
+          menu.appendChild(option);
+        });
+        menu.classList.toggle("is-open", matches.length > 0);
+      };
+      input.addEventListener("focus", renderChoices);
+      input.addEventListener("click", renderChoices);
+      input.addEventListener("input", renderChoices);
+      input.addEventListener("keydown", function (event) { if (event.key === "Escape") menu.classList.remove("is-open"); });
+      combo.appendChild(input); combo.appendChild(menu); choiceLabel.appendChild(combo); dialog.appendChild(choiceLabel);
+      return input;
+    };
+    var nameInput = comboInput(
+      kind === "latent" ? "Latent process name" : "Dataset variable or new name",
+      kind === "latent" ? [] : available,
+      kind === "latent" ? "Latent process name" : "Choose or type a variable name"
+    );
+    var latentInput = null;
+    if (kind === "manifest") {
+      var latentNames = options.latentNames || [];
+      latentInput = comboInput(
+        "Measuring which latent", latentNames,
+        latentNames.length ? "Choose or type a latent process" : "Type a latent process name"
+      );
     }
-    editor.cy.add({ group: "nodes", classes: kind, data: data, position: semanticPosition(editor, kind, index, kind + ":" + name) });
-    send(editor, true);
+    var actions = makeElement("div", "ctgui-visual-dialog-actions");
+    var cancel = addButton(actions, "Cancel", "data-dialog", "cancel");
+    var add = addButton(actions, "Add", "data-dialog", "add");
+    var close = function () { overlay.remove(); };
+    cancel.addEventListener("click", close);
+    add.addEventListener("click", function () {
+      var name = nameInput.value.trim();
+      var measuring = latentInput ? latentInput.value.trim() : "";
+      close(); callback(name, measuring);
+    });
+    nameInput.addEventListener("keydown", function (event) { if (event.key === "Enter") add.click(); });
+    dialog.appendChild(actions); overlay.appendChild(dialog); options.host.appendChild(overlay);
   }
 
-  function updateDataChoices(editor, columns) {
-    var used = editor.cy.nodes().map(function (node) { return node.data("name"); });
-    var available = (columns || []).filter(function (name) { return used.indexOf(name) < 0; });
-    clearElement(editor.dataChoice);
-    editor.dataChoice.appendChild(makeElement("option", "", "select variable"));
-    available.forEach(function (name) {
-      var option = makeElement("option", "", String(name));
-      option.value = String(name);
-      editor.dataChoice.appendChild(option);
+  window.ctguiVariableEntryDialog = variableEntryDialog;
+
+  function visualVariableDialog(editor, kind, prefix, callback) {
+    var roles = editor.dataRoles || {};
+    var roleList = function (value) {
+      if (Array.isArray(value)) return value;
+      return value ? [value] : [];
+    };
+    var excluded = roleList(roles[kind]).slice();
+    excluded = excluded.concat(roleList(roles.id));
+    if (kind === "manifest") excluded = excluded.concat(roleList(roles.time));
+    variableEntryDialog({
+      host: editor.shell, id: editor.id, kind: kind,
+      used: editor.cy.nodes().map(function (node) { return node.data("name"); }),
+      dataColumns: editor.dataColumns,
+      excluded: excluded,
+      latentNames: editor.cy.nodes("node.latent").map(function (node) { return node.data("name"); }),
+      callback: callback
     });
+  }
+
+  function addVariable(editor, kind, prefix) {
+    var create = function (name, measuring) {
+      if (!name) return;
+      name = name.trim();
+      if (!/^[A-Za-z._][A-Za-z0-9._]*$/.test(name)) { window.alert("Use a valid R variable name."); return; }
+      if (editor.cy.nodes().some(function (node) { return node.data("name") === name; })) { window.alert("Names must be unique."); return; }
+      var latent = null;
+      if (kind === "manifest" && measuring) {
+        if (!/^[A-Za-z._][A-Za-z0-9._]*$/.test(measuring)) { window.alert("Use a valid R variable name for the latent process."); return; }
+        latent = editor.cy.getElementById("latent:" + measuring);
+        if (!latent.length) {
+          var latentIndex = editor.cy.nodes("node.latent").length;
+          editor.cy.add({ group: "nodes", classes: "latent", data: { id: "latent:" + measuring, kind: "latent", name: measuring, label: measuring, original_name: measuring }, position: semanticPosition(editor, "latent", latentIndex, "latent:" + measuring) });
+          latent = editor.cy.getElementById("latent:" + measuring);
+        }
+      }
+      var index = editor.cy.nodes("node." + kind).length;
+      var data = { id: kind + ":" + name, kind: kind, name: name, label: name, original_name: name };
+      if (kind === "tipred") {
+        data.tipred_default = window.confirm("Should " + name + " moderate all free parameters by default?\n\nOK: moderate all parameters\nCancel: moderate none");
+        data.tipred_apply_default = true;
+      }
+      editor.cy.add({ group: "nodes", classes: kind, data: data, position: semanticPosition(editor, kind, index, kind + ":" + name) });
+      if (kind === "manifest" && measuring) {
+        addEdge(editor, latent.id(), data.id);
+      } else send(editor, true);
+    };
+    if (["latent", "manifest", "tdpred", "tipred"].indexOf(kind) >= 0) {
+      visualVariableDialog(editor, kind, prefix, create);
+    }
+  }
+
+  function updateDataChoices(editor, columns, roles) {
+    editor.dataColumns = columns || [];
+    editor.dataRoles = roles || {};
   }
 
   function updateTipredActions(editor) {
@@ -169,7 +261,7 @@
         ["path_mark inactive", "T0VAR ignored (random T0MEANS)"]].concat(pathItems);
     } else if (editor.view === "tipred_effects") {
       items = [["node tipred", "TI predictor"], ["node parameter", "Free parameter"],
-        ["path_mark", "TI predictor effect"]];
+        ["path_mark", "TI predictor effect"], ["path_mark variance_correlation", "Random-effect variance / correlation"]];
     } else {
       items = [["node latent", "Latent process"], ["node manifest", "Observed manifest"],
         ["node tdpred", "Time-dependent predictor"], ["node tipred", "TI predictor"],
@@ -201,21 +293,41 @@
   function updateTiFilters(editor, graph) {
     clearElement(editor.filters);
     if (editor.view !== "tipred_effects") return;
+    var addToggle = function (host, field, text, checked) {
+      var label = makeElement("label");
+      var input = makeElement("input");
+      input.type = "checkbox"; input.dataset[field] = "true"; input.checked = checked;
+      label.appendChild(input); label.appendChild(document.createTextNode(" " + text));
+      host.appendChild(label);
+    };
+    var structuralFilters = makeElement("div", "ctgui-filter-group ctgui-structural-filters");
+    editor.filters.appendChild(structuralFilters);
+    addToggle(structuralFilters, "showTipreds", "Show TI predictors", true);
+    addToggle(structuralFilters, "showRandomEffects", "Show random-effects variance / correlation", true);
     var matrices = (graph.matrices || []).filter(function (matrix) { return matrix; });
-    editor.filters.appendChild(makeElement("span", "", "Show parameter matrices:"));
+    var matrixFilters = makeElement("div", "ctgui-filter-group ctgui-matrix-filters");
+    editor.filters.appendChild(matrixFilters);
+    matrixFilters.appendChild(makeElement("span", "", "Show parameter matrices:"));
     matrices.forEach(function (matrix) {
       var label = makeElement("label");
       var input = makeElement("input");
       input.type = "checkbox"; input.dataset.filter = String(matrix); input.checked = true;
       label.appendChild(input);
       label.appendChild(document.createTextNode(" " + String(matrix)));
-      editor.filters.appendChild(label);
+      matrixFilters.appendChild(label);
     });
     var apply = function () {
       var visible = {};
       editor.filters.querySelectorAll("input[data-filter]").forEach(function (input) { visible[input.getAttribute("data-filter")] = input.checked; });
+      var showTipreds = editor.filters.querySelector("input[data-show-tipreds]").checked;
+      var showRandomEffects = editor.filters.querySelector("input[data-show-random-effects]").checked;
       editor.cy.nodes("node.parameter").forEach(function (node) { node.style("display", visible[node.data("matrix")] ? "element" : "none"); });
       editor.cy.edges("edge.tipred-effect").forEach(function (edge) { edge.style("display", visible[edge.data("matrix")] ? "element" : "none"); });
+      editor.cy.nodes("node.tipred").style("display", showTipreds ? "element" : "none");
+      editor.cy.edges("edge.tipred-effect").forEach(function (edge) {
+        if (!showTipreds) edge.style("display", "none");
+      });
+      editor.cy.edges("edge.random_effect_variance, edge.random_effect_correlation").style("display", showRandomEffects ? "element" : "none");
     };
     editor.filters.onchange = apply; apply();
   }
@@ -258,7 +370,7 @@
     var removable = selected.filter(function (element) {
       return !(element.isNode() && element.data("kind") === "parameter");
     });
-    if (!removable.length) return;
+    if (!removable.length) { warn(editor, "This selection is visual-only and cannot be deleted."); return; }
     removable.remove(); send(editor, true); select(editor, null);
   }
 
@@ -281,7 +393,7 @@
     var sourceNode = editor.cy.getElementById(source), targetNode = editor.cy.getElementById(target);
     if (!sourceNode.length || !targetNode.length) return;
     var matrix = inferredMatrix(sourceNode, targetNode);
-    if (!matrix) return;
+    if (!matrix) { warn(editor, "Those node types cannot be connected."); return; }
     var row, col, directed = true, edgeKind = "path";
     var sourceName = sourceNode.data("name"), targetName = targetNode.data("name");
     if (matrix === "DRIFT") { row = targetName; col = sourceName; }
@@ -324,6 +436,43 @@
     send(editor, true);
   }
 
+  function warn(editor, message) {
+    if (!editor.warning) return;
+    editor.warning.textContent = message;
+    editor.warning.classList.add("is-visible");
+    window.clearTimeout(editor.warningTimer);
+    editor.warningTimer = window.setTimeout(function () {
+      editor.warning.classList.remove("is-visible");
+    }, 2800);
+  }
+
+  function pointerModelPosition(editor, event) {
+    var rect = editor.canvas.getBoundingClientRect();
+    var pan = editor.cy.pan(), zoom = editor.cy.zoom();
+    return { x: (event.clientX - rect.left - pan.x) / zoom, y: (event.clientY - rect.top - pan.y) / zoom };
+  }
+
+  function showRightDragPreview(editor, event) {
+    var position = pointerModelPosition(editor, event);
+    editor.rightDragPreviewNode = "__ctgui_path_preview_node__";
+    editor.rightDragPreviewEdge = "__ctgui_path_preview_edge__";
+    editor.cy.remove("#" + editor.rightDragPreviewNode + ", #" + editor.rightDragPreviewEdge);
+    editor.cy.add([
+      { group: "nodes", data: { id: editor.rightDragPreviewNode, preview: true, label: "" }, position: position, classes: "path-preview-target", selectable: false, grabbable: false },
+      { group: "edges", data: { id: editor.rightDragPreviewEdge, source: editor.rightDragSource.id(), target: editor.rightDragPreviewNode, preview: true, directed: true, label: "" }, classes: "path-preview", selectable: false }
+    ]);
+  }
+
+  function moveRightDragPreview(editor, event) {
+    if (!editor.rightDragPreviewNode) return;
+    editor.cy.getElementById(editor.rightDragPreviewNode).position(pointerModelPosition(editor, event));
+  }
+
+  function clearRightDragPreview(editor) {
+    if (editor.rightDragPreviewNode) editor.cy.remove("#" + editor.rightDragPreviewNode);
+    editor.rightDragPreviewNode = null; editor.rightDragPreviewEdge = null;
+  }
+
   function addButton(parent, text, attribute, value) {
     var button = makeElement("button", "", text);
     button.type = "button";
@@ -343,17 +492,12 @@
     var group = addStructureGroup(tools, "state_space");
     addButton(group, "Add latent", "data-add", "latent");
 
-    group = addStructureGroup(tools, "state_space,tipred_effects");
-    var label = makeElement("label", "", "Dataset variable ");
-    label.appendChild(makeElement("select", "ctgui-data-choice"));
-    group.appendChild(label);
-
     group = addStructureGroup(tools, "state_space");
     addButton(group, "Add manifest", "data-add", "manifest");
-    addButton(group, "Add TD predictor", "data-add", "tdpred");
+    addButton(group, "Add time-dependent predictor", "data-add", "tdpred");
 
     group = addStructureGroup(tools, "state_space,tipred_effects");
-    addButton(group, "Add TI predictor", "data-add", "tipred");
+    addButton(group, "Add time-independent predictor", "data-add", "tipred");
     addButton(group, "Rename selected", "data-action", "rename");
 
     group = makeElement("span");
@@ -370,7 +514,7 @@
 
   function init(el) {
     if (editors[el.id]) return editors[el.id];
-    var shell = document.createElement("div"); shell.className = "ctgui-visual-shell";
+    var shell = document.createElement("div"); shell.className = "ctgui-visual-shell"; shell.tabIndex = 0;
     var tools = document.createElement("div"); tools.className = "ctgui-visual-tools";
     buildTools(tools);
     var canvas = document.createElement("div"); canvas.className = "ctgui-visual-canvas";
@@ -378,8 +522,9 @@
     var filters = document.createElement("div"); filters.className = "ctgui-visual-filters";
     var body = document.createElement("div"); body.className = "ctgui-visual-body";
     var legend = document.createElement("aside"); legend.className = "ctgui-visual-legend";
-    body.appendChild(canvas); body.appendChild(legend); shell.appendChild(tools); shell.appendChild(filters); shell.appendChild(body); el.appendChild(shell);
-    var editor = { id: el.id, el: el, canvas: canvas, tools: tools, filters: filters, legend: legend, dataChoice: tools.querySelector(".ctgui-data-choice"), view: "state_space", cy: null, rightDragSource: null, rightDragTarget: null, rightDragSourcePosition: null, rightDragSourceWasGrabbable: false, drawSource: null, drawTarget: null, drawMoved: false, pendingSource: null, suppressTap: false, mode: "move" };
+    var warning = makeElement("div", "ctgui-visual-warning");
+    warning.setAttribute("role", "status"); body.appendChild(canvas); body.appendChild(legend); shell.appendChild(tools); shell.appendChild(filters); shell.appendChild(body); shell.appendChild(warning); el.appendChild(shell);
+    var editor = { id: el.id, el: el, shell: shell, canvas: canvas, tools: tools, filters: filters, legend: legend, warning: warning, warningTimer: null, dataColumns: [], dataRoles: {}, view: "state_space", cy: null, rightDragSource: null, rightDragTarget: null, rightDragSourcePosition: null, rightDragSourceWasGrabbable: false, rightDragPreviewNode: null, rightDragPreviewEdge: null, drawSource: null, drawTarget: null, drawMoved: false, pendingSource: null, suppressTap: false, mode: "move" };
     editor.cy = cytoscape({ container: canvas, elements: [], boxSelectionEnabled: true,
       style: [
         { selector: "node", style: { label: "data(label)", "text-wrap": "wrap", "text-valign": "center", "text-halign": "center", "background-color": "#f8fafc", "border-color": "#475569", "border-width": 1.5, width: 72, height: 48, "font-size": 12 } },
@@ -390,17 +535,21 @@
         { selector: "node.parameter", style: { shape: "ellipse", "background-color": "#fef3c7", "border-color": "#b45309", width: 105, height: 58, "font-size": 9 } },
         { selector: "node.constant", style: { shape: "triangle", width: 38, height: 38, "background-color": "#fef3c7", "border-color": "#b45309" } },
         { selector: "node.system_noise, node.measurement_noise, node.initial_noise", style: { shape: "ellipse", width: 46, height: 46, "font-size": 9, "background-color": "#f3e8ff", "border-color": "#7e22ce" } },
+        { selector: "node.path-preview-target", style: { width: 3, height: 3, opacity: 0, events: "no" } },
         { selector: "edge", style: { label: "data(label)", "font-size": 10, width: 2.5, "line-color": "#2563eb", "target-arrow-color": "#2563eb", "target-arrow-shape": "triangle", "curve-style": "bezier", "text-background-color": "#fff", "text-background-opacity": 0.9, "text-background-padding": 2 } },
         { selector: "edge.undirected", style: { "target-arrow-shape": "none", "source-arrow-shape": "none", "line-style": "dotted", "line-color": "#7c3aed" } },
         { selector: "edge.fixed", style: { "line-color": "#94a3b8", "target-arrow-color": "#94a3b8", "line-style": "dashed" } },
         { selector: "edge.noise_input", style: { "line-color": "#111827", "target-arrow-color": "#111827", "target-arrow-shape": "triangle", "source-arrow-shape": "none", width: 1.5, "line-style": "solid" } },
         { selector: "edge.custom", style: { "line-color": "#7c3aed", "target-arrow-color": "#7c3aed" } },
         { selector: "edge.moderated", style: { "line-style": "solid" } },
-        { selector: "edge.variance", style: { "curve-style": "bezier", "loop-direction": "-45deg", "loop-sweep": "65deg", "line-style": "solid", "line-color": "#111827", "source-arrow-color": "#111827", "target-arrow-color": "#111827", "source-arrow-shape": "triangle", "target-arrow-shape": "triangle", width: 2.5 } },
-        { selector: "edge.correlation", style: { "line-style": "solid", "line-color": "#111827", "source-arrow-color": "#111827", "target-arrow-color": "#111827", "source-arrow-shape": "triangle", "target-arrow-shape": "triangle", width: 2.5 } },
+        { selector: "edge.variance", style: { "curve-style": "bezier", "loop-direction": "-90deg", "loop-sweep": "25deg", "line-style": "solid", "line-color": "#111827", "source-arrow-color": "#111827", "target-arrow-color": "#111827", "source-arrow-shape": "triangle", "target-arrow-shape": "triangle", width: 2.5 } },
+        { selector: "edge.correlation", style: { "curve-style": "unbundled-bezier", "control-point-distances": "30px", "control-point-weights": "0.5", "line-style": "solid", "line-color": "#111827", "source-arrow-color": "#111827", "target-arrow-color": "#111827", "source-arrow-shape": "triangle", "target-arrow-shape": "triangle", width: 2.5 } },
         { selector: "edge.inactive", style: { "line-color": "#9ca3af", "source-arrow-color": "#9ca3af", "target-arrow-color": "#9ca3af", "line-style": "dotted", "text-opacity": 0.8 } },
         { selector: "edge.random", style: { "line-style": "solid", "line-color": "#ea580c", "target-arrow-color": "#ea580c", "source-arrow-color": "#ea580c", width: 3.5 } },
         { selector: "edge.tipred-effect", style: { "line-color": "data(colour)", "target-arrow-color": "data(colour)", width: 3.2 } },
+        { selector: "edge.random_effect_variance, edge.random_effect_correlation", style: { "line-style": "solid", "line-color": "#111827", "source-arrow-color": "#111827", "target-arrow-color": "#111827", "source-arrow-shape": "triangle", "target-arrow-shape": "triangle", width: 2.2 } },
+        { selector: "edge.random_effect_variance", style: { "loop-direction": "-90deg", "loop-sweep": "25deg" } },
+        { selector: "edge.path-preview", style: { "line-style": "dashed", "line-color": "#16a34a", "target-arrow-color": "#16a34a", "target-arrow-shape": "triangle", width: 2.5, opacity: 0.85 } },
         { selector: ":selected", style: { "border-width": 4, "border-color": "#f59e0b", "line-color": "#f59e0b", "target-arrow-color": "#f59e0b" } },
         { selector: "node.path-source", style: { "border-width": 4, "border-color": "#16a34a" } }
       ]
@@ -412,10 +561,11 @@
     editor.cy.on("unselect", "node.tipred", function () { window.setTimeout(function () { updateTipredActions(editor); }, 0); });
     editor.cy.on("dragfree", "node", function () { send(editor, false, true); });
     canvas.addEventListener("contextmenu", function (event) { event.preventDefault(); });
-    canvas.addEventListener("pointerdown", function () { canvas.focus(); }, true);
+    canvas.addEventListener("pointerdown", function () { shell.focus(); }, true);
     var nodeAtPointer = function (event) {
       var rect = canvas.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top, found = null;
       editor.cy.nodes().forEach(function (node) {
+        if (node.data("preview")) return;
         var box = node.renderedBoundingBox({ includeLabels: false, includeOverlays: false });
         if (x >= box.x1 && x <= box.x2 && y >= box.y1 && y <= box.y2) found = node;
       });
@@ -429,12 +579,14 @@
       editor.rightDragSourcePosition = Object.assign({}, source.position());
       editor.rightDragSourceWasGrabbable = source.grabbable(); source.ungrabify();
       source.addClass("path-source");
+      showRightDragPreview(editor, event);
       if (event.target.setPointerCapture) event.target.setPointerCapture(event.pointerId);
       event.preventDefault(); event.stopImmediatePropagation();
     }, true);
     canvas.addEventListener("pointermove", function (event) {
       if (!editor.rightDragSource || !(event.buttons & 2)) return;
       editor.rightDragTarget = nodeAtPointer(event);
+      moveRightDragPreview(editor, event);
       event.preventDefault(); event.stopImmediatePropagation();
     }, true);
     canvas.addEventListener("pointerup", function (event) {
@@ -442,6 +594,7 @@
       var source = editor.rightDragSource, target = nodeAtPointer(event) || editor.rightDragTarget;
       var sourceId = source.id(), targetId = target ? target.id() : null;
       var sourcePosition = editor.rightDragSourcePosition ? Object.assign({}, editor.rightDragSourcePosition) : null;
+      clearRightDragPreview(editor);
       if (sourcePosition) source.position(sourcePosition);
       if (editor.mode === "move") source.grabify();
       source.removeClass("path-source"); editor.rightDragSource = null; editor.rightDragTarget = null;
@@ -456,6 +609,7 @@
     }, true);
     canvas.addEventListener("pointercancel", function () {
       if (!editor.rightDragSource) return;
+      clearRightDragPreview(editor);
       if (editor.rightDragSourcePosition) editor.rightDragSource.position(editor.rightDragSourcePosition);
       if (editor.mode === "move") editor.rightDragSource.grabify();
       editor.rightDragSource.removeClass("path-source"); editor.rightDragSource = null; editor.rightDragTarget = null;
@@ -490,12 +644,17 @@
       editor.pendingSource = null;
       addEdge(editor, source.id(), event.target.id());
     });
-    shell.addEventListener("keydown", function (event) {
+    editor.keyboardActive = false;
+    var deleteSelectionOnKey = function (event) {
       var tag = (event.target && event.target.tagName || "").toLowerCase();
-      if ((event.key !== "Delete" && event.key !== "Backspace") || tag === "input" || tag === "textarea" || tag === "select") return;
+      if (!editor.keyboardActive || (event.key !== "Delete" && event.key !== "Backspace") || tag === "input" || tag === "textarea" || tag === "select" || event.target.isContentEditable) return;
       var selected = editor.cy.$(":selected");
-      if (selected.length) { event.preventDefault(); removeSelection(editor); }
-    });
+      if (selected.length) { event.preventDefault(); event.stopImmediatePropagation(); removeSelection(editor); }
+    };
+    shell.addEventListener("keydown", deleteSelectionOnKey, true);
+    window.addEventListener("keydown", deleteSelectionOnKey, true);
+    canvas.addEventListener("pointerdown", function () { editor.keyboardActive = true; }, true);
+    editor.cy.on("select", function () { editor.keyboardActive = true; });
     tools.addEventListener("click", function (event) {
       var add = event.target.getAttribute("data-add"), action = event.target.getAttribute("data-action");
       if (add) addVariable(editor, add, add === "latent" ? "eta" : add === "manifest" ? "y" : add === "tdpred" ? "x" : "z");
@@ -536,7 +695,7 @@
       element.style.display = views.indexOf(editor.view) >= 0 ? "inline" : "none";
     });
     if (editor.mode === "draw") editor.cy.nodes().ungrabify(); else editor.cy.nodes().grabify();
-    updateDataChoices(editor, message.data_columns);
+    updateDataChoices(editor, message.data_columns, message.data_roles);
     updateTiFilters(editor, graph); renderLegend(editor, graph);
     updateTipredActions(editor);
     editor.cy.resize(); editor.cy.fit(undefined, 35);
