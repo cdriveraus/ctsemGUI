@@ -65,7 +65,7 @@ test_that("server delegates workflow code and fit-shape handling to services", {
   expect_match(server_text, "ctgui_output_snippet", fixed = TRUE)
   expect_match(server_text, "ctgui_ctsem_fit_model", fixed = TRUE)
   expect_match(server_text, "ctgui_ctsem_fit_generated", fixed = TRUE)
-  expect_false(grepl("ctsemgui::ctgui_generate_data", server_text, fixed = TRUE))
+  expect_false(grepl("ctsemGUI::ctgui_generate_data", server_text, fixed = TRUE))
   expect_false(grepl("fit\\$(model|modelbase|ctstanmodel|ctstanmodelbase|generated|stanfit)",
     server_text, perl = TRUE))
 

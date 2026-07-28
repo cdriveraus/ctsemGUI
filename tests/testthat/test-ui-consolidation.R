@@ -8,7 +8,7 @@ test_that("data-role add dialogs retain manual names", {
     tdpred_names = "typed_event", tipred_names = "typed_group",
     id = "typed_id", time = "typed_time"
   )))
-  roles_ui <- getFromNamespace("ctgui_data_roles_ui", "ctsemgui")(
+  roles_ui <- getFromNamespace("ctgui_data_roles_ui", "ctsemGUI")(
     spec, data.frame(observed = 1)
   )
   render_tags <- getFromNamespace("renderTags", "htmltools")
@@ -29,7 +29,7 @@ test_that("data-role add dialogs retain manual names", {
   expect_match(html, 'value="typed_id" selected', fixed = TRUE)
 
   no_data <- render_tags(
-    getFromNamespace("ctgui_data_roles_ui", "ctsemgui")(spec)
+    getFromNamespace("ctgui_data_roles_ui", "ctsemGUI")(spec)
   )$html
   expect_match(no_data, 'value="typed_y"', fixed = TRUE)
   expect_match(no_data, 'value="typed_time" selected', fixed = TRUE)

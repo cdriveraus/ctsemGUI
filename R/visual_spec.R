@@ -83,10 +83,34 @@ ctgui_visual_metadata <- function(spec, matrix, row, col) {
   metadata[index[1L], , drop = FALSE]
 }
 
+ctgui_visual_t0var_suppressed <- function(spec, matrix, row, col) {
+  if (!identical(matrix, "T0VAR")) return(FALSE)
+  metadata <- spec$parameter_metadata
+  if (is.null(metadata) || !nrow(metadata)) return(FALSE)
+  random_initial_means <- metadata$row[
+    metadata$matrix == "T0MEANS" & metadata$indvarying
+  ]
+  row %in% random_initial_means || col %in% random_initial_means
+}
+
+ctgui_visual_expression_has_random_effect <- function(spec, value, metadata = NULL) {
+  if (is.null(metadata) || !nrow(metadata) || is.null(spec$parameter_metadata)) return(FALSE)
+  expression <- ctgui_parameter_annotation_base(value)
+  # Individual differences for an expression belong to its named PARS
+  # elements, rather than to the expression cell itself.
+  parameters <- unique(c(
+    ctgui_split_pars(metadata$extra_pars[1L] %||% ""),
+    unlist(regmatches(expression, gregexpr("[A-Za-z._][A-Za-z0-9._]*", expression)))
+  ))
+  pars <- spec$parameter_metadata
+  any(pars$matrix == "PARS" & pars$param %in% parameters & pars$indvarying)
+}
+
 ctgui_visual_edge_style <- function(spec, matrix, row, col, value) {
   text <- trimws(as.character(value))
   fixed <- !is.na(suppressWarnings(as.numeric(strsplit(text, "|", fixed = TRUE)[[1L]][1L])))
   meta <- ctgui_visual_metadata(spec, matrix, row, col)
+  expression <- ctgui_parameter_is_expression(text, spec$latent_names)
   transform <- if (is.null(meta)) "param" else ctgui_display_transform(meta$transform[1L])
   extra <- if (is.null(meta) || !"extra_pars" %in% names(meta)) "" else meta$extra_pars[1L] %||% ""
   tipreds <- character()
@@ -100,7 +124,10 @@ ctgui_visual_edge_style <- function(spec, matrix, row, col, value) {
     # ctsem supplies matrix-specific default transforms for ordinary free
     # labels.  A path is visually custom only when it has extra PARS support.
     custom = !fixed && nzchar(extra),
-    indvarying = !is.null(meta) && isTRUE(meta$indvarying[1L]),
+    nonlinear = expression,
+    indvarying = if (expression) {
+      ctgui_visual_expression_has_random_effect(spec, text, meta)
+    } else !is.null(meta) && isTRUE(meta$indvarying[1L]),
     transform = transform,
     sdscale = if (is.null(meta)) 1 else meta$sdscale[1L] %||% 1,
     tipred_effects = tipreds,
@@ -194,12 +221,20 @@ ctgui_visual_graph <- function(spec, view = c("state_space", "initial_state", "t
       n <- nrow(metadata)
       radius <- max(250, 52 * n / pi)
       for (i in seq_len(n)) {
+        if (ctgui_visual_t0var_suppressed(
+          spec, metadata$matrix[i], metadata$row[i], metadata$col[i]
+        )) next
         angle <- 2 * pi * (i - 1L) / max(1L, n) - pi / 2
         id <- paste("parameter", metadata$matrix[i], metadata$row[i], metadata$col[i], sep = "\r")
         node <- ctgui_visual_node(spec, view, id, "parameter", metadata$param[i], i, 2,
           paste0(metadata$param[i], "\n", metadata$matrix[i]))
         node$matrix <- metadata$matrix[i]; node$row <- metadata$row[i]; node$col <- metadata$col[i]
         node$random_effect <- isTRUE(metadata$indvarying[i])
+        node$expression <- !identical(metadata$matrix[i], "PARS") &&
+          ctgui_parameter_is_expression(
+            spec$matrices[[metadata$matrix[i]]][metadata$row[i], metadata$col[i]],
+            spec$latent_names
+          )
         if (!has_saved_position(id)) {
           node$x <- 450 + radius * cos(angle); node$y <- 315 + radius * sin(angle)
         }
@@ -315,12 +350,11 @@ ctgui_visual_graph <- function(spec, view = c("state_space", "initial_state", "t
     }
     if (!is.null(spec$matrices[["T0VAR"]])) {
       mat <- spec$matrices[["T0VAR"]]
-      inactive <- character()
-      meta <- spec$parameter_metadata
-      if (!is.null(meta) && nrow(meta)) inactive <- meta$row[meta$matrix == "T0MEANS" & meta$indvarying]
       for (r in seq_len(nrow(mat))) for (c in seq_len(ncol(mat))) {
         if (c > r) next
-        suppressed <- rownames(mat)[r] %in% inactive || colnames(mat)[c] %in% inactive
+        suppressed <- ctgui_visual_t0var_suppressed(
+          spec, "T0VAR", rownames(mat)[r], colnames(mat)[c]
+        )
         if (suppressed && r == c) {
           noise_id <- paste0("noise:T0VAR:", rownames(mat)[r])
           edges[[length(edges) + 1L]] <- list(

@@ -9,6 +9,10 @@
       event.stopPropagation();
     });
 
+    app.on("click", "#choose_fit_rds", function () {
+      app.find("#load_fit_rds input[type='file']").trigger("click");
+    });
+
     // Selectize normally focuses its search field first and opens on the
     // next click in some browser/input-binding combinations.  Opening after
     // the native mousedown keeps every variable selector one-click while

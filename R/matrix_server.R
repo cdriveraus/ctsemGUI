@@ -423,7 +423,9 @@ ctgui_matrix_server <- function(
       shiny::tags$p(
         class = "help-note",
         paste0(
-          "Selected cell: ", matrix_name, " [", row_name, ", ", col_name,
+          "Selected cell: ", ctgui_matrix_cell_coordinate(
+            spec, matrix_name, row_name, col_name
+          ),
           "]. Settings apply to the free parameter in this cell and are ",
           "saved automatically."
         )

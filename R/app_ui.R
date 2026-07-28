@@ -68,7 +68,7 @@ ctgui_app_ui <- function(initial_spec, help_catalog, assets) {
     application_asset_version <- assets$visual_asset_version
   }
   if (is.null(application_asset_version) || !nzchar(application_asset_version)) {
-    application_asset_version <- as.character(utils::packageVersion("ctsemgui"))
+    application_asset_version <- as.character(utils::packageVersion("ctsemGUI"))
   }
   application_asset_url <- function(file) {
     paste0(
@@ -95,7 +95,7 @@ ui <- shiny::fluidPage(
   ),
   shiny::div(
     class = "app-header",
-    shiny::titlePanel("ctsemgui")
+    shiny::titlePanel("ctsemGUI")
   ),
   shiny::tabsetPanel(
     id = "workflow",
@@ -131,6 +131,17 @@ ui <- shiny::fluidPage(
               shiny::checkboxInput("tipredDefault", "Time independent predictors moderate all parameters by default (uncheck for no moderation unless specified)", value = isTRUE(spec$tipredDefault))
             )
           ),
+          shiny::div(
+            class = "control-band",
+            shiny::tags$h4("Model files"),
+            shiny::tags$p(class = "help-note", "Return the model to R or save/load the specification as an .rds file."),
+            shiny::div(class = "control-grid",
+              shiny::textInput("model_object_name", "Model object name in R", value = "model"),
+              shiny::actionButton("assign_model", "Return model to R"),
+              shiny::downloadButton("download_model_rds", "Save model RDS"),
+              shiny::fileInput("load_model_rds", "Load model RDS", accept = ".rds")
+            )
+          ),
           shiny::tableOutput("validation_table_spec")
         ),
         shiny::tabPanel(
@@ -149,8 +160,6 @@ ui <- shiny::fluidPage(
           "Visual Specification",
           shiny::div(
             class = "control-band",
-            shiny::tags$h4("Drawable state-space specification"),
-            shiny::tags$p(class = "help-note", "Draw and arrange the fitted-model structure here. Each edit updates the model specification immediately. Predictor-distribution matrices used only for data generation remain under Matrices."),
             shiny::div(class = "control-grid",
               shiny::selectInput("visual_view", "View", choices = c(
                 "State space" = "state_space", "Initial state" = "initial_state",
@@ -264,9 +273,15 @@ ui <- shiny::fluidPage(
               shiny::numericInput("fit_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_cores", "ctFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::textAreaInput("fit_extra_args", arg_label("Extra ctFit arguments", "help_ctFit", "Full ctFit help"), value = "", height = "70px"),
               shiny::checkboxInput("fit_completion_beep", "Play a sound when fitting finishes", value = FALSE),
-              shiny::textInput("fit_save_name", "Fit name", value = "fit1"),
               shiny::actionButton("run_fit", "Fit model", class = "btn-primary"),
-              shiny::actionButton("save_fit", "Save current fit")
+              shiny::actionButton("store_fit", "Store fit for comparison"),
+              shiny::actionButton("assign_fit", "Return fit to R"),
+              shiny::downloadButton("download_fit_rds", "Save fit RDS"),
+              shiny::actionButton("choose_fit_rds", "Load fit RDS"),
+              shiny::div(
+                class = "ctgui-hidden-file-input",
+                shiny::fileInput("load_fit_rds", NULL, accept = ".rds")
+              )
             )
           ),
           shiny::uiOutput("explain_fit_registry"),
@@ -281,31 +296,11 @@ ui <- shiny::fluidPage(
           ),
           shiny::div(
             class = "control-band",
-            shiny::tags$h4("R session and RDS files"),
-            shiny::tags$p(class = "help-note", "Return the raw ctsem model or fit to the R session, or save/load it as an .rds file. The model is created with ctsem::ctModel()."),
-            shiny::div(class = "control-grid",
-              shiny::textInput("model_object_name", "Model object name in R", value = "model"),
-              shiny::actionButton("assign_model", "Return model to R"),
-              shiny::downloadButton("download_model_rds", "Save model RDS"),
-              shiny::downloadButton("download_project_rds", "Save ctsemgui project RDS"),
-              shiny::fileInput("load_model_rds", "Load model RDS", accept = ".rds"),
-              shiny::textInput("fit_object_name", "Fit object name in R", value = "fit"),
-              shiny::actionButton("assign_fit", "Return fit to R"),
-              shiny::downloadButton("download_fit_rds", "Save fit RDS"),
-              shiny::fileInput("load_fit_rds", "Load fit RDS", accept = ".rds")
-            )
-          )
-        ),
-        shiny::tabPanel(
-          "Uncertainty",
-          shiny::div(
-            class = "control-band",
             shiny::tags$h4("Optimized-fit uncertainty"),
-            shiny::tags$p(class = "help-note", "These settings are used by Fit model when Optimize is selected. They can also be applied to an existing optimized fit below. Importance sampling and full bootstrap can take substantially longer."),
+            shiny::tags$p(class = "help-note", "These settings are used by Fit model when Optimize is selected. They can also be applied to an existing optimized fit. Importance sampling and full bootstrap can take substantially longer."),
             shiny::div(
               class = "control-grid",
               shiny::selectInput("fit_uncertainty_method", arg_label("Method", "help_uncertainty_method", "ctOptimUncertainty argument: uncertainty"), choices = ctgui_uncertainty_method_choices(), selected = "hessian"),
-              shiny::selectInput("fit_uncertainty_draws", arg_label("Approximate draws", "help_uncertainty_draws", "ctOptimUncertainty argument: draws"), choices = ctgui_uncertainty_draw_choices("hessian"), selected = "auto"),
               shiny::numericInput("fit_uncertainty_samples", arg_label("Draws / refits", "help_uncertainty_samples", "ctOptimUncertainty argument: finishsamples"), value = 1000, min = 2, step = 100),
               shiny::actionButton("run_uncertainty", "Recompute uncertainty", class = "btn-primary")
             ),
@@ -329,7 +324,7 @@ ui <- shiny::fluidPage(
                   shiny::numericInput("fit_uncertainty_surrogate_max_step", "Profile maximum step", value = 64, min = 1, step = 1)
                 ),
                 shiny::conditionalPanel(
-                  "input.fit_uncertainty_method === 'is' || input.fit_uncertainty_draws === 'imis'",
+                  "input.fit_uncertainty_method === 'is'",
                   shiny::numericInput("fit_uncertainty_imis_max_iter", "IMIS maximum iterations", value = 50, min = 1, step = 1),
                   shiny::numericInput("fit_uncertainty_imis_scale_init", "IMIS initial scale", value = 1.1, min = .01, step = .1),
                   shiny::numericInput("fit_uncertainty_imis_tail_scale", "IMIS tail scale", value = 1.1, min = .01, step = .1),
@@ -354,7 +349,7 @@ ui <- shiny::fluidPage(
             shiny::verbatimTextOutput("uncertainty_log"),
             shiny::tags$h4("Warnings"),
             shiny::verbatimTextOutput("uncertainty_warnings")
-          )
+          ),
         ),
         shiny::tabPanel(
           "Equations",
@@ -389,7 +384,7 @@ ui <- shiny::fluidPage(
             shiny::div(
               class = "control-grid",
               shiny::numericInput("fit_gen_samples", arg_label("nsamples", "help_fit_gen_nsamples", "ctGenerateFromFit argument: nsamples"), value = 200, min = 1, step = 1),
-              shiny::checkboxInput("fit_gen_follow_cores", "Use fit core selection", value = TRUE),
+              shiny::checkboxInput("fit_gen_follow_cores", "Follow fit cores", value = TRUE),
               shiny::numericInput("fit_gen_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_gen_cores", "ctGenerateFromFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::checkboxInput("fit_gen_fullposterior", arg_label("fullposterior", "help_fit_gen_fullposterior", "ctGenerateFromFit argument: fullposterior"), value = FALSE),
               shiny::textAreaInput("fit_gen_extra_args", arg_label("Extra ctGenerateFromFit arguments", "help_ctGenerateFromFit", "Full ctGenerateFromFit help"), value = "", height = "70px"),

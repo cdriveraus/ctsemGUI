@@ -4,6 +4,8 @@ test_that("uncertainty choices keep importance sampling unambiguous", {
   expect_equal(unname(ctgui_uncertainty_draw_choices("is")), "imis")
   expect_true("empirical" %in% unname(ctgui_uncertainty_draw_choices("bootstrap")))
   expect_false("empirical" %in% unname(ctgui_uncertainty_draw_choices("hessian")))
+  expect_equal(ctgui_uncertainty_default_draws("is"), "imis")
+  expect_equal(ctgui_uncertainty_default_draws("hessian"), "auto")
 })
 
 test_that("uncertainty control normalizes optional values and fit control", {

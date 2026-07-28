@@ -1,5 +1,5 @@
 test_that("matrix batches preserve annotations and commit as one spec", {
-  apply_batch <- getFromNamespace("ctgui_apply_matrix_batch", "ctsemgui")
+  apply_batch <- getFromNamespace("ctgui_apply_matrix_batch", "ctsemGUI")
   spec <- ctgui_spec(
     latent_names = "eta", manifest_names = "y", tipred_names = "group"
   )
@@ -17,7 +17,7 @@ test_that("matrix batches preserve annotations and commit as one spec", {
   result <- apply_batch(spec, values, metadata)
 
   expect_equal(result$spec$matrices$DRIFT["eta", "eta"], "decay_edited")
-  row <- getFromNamespace("ctgui_matrix_metadata_row", "ctsemgui")(
+  row <- getFromNamespace("ctgui_matrix_metadata_row", "ctsemGUI")(
     result$spec, "DRIFT", "eta", "eta"
   )
   expect_equal(row$transform, "exp(param)")
@@ -27,16 +27,16 @@ test_that("matrix batches preserve annotations and commit as one spec", {
   expect_equal(row$extra_pars, "gain")
   expect_true(
     "gain" %in%
-      getFromNamespace("ctgui_pars_vector", "ctsemgui")(result$spec)
+      getFromNamespace("ctgui_pars_vector", "ctsemGUI")(result$spec)
   )
   expect_setequal(result$changed, c("DRIFT", "parameter options"))
 })
 
 test_that("matrix server renders the retained Matrices tab controls", {
   skip_if_not_installed("shiny")
-  server <- getFromNamespace("ctgui_app_server", "ctsemgui")(
+  server <- getFromNamespace("ctgui_app_server", "ctsemGUI")(
     ctgui_spec(latent_names = "eta", manifest_names = "y"),
-    getFromNamespace("ctgui_help_catalog", "ctsemgui")()
+    getFromNamespace("ctgui_help_catalog", "ctsemGUI")()
   )
 
   expect_no_error(suppressWarnings(shiny::testServer(server, {
@@ -49,9 +49,9 @@ test_that("matrix server renders the retained Matrices tab controls", {
 
 test_that("matrix server commits the value carried by its atomic browser event", {
   skip_if_not_installed("shiny")
-  server <- getFromNamespace("ctgui_app_server", "ctsemgui")(
+  server <- getFromNamespace("ctgui_app_server", "ctsemGUI")(
     ctgui_spec(latent_names = "eta", manifest_names = "y"),
-    getFromNamespace("ctgui_help_catalog", "ctsemgui")()
+    getFromNamespace("ctgui_help_catalog", "ctsemGUI")()
   )
 
   expect_no_error(suppressWarnings(shiny::testServer(server, {

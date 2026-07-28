@@ -26,14 +26,14 @@ ctgui_canonical_snapshot <- function(spec, include_model = TRUE) {
   if (isTRUE(include_model)) {
     model <- quiet_ctgui(ctgui_to_ctsem_model(spec))
     snapshot$model_matrices <- quiet_ctgui(
-      getFromNamespace("ctgui_ctsem_matrices", "ctsemgui")(model)
+      getFromNamespace("ctgui_ctsem_matrices", "ctsemGUI")(model)
     )
   }
   snapshot
 }
 
 test_that("matrix and visual mutations converge on one canonical model state", {
-  visual_update <- getFromNamespace("ctgui_visual_update_edge", "ctsemgui")
+  visual_update <- getFromNamespace("ctgui_visual_update_edge", "ctsemGUI")
   base <- quiet_ctgui(ctgui_spec(
     latent_names = c("eta1", "eta2"),
     manifest_names = c("y1", "y2"),
@@ -113,7 +113,7 @@ test_that("guided and complete builders converge beyond raw matrix values", {
 })
 
 test_that("commits characterize unchanged and persisted project state", {
-  commit_spec <- getFromNamespace("ctgui_commit_spec", "ctsemgui")
+  commit_spec <- getFromNamespace("ctgui_commit_spec", "ctsemGUI")
   spec <- quiet_ctgui(ctgui_spec(
     latent_names = c("eta1", "eta2"),
     manifest_names = c("y1", "y2"),
@@ -237,7 +237,7 @@ test_that("dormant T0VAR survives ctsem model construction", {
 })
 
 test_that("ctsem 3.11.1 capability and GUI round-trip contract is explicit", {
-  capabilities <- getFromNamespace("ctgui_ctsem_capabilities", "ctsemgui")()
+  capabilities <- getFromNamespace("ctgui_ctsem_capabilities", "ctsemGUI")()
   expected_exports <- c(
     "ctModel", "ctModelMatrices", "ctFit", "ctOptimUncertainty",
     "ctSummaryMatrices", "ctFitCovCheck", "ctPredict", "ctDiscretePars"
@@ -266,10 +266,10 @@ test_that("ctsem 3.11.1 capability and GUI round-trip contract is explicit", {
   expect_equal(restored$id, spec$id)
   expect_equal(restored$time, spec$time)
   expect_equal(
-    quiet_ctgui(getFromNamespace("ctgui_ctsem_matrices", "ctsemgui")(
+    quiet_ctgui(getFromNamespace("ctgui_ctsem_matrices", "ctsemGUI")(
       ctgui_to_ctsem_model(restored)
     )),
-    quiet_ctgui(getFromNamespace("ctgui_ctsem_matrices", "ctsemgui")(model))
+    quiet_ctgui(getFromNamespace("ctgui_ctsem_matrices", "ctsemGUI")(model))
   )
 })
 
@@ -286,7 +286,7 @@ test_that("all visual projections preserve hostile labels and layouts as data", 
     graph$nodes[[1L]]$x <- 321
     graph$nodes[[1L]]$y <- 123
     expect_true(
-      getFromNamespace("ctgui_visual_validate_graph", "ctsemgui")(graph),
+      getFromNamespace("ctgui_visual_validate_graph", "ctsemGUI")(graph),
       info = view
     )
     spec <- quiet_ctgui(ctgui_visual_apply_graph(spec, graph))

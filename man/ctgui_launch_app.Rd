@@ -2,7 +2,7 @@
 % Please edit documentation in R/app.R
 \name{ctgui_launch_app}
 \alias{ctgui_launch_app}
-\title{Launch ctsemgui}
+\title{Launch ctsemGUI}
 \usage{
 ctgui_launch_app(launch.browser = interactive(), ...)
 }
@@ -12,7 +12,7 @@ ctgui_launch_app(launch.browser = interactive(), ...)
 \item{...}{Additional arguments passed to \code{shiny::runApp()}.}
 }
 \description{
-Launch the ctsemgui Shiny application for specifying, fitting, diagnosing,
+Launch the ctsemGUI Shiny application for specifying, fitting, diagnosing,
 and exporting continuous-time structural equation models with ctsem.
 }
 \examples{

@@ -3,9 +3,9 @@ test_that("matrix schema is the single source for dimensions and visual membersh
     latent_names = c("eta1", "eta2"), manifest_names = c("y1", "y2"),
     tdpred_names = "event", Tpoints = 3
   )
-  schema <- getFromNamespace("ctgui_matrix_schema", "ctsemgui")(spec)
-  dims <- getFromNamespace("ctgui_matrix_schema_dims", "ctsemgui")(spec)
-  visual <- getFromNamespace("ctgui_matrix_schema_visual", "ctsemgui")(spec)
+  schema <- getFromNamespace("ctgui_matrix_schema", "ctsemGUI")(spec)
+  dims <- getFromNamespace("ctgui_matrix_schema_dims", "ctsemGUI")(spec)
+  visual <- getFromNamespace("ctgui_matrix_schema_visual", "ctsemGUI")(spec)
 
   expect_equal(schema$DRIFT$dims, c(2L, 2L))
   expect_equal(schema$TDPREDVAR$dims, c(3L, 3L))
@@ -16,8 +16,8 @@ test_that("matrix schema is the single source for dimensions and visual membersh
 })
 
 test_that("the annotation codec preserves five fields and accepts legacy labels", {
-  decode <- getFromNamespace("ctgui_parameter_annotation_decode", "ctsemgui")
-  encode <- getFromNamespace("ctgui_parameter_annotation_encode", "ctsemgui")
+  decode <- getFromNamespace("ctgui_parameter_annotation_decode", "ctsemGUI")
+  encode <- getFromNamespace("ctgui_parameter_annotation_encode", "ctsemGUI")
   value <- encode("auto", "exp(param)", TRUE, 0.75, c("age", "group"))
   parsed <- decode(value, c("age", "group"))
 
@@ -31,7 +31,7 @@ test_that("the annotation codec preserves five fields and accepts legacy labels"
 })
 
 test_that("commits return canonical state and explicit reactive effects", {
-  commit_spec <- getFromNamespace("ctgui_commit_spec", "ctsemgui")
+  commit_spec <- getFromNamespace("ctgui_commit_spec", "ctsemGUI")
   spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
   spec$model <- NULL
   previous <- spec
@@ -60,7 +60,7 @@ test_that("commits return canonical state and explicit reactive effects", {
 })
 
 test_that("ctsem adapter reports the required model capabilities", {
-  capabilities <- getFromNamespace("ctgui_ctsem_capabilities", "ctsemgui")()
+  capabilities <- getFromNamespace("ctgui_ctsem_capabilities", "ctsemGUI")()
   expect_true(is.logical(capabilities$installed))
   if (capabilities$installed) {
     expect_true(all(capabilities$required))

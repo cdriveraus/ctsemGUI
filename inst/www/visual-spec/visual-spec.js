@@ -1,6 +1,6 @@
-/* ctsemgui visual specification editor.
+/* ctsemGUI visual specification editor.
  * Uses Cytoscape.js (MIT). Interaction design is independently implemented
- * for ctsemgui, with acknowledgement to lavaangui for the general idea of a
+ * for ctsemGUI, with acknowledgement to lavaangui for the general idea of a
  * browser-native SEM diagram editor (GPL-3.0-or-later).
  */
 (function () {
@@ -39,6 +39,7 @@
     classes.push(edge.fixed ? "fixed" : "free");
     if (edge.custom) classes.push("custom");
     if (edge.inactive) classes.push("inactive");
+    if (edge.nonlinear) classes.push("nonlinear");
     if (edge.indvarying) classes.push("random");
     if (edge.tipred_effects && edge.tipred_effects.length) classes.push("moderated");
     if (edge.edge_kind === "tipred_effect") classes.push("tipred-effect");
@@ -231,6 +232,26 @@
     actions.style.display = editor.view === "tipred_effects" && selected.length ? "inline" : "none";
   }
 
+  function updateRandomEffectAction(editor) {
+    var action = editor.tools.querySelector("[data-random-effect-action]");
+    if (!action) return;
+    var selected = editor.cy.$("node.parameter:selected").first();
+    var available = editor.view === "tipred_effects" && selected.length && !selected.data("expression");
+    action.style.display = available ? "inline" : "none";
+    if (available) action.textContent = selected.data("random_effect") ? "Disable random effect" : "Enable random effect";
+  }
+
+  function toggleRandomEffect(editor) {
+    var selected = editor.cy.$("node.parameter:selected").first();
+    if (!selected.length || selected.data("expression")) return;
+    Shiny.setInputValue(editor.id + "_toggle_random_effect", {
+      view: editor.view,
+      matrix: selected.data("matrix"),
+      row: selected.data("row"),
+      col: selected.data("col")
+    }, { priority: "event" });
+  }
+
   function applyTipredDefault(editor, moderateAll) {
     var tipredNode = editor.cy.$("node.tipred:selected").first();
     if (!tipredNode.length) return;
@@ -251,7 +272,7 @@
   function renderLegend(editor, graph) {
     var pathItems = [
       ["path_mark", "Free path"], ["path_mark fixed", "Fixed path"],
-      ["path_mark random", "Random effect"], ["path_mark custom", "nonlinear function"],
+      ["path_mark random", "Random effect (red underlay)"], ["path_mark nonlinear", "Nonlinear expression"],
       ["path_mark variance_correlation", "Variance / correlation"], ["path_mark noise_input", "Noise input"]
     ];
     var items;
@@ -265,8 +286,8 @@
     } else {
       items = [["node latent", "Latent process"], ["node manifest", "Observed manifest"],
         ["node tdpred", "Time-dependent predictor"], ["node tipred", "TI predictor"],
-        ["node constant", "Constant"], ["node system_noise", "System noise"],
-        ["node measurement_noise", "Measurement noise"]].concat(pathItems);
+        ["node constant", "Constant"],
+        ["node system_noise", "System / measurement noise"]].concat(pathItems);
     }
     clearElement(editor.legend);
     editor.legend.appendChild(makeElement("h5", "", "Legend"));
@@ -497,6 +518,9 @@
     addButton(group, "Add time-dependent predictor", "data-add", "tdpred");
 
     group = addStructureGroup(tools, "state_space,tipred_effects");
+    var randomEffectAction = addButton(group, "Enable random effect", "data-action", "toggle-random-effect");
+    randomEffectAction.dataset.randomEffectAction = "";
+    randomEffectAction.style.display = "none";
     addButton(group, "Add time-independent predictor", "data-add", "tipred");
     addButton(group, "Rename selected", "data-action", "rename");
 
@@ -545,18 +569,20 @@
         { selector: "edge.variance", style: { "curve-style": "bezier", "loop-direction": "-90deg", "loop-sweep": "25deg", "line-style": "solid", "line-color": "#111827", "source-arrow-color": "#111827", "target-arrow-color": "#111827", "source-arrow-shape": "triangle", "target-arrow-shape": "triangle", width: 2.5 } },
         { selector: "edge.correlation", style: { "curve-style": "unbundled-bezier", "control-point-distances": "30px", "control-point-weights": "0.5", "line-style": "solid", "line-color": "#111827", "source-arrow-color": "#111827", "target-arrow-color": "#111827", "source-arrow-shape": "triangle", "target-arrow-shape": "triangle", width: 2.5 } },
         { selector: "edge.inactive", style: { "line-color": "#9ca3af", "source-arrow-color": "#9ca3af", "target-arrow-color": "#9ca3af", "line-style": "dotted", "text-opacity": 0.8 } },
-        { selector: "edge.random", style: { "line-style": "solid", "line-color": "#ea580c", "target-arrow-color": "#ea580c", "source-arrow-color": "#ea580c", width: 3.5 } },
+        { selector: "edge.nonlinear", style: { "line-color": "#7c3aed", "target-arrow-color": "#7c3aed", "source-arrow-color": "#7c3aed", "curve-style": "round-segments", "segment-weights": "0.16 0.32 0.48 0.64 0.80", "segment-distances": "12 -12 12 -12 12", "line-style": "solid" } },
+        { selector: "edge.random", style: { "underlay-color": "#dc2626", "underlay-opacity": 0.85, "underlay-padding": 3 } },
         { selector: "edge.tipred-effect", style: { "line-color": "data(colour)", "target-arrow-color": "data(colour)", width: 3.2 } },
         { selector: "edge.random_effect_variance, edge.random_effect_correlation", style: { "line-style": "solid", "line-color": "#111827", "source-arrow-color": "#111827", "target-arrow-color": "#111827", "source-arrow-shape": "triangle", "target-arrow-shape": "triangle", width: 2.2 } },
-        { selector: "edge.random_effect_variance", style: { "loop-direction": "-90deg", "loop-sweep": "25deg" } },
+        { selector: "edge.random_effect_variance", style: { "loop-direction": "-90deg", "loop-sweep": "270deg", "control-point-step-size": 120 } },
         { selector: "edge.path-preview", style: { "line-style": "dashed", "line-color": "#16a34a", "target-arrow-color": "#16a34a", "target-arrow-shape": "triangle", width: 2.5, opacity: 0.85 } },
         { selector: ":selected", style: { "border-width": 4, "border-color": "#f59e0b", "line-color": "#f59e0b", "target-arrow-color": "#f59e0b" } },
         { selector: "node.path-source", style: { "border-width": 4, "border-color": "#16a34a" } }
       ]
     });
     editor.cy.on("select", "edge", function (event) { select(editor, event.target); });
-    editor.cy.on("select", "node.parameter", function (event) { select(editor, event.target); });
+    editor.cy.on("select", "node.parameter", function (event) { select(editor, event.target); updateRandomEffectAction(editor); });
     editor.cy.on("select", "node.tipred", function (event) { select(editor, event.target); updateTipredActions(editor); });
+    editor.cy.on("unselect", "node.parameter", function () { window.setTimeout(function () { updateRandomEffectAction(editor); }, 0); });
     editor.cy.on("unselect", "edge", function () { window.setTimeout(function () { if (!editor.cy.$("edge:selected").length) select(editor, null); }, 0); });
     editor.cy.on("unselect", "node.tipred", function () { window.setTimeout(function () { updateTipredActions(editor); }, 0); });
     editor.cy.on("dragfree", "node", function () { send(editor, false, true); });
@@ -659,6 +685,7 @@
       var add = event.target.getAttribute("data-add"), action = event.target.getAttribute("data-action");
       if (add) addVariable(editor, add, add === "latent" ? "eta" : add === "manifest" ? "y" : add === "tdpred" ? "x" : "z");
       if (action === "rename") renameSelectedVariable(editor);
+      if (action === "toggle-random-effect") toggleRandomEffect(editor);
       if (action === "tipred-all") applyTipredDefault(editor, true);
       if (action === "tipred-none") applyTipredDefault(editor, false);
       if (action === "delete") removeSelection(editor);
@@ -676,12 +703,12 @@
 
   function load(message) {
     if (!message || typeof message.id !== "string" || !validGraph(message.graph)) {
-      window.console.warn("ctsemgui ignored an unsupported visual graph message.");
+      window.console.warn("ctsemGUI ignored an unsupported visual graph message.");
       return;
     }
     var target = document.getElementById(message.id);
     if (!target) {
-      window.console.warn("ctsemgui could not find the visual graph target.");
+      window.console.warn("ctsemGUI could not find the visual graph target.");
       return;
     }
     var editor = init(target);
@@ -698,6 +725,7 @@
     updateDataChoices(editor, message.data_columns, message.data_roles);
     updateTiFilters(editor, graph); renderLegend(editor, graph);
     updateTipredActions(editor);
+    updateRandomEffectAction(editor);
     editor.cy.resize(); editor.cy.fit(undefined, 35);
   }
 

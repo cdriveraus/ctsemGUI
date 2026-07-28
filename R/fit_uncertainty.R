@@ -21,6 +21,10 @@ ctgui_uncertainty_draw_choices <- function(method = "hessian") {
     "Importance sampling" = "imis")
 }
 
+ctgui_uncertainty_default_draws <- function(method = "hessian") {
+  unname(ctgui_uncertainty_draw_choices(method))[1L]
+}
+
 ctgui_uncertainty_control <- function(ridge = 1e-8, hessian_step = 1e-3,
   surrogate_npoints = NA, surrogate_scale = .5, surrogate_profile = TRUE,
   surrogate_profile_target_drop = NA, surrogate_profile_max_step = 64,

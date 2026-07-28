@@ -2,7 +2,7 @@
 % Please edit documentation in R/app.R
 \name{ctgui_create_app}
 \alias{ctgui_create_app}
-\title{Create the ctsemgui Shiny application.}
+\title{Create the ctsemGUI Shiny application.}
 \usage{
 ctgui_create_app(
   initial_spec = ctgui_spec(latent_names = character(), manifest_names = character()),
@@ -13,6 +13,6 @@ ctgui_create_app(
 A \code{shiny.appobj} ready to run or test.
 }
 \description{
-Create the ctsemgui Shiny application.
+Create the ctsemGUI Shiny application.
 }
 \keyword{internal}

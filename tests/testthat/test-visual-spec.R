@@ -65,7 +65,18 @@ test_that("visual browser renderer does not interpolate graph data as HTML", {
   expect_true(grepl('"loop-sweep": "25deg"', source, fixed = TRUE))
   expect_true(grepl("Add time-dependent predictor", source, fixed = TRUE))
   expect_true(grepl("Add time-independent predictor", source, fixed = TRUE))
+  expect_true(grepl("toggle-random-effect", source, fixed = TRUE))
+  expect_true(grepl("Enable random effect", source, fixed = TRUE))
+  expect_true(grepl("Disable random effect", source, fixed = TRUE))
   expect_true(grepl('input.addEventListener("click", renderChoices)', source, fixed = TRUE))
+  expect_true(grepl("edge.nonlinear", source, fixed = TRUE))
+  expect_true(grepl('"underlay-color": "#dc2626"', source, fixed = TRUE))
+  expect_true(grepl("Random effect (red underlay)", source, fixed = TRUE))
+  expect_true(grepl("Nonlinear expression", source, fixed = TRUE))
+  expect_true(grepl('"curve-style": "round-segments"', source, fixed = TRUE))
+  expect_true(grepl("System / measurement noise", source, fixed = TRUE))
+  expect_true(grepl('"loop-sweep": "270deg"', source, fixed = TRUE))
+  expect_true(grepl('"control-point-step-size": 120', source, fixed = TRUE))
   expect_true(grepl("var excluded = options.excluded || []", source, fixed = TRUE))
   expect_true(grepl("roleList(roles.id)", source, fixed = TRUE))
 })
@@ -108,6 +119,22 @@ test_that("automatic parameter labels follow ctModel defaults", {
   expect_equal(spec$matrices$DIFFUSION["eta1", "eta1"], "diff_eta1")
 })
 
+test_that("vector parameter coordinates omit the structural column name", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  expect_equal(
+    ctgui_matrix_cell_coordinate(spec, "MANIFESTMEANS", "y", "MANIFESTMEANS"),
+    "MANIFESTMEANS[y]"
+  )
+  expect_equal(
+    ctgui_matrix_cell_coordinate(spec, "T0MEANS", "eta", "T0MEANS"),
+    "T0MEANS[eta]"
+  )
+  expect_equal(
+    ctgui_matrix_cell_coordinate(spec, "DRIFT", "eta", "eta"),
+    "DRIFT[eta,eta]"
+  )
+})
+
 test_that("visual parameter metadata can override ctsem random-effect defaults", {
   spec <- ctgui_spec(latent_names = "eta1", manifest_names = "y1")
   spec <- ctgui_set_matrix_value(spec, "CINT", "eta1", "CINT", label = "cint_eta1")
@@ -118,6 +145,26 @@ test_that("visual parameter metadata can override ctsem random-effect defaults",
   manifest_mean <- ctgui_visual_metadata(spec, "MANIFESTMEANS", "y1", "MANIFESTMEANS")
   expect_false(cint$indvarying[1L])
   expect_false(manifest_mean$indvarying[1L])
+})
+
+test_that("nonlinear paths inherit random-effect styling from their PARS elements", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  spec <- ctgui_set_parameter_metadata(spec, "DRIFT", "eta", "eta", indvarying = TRUE)
+  spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta", value = "a * exp(b)")
+  spec <- ctgui_visual_update_edge(spec, list(
+    matrix = "DRIFT", row = "eta", col = "eta", value = "a * exp(b)",
+    extra_pars = "a, b"
+  ))
+  b <- subset(spec$parameter_metadata, matrix == "PARS" & param == "b")
+  spec <- ctgui_set_parameter_metadata(spec, "PARS", b$row[1L], b$col[1L], indvarying = TRUE)
+  parent <- ctgui_visual_metadata(spec, "DRIFT", "eta", "eta")
+
+  graph <- ctgui_visual_graph(spec, "state_space")
+  edge <- Filter(function(item) identical(item$matrix, "DRIFT") &&
+    identical(item$row, "eta") && identical(item$col, "eta"), graph$edges)[[1L]]
+  expect_true(edge$nonlinear)
+  expect_true(edge$indvarying)
+  expect_false(parent$indvarying[1L])
 })
 
 test_that("new visual parameters inherit the same ctsem metadata defaults as matrix edits", {
@@ -182,6 +229,11 @@ test_that("initial visual view preserves T0VAR cells suppressed by random T0MEAN
   expect_true(suppressed$visual_only)
   noise <- Filter(function(node) identical(node$id, "noise:T0VAR:eta1"), graph$nodes)[[1L]]
   expect_equal(noise$label, "noise\neta1")
+  individual_differences <- ctgui_visual_graph(spec, "tipred_effects")
+  expect_false(any(vapply(individual_differences$nodes, function(node) {
+    identical(node$kind, "parameter") && identical(node$matrix, "T0VAR") &&
+      (identical(node$row, "eta1") || identical(node$col, "eta1"))
+  }, logical(1L))))
   updated <- ctgui_visual_apply_graph(spec, graph)
   expect_equal(updated$matrices$T0VAR["eta1", ], before["eta1", ])
   expect_equal(updated$matrices$T0VAR[, "eta1"], before[, "eta1"])

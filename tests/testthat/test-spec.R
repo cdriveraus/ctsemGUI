@@ -71,6 +71,12 @@ test_that("conversion to ctsem is available when ctsem is installed", {
   expect_true(inherits(model, "ctStanModel") || inherits(model, "ctsemInit"))
 })
 
+test_that("GUI ctModel construction is always silent", {
+  skip_if_not_installed("ctsem")
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  expect_silent(ctgui_to_ctsem_model(spec, silent = FALSE))
+})
+
 test_that("exported matrix code preserves matrix positions", {
   skip_if_not_installed("ctsem")
 

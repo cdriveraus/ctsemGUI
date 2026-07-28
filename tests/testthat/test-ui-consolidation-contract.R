@@ -103,7 +103,7 @@ test_that("merged data-role controls are creatable and retain manual names", {
   expect_equal(active$time, spec$time)
 
   html <- getFromNamespace("renderTags", "htmltools")(
-    getFromNamespace("ctgui_data_roles_ui", "ctsemgui")(spec, data = NULL)
+    getFromNamespace("ctgui_data_roles_ui", "ctsemGUI")(spec, data = NULL)
   )$html
   role_aliases <- list(
     manifest = c("manifest_names", "data_manifest_names"),
@@ -151,9 +151,9 @@ test_that("approved consolidation retains substantive workflows", {
   )
 
   static_ids <- c(
-    "fit_save_name", "save_fit", "active_fit_name",
+    "store_fit", "active_fit_name",
     "fit_comparison", "raw_plot", "raw_plot_png", "raw_plot_pdf",
-    "assign_model", "assign_fit", "download_model_rds", "download_project_rds",
+    "assign_model", "assign_fit", "download_model_rds",
     "download_fit_rds", "load_model_rds", "load_fit_rds",
     "fit_uncertainty_method", "run_uncertainty",
     "generate_from_fit", "run_cov_check", "run_kalman", "run_postpred",
@@ -162,6 +162,16 @@ test_that("approved consolidation retains substantive workflows", {
   for (id in static_ids) {
     expect_equal(ui_id_count(html, id), 1L, info = paste("retained UI", id))
   }
+  expect_equal(ui_id_count(html, "fit_object_name"), 0L)
+  expect_equal(ui_id_count(html, "fit_save_name"), 0L)
+  expect_match(html, "Store fit for comparison", fixed = TRUE)
+  expect_match(html, "choose_fit_rds", fixed = TRUE)
+  expect_match(html, "Follow fit cores", fixed = TRUE)
+  expect_match(source, "assign_fit_object_name", fixed = TRUE)
+  expect_match(source, "store_fit_name", fixed = TRUE)
+  expect_match(source, "progress_callback = function(lines)", fixed = TRUE)
+  expect_equal(ui_id_count(html, "fit_uncertainty_draws"), 0L,
+    info = "draw construction is chosen automatically from the uncertainty method")
 
   dynamic_ids <- c(
     "uncertainty_status", "uncertainty_summary",

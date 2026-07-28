@@ -1,5 +1,5 @@
 test_that("the launcher is the only exported package API", {
-  expect_equal(getNamespaceExports("ctsemgui"), "ctgui_launch_app")
+  expect_equal(getNamespaceExports("ctsemGUI"), "ctgui_launch_app")
 })
 
 test_that("runtime dependencies satisfy the supported ctsem contract", {

@@ -1,4 +1,4 @@
 library(testthat)
-library(ctsemgui)
+library(ctsemGUI)
 
-test_check("ctsemgui")
+test_check("ctsemGUI")

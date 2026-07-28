@@ -3,7 +3,7 @@ utils::globalVariables(c(
   "edge_colour", "edge_linetype"
 ))
 
-#' Create the ctsemgui Shiny application.
+#' Create the ctsemGUI Shiny application.
 #'
 #' @return A `shiny.appobj` ready to run or test.
 #' @keywords internal
@@ -11,22 +11,22 @@ ctgui_create_app <- function(
     initial_spec = ctgui_spec(latent_names = character(), manifest_names = character()),
     help_catalog = ctgui_help_catalog()) {
   if (!requireNamespace("shiny", quietly = TRUE)) {
-    stop("The shiny package is required to launch the ctsemgui app", call. = FALSE)
+    stop("The shiny package is required to launch the ctsemGUI app", call. = FALSE)
   }
-  www_path <- system.file("www", package = "ctsemgui")
+  www_path <- system.file("www", package = "ctsemGUI")
   if (nzchar(www_path)) shiny::addResourcePath("ctsemgui-assets", www_path)
   visual_asset_files <- file.path(www_path, "visual-spec", c("visual-spec.js", "visual-spec.css"))
   visual_asset_version <- if (length(visual_asset_files) && all(file.exists(visual_asset_files))) {
     format(max(file.info(visual_asset_files)$mtime), "%Y%m%d%H%M%S")
   } else {
-    as.character(utils::packageVersion("ctsemgui"))
+    as.character(utils::packageVersion("ctsemGUI"))
   }
   application_asset_files <- file.path(www_path, "app", c("app.js", "app.css"))
   application_asset_version <- if (
       length(application_asset_files) && all(file.exists(application_asset_files))) {
     format(max(file.info(application_asset_files)$mtime), "%Y%m%d%H%M%S")
   } else {
-    as.character(utils::packageVersion("ctsemgui"))
+    as.character(utils::packageVersion("ctsemGUI"))
   }
   assets <- list(
     www_path = www_path,
@@ -42,9 +42,9 @@ ctgui_create_app <- function(
   )
 }
 
-#' Launch ctsemgui
+#' Launch ctsemGUI
 #'
-#' Launch the ctsemgui Shiny application for specifying, fitting, diagnosing,
+#' Launch the ctsemGUI Shiny application for specifying, fitting, diagnosing,
 #' and exporting continuous-time structural equation models with ctsem.
 #'
 #' @param launch.browser Passed to `shiny::runApp()`.

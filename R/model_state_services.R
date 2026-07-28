@@ -189,6 +189,16 @@ ctgui_matrix_metadata_row <- function(spec, matrix_name, row_name, col_name) {
   if (!nrow(found)) NULL else found[1L, , drop = FALSE]
 }
 
+ctgui_matrix_cell_coordinate <- function(spec, matrix_name, row_name, col_name) {
+  vector_matrices <- c(
+    "CINT", "MANIFESTMEANS", "T0MEANS", "TDPREDMEANS", "PARS"
+  )
+  if (matrix_name %in% vector_matrices) {
+    return(paste0(matrix_name, "[", row_name, "]"))
+  }
+  paste0(matrix_name, "[", row_name, ",", col_name, "]")
+}
+
 ctgui_matrix_id_part <- function(x) gsub("[^A-Za-z0-9_]", "_", x)
 
 ctgui_matrix_cell_id <- function(matrix_name, row, col) {
@@ -277,7 +287,7 @@ ctgui_project_spec <- function(object) {
       !is.null(object$latentNames) && !is.null(object$manifestNames)) {
     ctgui_spec_from_model(object)
   } else {
-    stop("The RDS does not contain a ctsem model or ctsemgui project", call. = FALSE)
+    stop("The RDS does not contain a ctsem model or ctsemGUI project", call. = FALSE)
   }
   ctgui_visual_ensure(loaded)
 }

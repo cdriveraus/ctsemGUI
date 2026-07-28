@@ -5,6 +5,7 @@ table { background: #ffffff; }
 .tab-pane { padding-top: 12px; }
 .control-band { background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
 .control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 14px; align-items: end; }
+.ctgui-hidden-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .manifest-type-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; align-items: end; margin-top: 12px; }
 .help-note { color: #4b5563; margin: 0 0 10px 0; max-width: 860px; }
 .ctgui-readonly-variable-list { background: #f3f4f6; color: #4b5563; cursor: default; }

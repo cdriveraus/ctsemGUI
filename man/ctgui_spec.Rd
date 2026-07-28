@@ -101,7 +101,8 @@ ctgui_generate_data(
 \item{free}{Logical; when \code{TRUE}, \code{label} or \code{value} is treated as a
 parameter label.}
 
-\item{silent}{Passed to \code{ctsem::ctModel()}.}
+\item{silent}{Retained for compatibility. GUI model construction is always
+quiet (\code{silent = TRUE}).}
 
 \item{object_name}{Name used for the model object in exported code.}
 

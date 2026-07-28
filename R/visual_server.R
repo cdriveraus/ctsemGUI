@@ -117,8 +117,8 @@ ctgui_visual_server <- function(input, output, session, current_spec,
     expression <- ctgui_parameter_is_expression(edge$value %||% "", current_spec()$latent_names)
     shiny::div(
       class = "matrix-cell-inspector visual-path-inspector",
-      shiny::tags$h5(paste(
-        edge$matrix, "[", edge$row, ",", edge$col, "]", sep = ""
+      shiny::tags$h5(ctgui_matrix_cell_coordinate(
+        current_spec(), edge$matrix, edge$row, edge$col
       )),
       shiny::tags$p(class = "matrix-note", ctgui_expression_metadata_guidance()),
       shiny::div(
@@ -260,6 +260,32 @@ ctgui_visual_server <- function(input, output, session, current_spec,
     }
   }, ignoreInit = TRUE)
 
+  shiny::observeEvent(input$visual_spec_canvas_toggle_random_effect, {
+    selected <- input$visual_spec_canvas_toggle_random_effect
+    if (!is.list(selected) || !identical(selected$view, "tipred_effects")) return()
+    matrix <- as.character(selected$matrix %||% "")
+    row <- as.character(selected$row %||% "")
+    col <- as.character(selected$col %||% "")
+    meta <- ctgui_matrix_metadata_row(current_spec(), matrix, row, col)
+    if (is.null(meta)) return()
+    value <- current_spec()$matrices[[matrix]][row, col]
+    if (!identical(matrix, "PARS") &&
+        ctgui_parameter_is_expression(value, current_spec()$latent_names)) {
+      notify("Random effects for an expression are set on its PARS parameters.", type = "warning")
+      return()
+    }
+    enabled <- !isTRUE(meta$indvarying[1L])
+    updated <- ctgui_set_parameter_metadata(
+      current_spec(), matrix, row, col, indvarying = enabled
+    )
+    refresh(updated, view = "tipred_effects")
+    commit_current_spec(updated, reason = "visual_random_effect")
+    sync_matrix_inputs_from_spec(updated)
+    fit_status_value("Visual model changed. Refit when ready.")
+    matrix_status("Random effect updated in model matrices.")
+    status(if (enabled) "Random effect enabled for the selected parameter." else "Random effect disabled for the selected parameter.")
+  }, ignoreInit = TRUE)
+
   update_path <- function() {
     selected <- input$visual_spec_canvas_selection
     edge <- selected_edge()
@@ -337,8 +363,11 @@ ctgui_visual_server <- function(input, output, session, current_spec,
     if (identical(item$matrix, "T0MEANS")) {
       send("initial_state")
     } else {
+      canonical_edge <- Filter(function(edge) identical(edge$id, item$id),
+        graph_for_view(view)$edges %||% list())
       send_message("ctgui-visual-update-edge", list(
-        id = "visual_spec_canvas", edge = item
+        id = "visual_spec_canvas",
+        edge = if (length(canonical_edge)) canonical_edge[[1L]] else item
       ))
     }
     invisible(NULL)

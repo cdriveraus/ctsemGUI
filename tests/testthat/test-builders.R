@@ -243,8 +243,8 @@ test_that("builder catalogs validate IDs and parameter annotations drive cell ac
   expect_error(ctgui_build_model("not-a-structure"), "structure must be one of")
   expect_error(ctgui_build_model(measurement = "not-a-measurement"), "measurement must be one of")
 
-  expect_false(getFromNamespace("ctgui_cell_active", "ctsemgui")("0"))
-  expect_true(getFromNamespace("ctgui_cell_active", "ctsemgui")("-0.2"))
-  expect_true(getFromNamespace("ctgui_cell_active", "ctsemgui")("drift_a||TRUE|1|group"))
-  expect_false(getFromNamespace("ctgui_cell_active", "ctsemgui")("   "))
+  expect_false(getFromNamespace("ctgui_cell_active", "ctsemGUI")("0"))
+  expect_true(getFromNamespace("ctgui_cell_active", "ctsemGUI")("-0.2"))
+  expect_true(getFromNamespace("ctgui_cell_active", "ctsemGUI")("drift_a||TRUE|1|group"))
+  expect_false(getFromNamespace("ctgui_cell_active", "ctsemGUI")("   "))
 })

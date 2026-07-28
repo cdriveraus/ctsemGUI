@@ -1,4 +1,4 @@
-Package: ctsemgui
+Package: ctsemGUI
 Type: Package
 Title: Shiny Application for ctsem Model Workflows
 Version: 0.0.1

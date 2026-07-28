@@ -12,7 +12,7 @@ test_that("data-source code covers every GUI source without private API calls", 
   ))
   expect_parseable_code(generated)
   expect_match(paste(generated, collapse = "\n"), "ctsem::ctGenerate", fixed = TRUE)
-  expect_false(any(grepl("ctsemgui::ctgui_generate_data", generated, fixed = TRUE)))
+  expect_false(any(grepl("ctsemGUI::ctgui_generate_data", generated, fixed = TRUE)))
   expect_true(any(grepl("intentionally not a public workflow API", generated, fixed = TRUE)))
 
   r_object <- ctgui_output_data_code(ctgui_output_data_source("r_object", "panel_data"))

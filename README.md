@@ -1,6 +1,6 @@
-# ctsemgui
+# ctsemGUI
 
-`ctsemgui` provides a Shiny graphical interface for building, fitting, and
+`ctsemGUI` provides a Shiny graphical interface for building, fitting, and
 checking `ctsem` models.
 
 The GUI is intended for users who want to work through a model in visible steps:
@@ -16,7 +16,7 @@ install.packages("remotes")
 remotes::install_github("cdriveraus/ctsemgui",dependencies=TRUE)
 ```
 
-`ctsemgui` uses `ctsem` for model fitting, data generation, equations, and
+`ctsemGUI` uses `ctsem` for model fitting, data generation, equations, and
 diagnostics. If `ctsem` is not already installed, install it as well:
 
 ```r
@@ -26,7 +26,7 @@ install.packages("ctsem",dependencies=TRUE)
 ## Start The GUI
 
 ```r
-library(ctsemgui)
+library(ctsemGUI)
 ctgui_launch_app()
 ```
 

@@ -181,6 +181,19 @@ generate_from_fit_cores <- function() {
   if (!identical(input$fit_gen_follow_cores, FALSE)) input$fit_cores else input$fit_gen_cores
 }
 
+shiny::observeEvent(input$fit_cores, {
+  if (isTRUE(input$fit_gen_follow_cores)) {
+    shiny::updateNumericInput(session, "fit_gen_cores", value = input$fit_cores)
+  }
+}, ignoreInit = TRUE)
+
+shiny::observeEvent(input$fit_gen_cores, {
+  if (isTRUE(input$fit_gen_follow_cores) &&
+      !identical(as.integer(input$fit_gen_cores), as.integer(input$fit_cores))) {
+    shiny::updateCheckboxInput(session, "fit_gen_follow_cores", value = FALSE)
+  }
+}, ignoreInit = TRUE)
+
 cov_check_lags <- function() {
   text <- input$cov_lags
   if (is.null(text) || !nzchar(trimws(text))) return(NULL)
@@ -211,7 +224,7 @@ progress_like_message <- function(text) {
   text <- trimws(text)
   if (!nzchar(text)) return(FALSE)
   grepl("\r", text, fixed = TRUE) ||
-    grepl("(?i)(hessian|iter|iteration|elapsed|optim|optimization|chain|warmup|sampling|draws|gradient|stepsize|objective|progress|\\d+\\s*/\\s*\\d+)", text, perl = TRUE)
+  grepl("(?i)(hessian|iter|iteration|elapsed|optim|optimization|chain|warmup|sampling|draws|gradient|stepsize|objective|progress|bootstrap|boot|\\d+\\s*/\\s*\\d+)", text, perl = TRUE)
 }
 
 compact_condition_messages <- function(messages, progress = character()) {
@@ -320,7 +333,7 @@ uncertainty_control <- function() {
 uncertainty_optimcontrol <- function() {
   ctgui_uncertainty_optimcontrol(
     method = input$fit_uncertainty_method,
-    draws = input$fit_uncertainty_draws,
+    draws = ctgui_uncertainty_default_draws(input$fit_uncertainty_method),
     finishsamples = input$fit_uncertainty_samples,
     control = uncertainty_control()
   )
@@ -343,14 +356,6 @@ assign_r_object <- function(object, name, label) {
 
 is_ctsem_model <- function(x) !is.null(x$pars) && !is.null(x$latentNames) && !is.null(x$manifestNames)
 
-shiny::observeEvent(input$fit_uncertainty_method, {
-  method <- input$fit_uncertainty_method %||% "hessian"
-  choices <- ctgui_uncertainty_draw_choices(method)
-  selected <- input$fit_uncertainty_draws
-  if (is.null(selected) || !selected %in% unname(choices)) selected <- unname(choices)[1L]
-  shiny::updateSelectInput(session, "fit_uncertainty_draws", choices = choices, selected = selected)
-}, ignoreInit = FALSE)
-
 output$uncertainty_eligibility <- shiny::renderUI({
   eligibility <- ctgui_optim_uncertainty_eligibility(active_fit())
   class <- if (isTRUE(eligibility$ok)) "help-note" else "warning-note"
@@ -360,10 +365,6 @@ output$uncertainty_eligibility <- shiny::renderUI({
 output$download_model_rds <- shiny::downloadHandler(
   filename = function() "ctsem-model.rds",
   content = function(file) saveRDS(ctgui_to_ctsem_model(current_spec(), silent = TRUE), file)
-)
-output$download_project_rds <- shiny::downloadHandler(
-  filename = function() "ctsemgui-project.rds",
-  content = function(file) saveRDS(ctgui_visual_ensure(current_spec()), file)
 )
 output$download_fit_rds <- shiny::downloadHandler(
   filename = function() "ctsem-fit.rds",
@@ -378,7 +379,24 @@ shiny::observeEvent(input$assign_model, {
 })
 shiny::observeEvent(input$assign_fit, {
   fit <- active_fit()
-  if (is.null(fit)) shiny::showNotification("No fit is available to return", type = "error") else assign_r_object(fit, input$fit_object_name, "fit object")
+  if (is.null(fit)) {
+    shiny::showNotification("No fit is available to return", type = "error")
+    return()
+  }
+  shiny::showModal(shiny::modalDialog(
+    title = "Return fit to R",
+    shiny::textInput("assign_fit_object_name", "R object name", value = "fit"),
+    footer = shiny::tagList(
+      shiny::modalButton("Cancel"),
+      shiny::actionButton("confirm_assign_fit", "Return fit", class = "btn-primary")
+    )
+  ))
+})
+shiny::observeEvent(input$confirm_assign_fit, {
+  fit <- active_fit()
+  if (!is.null(fit) && assign_r_object(fit, input$assign_fit_object_name, "fit object")) {
+    shiny::removeModal()
+  }
 })
 shiny::observeEvent(input$load_model_rds, {
   path <- input$load_model_rds$datapath; if (is.null(path)) return()
@@ -935,14 +953,14 @@ output_code_options <- function(action) {
       priors = input$fit_priors,
       cores = input$fit_cores,
       uncertainty = input$fit_uncertainty_method,
-      uncertainty_draws = input$fit_uncertainty_draws,
+      uncertainty_draws = ctgui_uncertainty_default_draws(input$fit_uncertainty_method),
       finishsamples = input$fit_uncertainty_samples,
       uncertainty_control = uncertainty_control(),
       extra_args = parse_extra_args(input$fit_extra_args)
     ),
     uncertainty = list(
       uncertainty = input$fit_uncertainty_method,
-      draws = input$fit_uncertainty_draws,
+      draws = ctgui_uncertainty_default_draws(input$fit_uncertainty_method),
       finishsamples = input$fit_uncertainty_samples,
       cores = input$fit_cores,
       uncertainty_control = uncertainty_control()
@@ -1027,7 +1045,7 @@ fit_comparison_stats <- ctgui_fit_comparison_stats
 
 output$fit_comparison <- shiny::renderTable({
   registry <- fit_registry()
-  if (length(registry) == 0L) return(data.frame(message = "No saved fits. Save current fits from the Fit tab."))
+  if (length(registry) == 0L) return(data.frame(message = "No stored fits. Store current fits from the Fit tab."))
   record_output_code("fit_comparison", output_code_snippet("fit_comparison"))
   do.call(rbind, lapply(names(registry), function(name) {
     fit <- registry[[name]]
@@ -1369,18 +1387,38 @@ shiny::observeEvent(input$run_fit, {
   shiny::showNotification("Fit complete", type = "message")
 })
 
-shiny::observeEvent(input$save_fit, {
+shiny::observeEvent(input$store_fit, {
   fit <- current_fit()
   if (is.null(fit)) {
     shiny::showNotification("No current fit to save", type = "error")
     return()
   }
-  name <- trimws(input$fit_save_name %||% "")
-  if (!nzchar(name)) name <- paste0("fit", length(fit_registry()) + 1L)
+  shiny::showModal(shiny::modalDialog(
+    title = "Store fit for comparison",
+    shiny::textInput(
+      "store_fit_name", "Fit name",
+      value = paste0("fit", length(fit_registry()) + 1L)
+    ),
+    footer = shiny::tagList(
+      shiny::modalButton("Cancel"),
+      shiny::actionButton("confirm_store_fit", "Store fit", class = "btn-primary")
+    )
+  ))
+})
+
+shiny::observeEvent(input$confirm_store_fit, {
+  fit <- current_fit()
+  if (is.null(fit)) return()
+  name <- trimws(input$store_fit_name %||% "")
+  if (!nzchar(name)) {
+    shiny::showNotification("Enter a fit name", type = "error")
+    return()
+  }
   registry <- fit_registry()
   registry[[name]] <- fit
   fit_registry(registry)
   update_fit_choices(selected = name)
+  shiny::removeModal()
   shiny::showNotification(paste("Saved fit", name), type = "message")
 })
 
@@ -1423,7 +1461,7 @@ run_uncertainty_update <- function() {
       ctgui_ctsem_call("ctOptimUncertainty", .args = list(
         fit = fit,
         uncertainty = input$fit_uncertainty_method,
-        draws = input$fit_uncertainty_draws,
+        draws = ctgui_uncertainty_default_draws(input$fit_uncertainty_method),
         finishsamples = input$fit_uncertainty_samples,
         cores = input$fit_cores,
         control = uncertainty_control()
@@ -1621,6 +1659,8 @@ shiny::observeEvent(input$run_residual_acf, {
       args <- list(fit = fit, varnames = vars, nboot = input$acf_boot, plot = FALSE)
       args <- append_extra_args(args, input$acf_extra_args)
       ctgui_ctsem_call("ctACFresiduals", .args = args)
+    }, progress_callback = function(lines) {
+      residual_acf_log(paste(lines, collapse = "\n"))
     })
     shiny::incProgress(0.8, detail = "Residual ACF returned")
   })

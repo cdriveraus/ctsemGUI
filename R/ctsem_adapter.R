@@ -23,6 +23,12 @@ ctgui_ctsem_call <- function(name, ..., .args = NULL) {
   available <- isTRUE(caps$installed) && name %in% getNamespaceExports("ctsem")
   if (!available) stop("The loaded ctsem version does not provide ", name, call. = FALSE)
   args <- c(list(...), .args %||% list())
+  # Model construction is an internal GUI operation; ctModel's console
+  # diagnostics belong in the app's status surfaces, not the R console.
+  if (identical(name, "ctModel")) {
+    args$silent <- TRUE
+    return(suppressMessages(do.call(getExportedValue("ctsem", name), args)))
+  }
   do.call(getExportedValue("ctsem", name), args)
 }
 
