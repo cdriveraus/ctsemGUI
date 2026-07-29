@@ -10,6 +10,14 @@ table { background: #ffffff; }
 .ctgui-hidden-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .manifest-type-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; align-items: end; margin-top: 12px; }
 .help-note { color: #4b5563; margin: 0 0 10px 0; max-width: 860px; }
+.ctgui-reference { max-width: 1180px; }
+.ctgui-reference > h3 { margin-top: 0; }
+.ctgui-reference > h4 { margin: 24px 0 10px; }
+.ctgui-reference-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; }
+.ctgui-reference-item { background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 14px; }
+.ctgui-reference-item h4 { font-size: 16px; line-height: 1.3; margin: 0 0 8px; }
+.ctgui-reference-item p { margin: 0; color: #4b5563; }
+.ctgui-reference-item .ctgui-reference-note { color: #8a4b08; font-size: 12px; margin-top: 10px; }
 .ctgui-readonly-variable-list { background: #f3f4f6; color: #4b5563; cursor: default; }
 .warning-note { color: #92400e; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 6px; padding: 8px 10px; max-width: 860px; }
 .app-header { display: flex; gap: 16px; align-items: end; justify-content: space-between; flex-wrap: wrap; }

@@ -509,6 +509,10 @@ ui <- shiny::fluidPage(
         shiny::tabPanel("Fit Comparison", shiny::tableOutput("fit_comparison")),
         shiny::tabPanel("Generated Code", shiny::verbatimTextOutput("output_code"))
       )
+    ),
+    shiny::tabPanel(
+      "Reference",
+      ctgui_reference_ui()
     )
   )
 )
