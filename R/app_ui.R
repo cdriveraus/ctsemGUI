@@ -96,9 +96,13 @@ ui <- shiny::fluidPage(
   shiny::div(
     class = "app-header",
     shiny::titlePanel("ctsemGUI"),
-    shiny::tags$button(
-      id = "toggle_app_width", type = "button", class = "btn btn-default app-width-toggle",
-      `aria-pressed` = "false", "Use full width"
+    shiny::div(
+      class = "app-header-actions",
+      shiny::tags$button(
+        id = "toggle_app_width", type = "button", class = "btn btn-default app-width-toggle",
+        `aria-pressed` = "false", "Use full width"
+      ),
+      shiny::actionButton("close_gui", "Close GUI", class = "btn-danger")
     )
   ),
   shiny::tabsetPanel(

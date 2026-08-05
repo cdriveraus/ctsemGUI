@@ -21,6 +21,12 @@ test_that("server construction has a testServer-compatible seam", {
   )))
 })
 
+test_that("close GUI control stops the Shiny app", {
+  server_source <- paste(readLines(ctgui_test_source_path("R", "app_server.R"), warn = FALSE), collapse = "\n")
+  expect_match(server_source, 'observeEvent(input$close_gui', fixed = TRUE)
+  expect_match(server_source, 'shiny::stopApp()', fixed = TRUE)
+})
+
 test_that("fit settings warn when the specification contains an expression", {
   skip_if_not_installed("shiny")
   spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")

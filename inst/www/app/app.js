@@ -17,6 +17,12 @@
         .text(expanded ? "Use readable width" : "Use full width");
     });
 
+    app.on("click", "#close_gui", function () {
+      // Browsers permit this only for windows opened by script.  The server
+      // action still reliably stops Shiny when the current tab cannot close.
+      window.setTimeout(function () { window.close(); }, 0);
+    });
+
     app.on("click", "#choose_fit_rds", function () {
       app.find("#load_fit_rds input[type='file']").trigger("click");
     });

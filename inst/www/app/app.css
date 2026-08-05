@@ -21,6 +21,7 @@ table { background: #ffffff; }
 .ctgui-readonly-variable-list { background: #f3f4f6; color: #4b5563; cursor: default; }
 .warning-note { color: #92400e; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 6px; padding: 8px 10px; max-width: 860px; }
 .app-header { display: flex; gap: 16px; align-items: end; justify-content: space-between; flex-wrap: wrap; }
+.app-header-actions { display: flex; align-items: center; gap: 8px; }
 .app-header .form-group { margin-bottom: 0; min-width: 210px; }
 .matrix-block { background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
 .matrix-block h4 { margin-top: 0; }

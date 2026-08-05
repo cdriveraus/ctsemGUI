@@ -14,6 +14,7 @@ test_that("application CSS and event glue are external and versioned", {
 
   expect_match(rendered$html, 'id="ctgui-app"', fixed = TRUE)
   expect_match(rendered$html, 'id="toggle_app_width"', fixed = TRUE)
+  expect_match(rendered$html, 'id="close_gui"', fixed = TRUE)
   expect_match(
     rendered$head,
     'href="ctsemgui-assets/app/app.css?v=asset-contract"',
@@ -92,6 +93,8 @@ test_that("application event handlers are scoped to the application root", {
   expect_false(grepl("innerHTML", javascript, fixed = TRUE))
   expect_match(javascript, 'app.on("click", "#run_fit"', fixed = TRUE)
   expect_match(javascript, 'app.on("click", "#toggle_app_width"', fixed = TRUE)
+  expect_match(javascript, 'app.on("click", "#close_gui"', fixed = TRUE)
+  expect_match(javascript, "window.close()", fixed = TRUE)
   expect_match(javascript, 'ctgui-full-width', fixed = TRUE)
   expect_match(javascript, 'app.on("mousedown", ".selectize-control"', fixed = TRUE)
   expect_match(javascript, "selectize.open()", fixed = TRUE)

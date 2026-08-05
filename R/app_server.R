@@ -130,6 +130,10 @@ register_help <- function(help_id) {
 }
 lapply(names(help_catalog), register_help)
 
+shiny::observeEvent(input$close_gui, {
+  shiny::stopApp()
+}, ignoreInit = TRUE)
+
 manifest_type_values <- function(manifest_names = parse_names(input$manifest_names)) {
   ctgui_manifest_type_values(
     manifest_names, shiny::reactiveValuesToList(input),
