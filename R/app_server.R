@@ -687,12 +687,10 @@ shiny::observeEvent(input$tab_commit_nonce, {
   # the user actually authored one of those controls.
   specification_authored <- is.list(event) && isTRUE(event$specification_authored)
   committed <- if (specification_authored) event$specification else NULL
-  specification_changed <- if (specification_authored) rebuild_spec_if_needed(committed) else FALSE
-  # Matrix fields have their own atomic change event. Retain the legacy tab
-  # fallback only when this transition did not rebuild the matrix schema.
-  if (!isTRUE(specification_changed)) {
-    matrix_server$apply_current_matrix(show_notification = FALSE)
-  }
+  if (specification_authored) rebuild_spec_if_needed(committed)
+  # Matrix fields commit their user-authored value in `matrix_commit_nonce`.
+  # Replaying the last such payload here would let stale hidden inputs undo a
+  # visual-editor mutation as the user enters the Specification tab.
 })
 
 equation_args <- shiny::reactive({

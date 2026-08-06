@@ -81,6 +81,50 @@ test_that("visual browser renderer does not interpolate graph data as HTML", {
   expect_true(grepl("roleList(roles.id)", source, fixed = TRUE))
   expect_true(grepl("window.ResizeObserver", source, fixed = TRUE))
   expect_true(grepl("editor.cy.resize()", source, fixed = TRUE))
+  expect_true(grepl("minZoom: 0.45", source, fixed = TRUE))
+  expect_true(grepl("maxZoom: 2.25", source, fixed = TRUE))
+  expect_true(grepl("wheelSensitivity: 0.08", source, fixed = TRUE))
+  expect_true(grepl("Reset view", source, fixed = TRUE))
+  expect_true(grepl("reset-layout", source, fixed = TRUE))
+  expect_true(grepl("lowerTriangularNoiseCoordinates", source, fixed = TRUE))
+})
+
+test_that("visual covariance edges are normalized to lower-triangular cells", {
+  spec <- ctgui_spec(latent_names = c("zeta", "alpha"), manifest_names = "y")
+  graph <- ctgui_visual_graph(spec, "state_space")
+  correlation <- Filter(function(edge) {
+    identical(edge$matrix, "DIFFUSION") && edge$row != edge$col
+  }, graph$edges)[[1L]]
+
+  # An undirected browser drag may submit the names in either order.
+  correlation$row <- "zeta"
+  correlation$col <- "alpha"
+  correlation$value <- "diffusion_correlation"
+  correlation$label <- "diffusion_correlation"
+  graph$edges <- c(Filter(function(edge) !identical(edge$id, correlation$id), graph$edges), list(correlation))
+
+  updated <- ctgui_visual_apply_graph(spec, graph)
+  expect_equal(updated$matrices$DIFFUSION["alpha", "zeta"], "diffusion_correlation")
+  expect_equal(updated$matrices$DIFFUSION["zeta", "alpha"], "0")
+  refreshed <- ctgui_visual_graph(updated, "state_space")
+  expect_true(any(vapply(refreshed$edges, function(edge) {
+    identical(edge$matrix, "DIFFUSION") && identical(edge$row, "alpha") &&
+      identical(edge$col, "zeta")
+  }, logical(1L))))
+
+  direct <- ctgui_visual_update_edge(spec, correlation)
+  expect_equal(direct$matrices$DIFFUSION["alpha", "zeta"], "diffusion_correlation")
+  expect_equal(direct$matrices$DIFFUSION["zeta", "alpha"], "0")
+})
+
+test_that("visual layout reset clears only the selected saved view", {
+  spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")
+  spec$visual$layouts$state_space <- list("latent:eta" = list(x = 777, y = 333))
+  spec$visual$layouts$initial_state <- list("latent:eta" = list(x = 444, y = 222))
+
+  reset <- ctgui_visual_reset_layout(spec, "state_space")
+  expect_equal(reset$visual$layouts$state_space, list())
+  expect_equal(reset$visual$layouts$initial_state, spec$visual$layouts$initial_state)
 })
 
 test_that("visual editor canvas has a user-resizable height", {

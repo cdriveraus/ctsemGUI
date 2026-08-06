@@ -244,6 +244,15 @@ ctgui_visual_server <- function(input, output, session, current_spec,
     send(graph$view)
   }, ignoreInit = TRUE)
 
+  shiny::observeEvent(input$visual_spec_canvas_reset_layout, {
+    view <- as.character(input$visual_spec_canvas_reset_layout$view %||%
+      input$visual_view %||% "state_space")
+    updated <- ctgui_visual_reset_layout(current_spec(), view)
+    refresh(updated, view = view)
+    commit_current_spec(updated, reason = "visual_layout_reset")
+    status("Visual layout reset to its default positions.")
+  }, ignoreInit = TRUE)
+
   shiny::observeEvent(input$visual_view, {
     if (!length(drafts())) reset() else send(input$visual_view)
   }, ignoreInit = TRUE)

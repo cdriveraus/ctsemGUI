@@ -765,9 +765,8 @@ ctgui_matrix_server <- function(
     ))
   })
 
-  matrix_input_values <- shiny::reactive({
+  matrix_input_values <- function(commit = NULL) {
     spec <- current_spec()
-    commit <- input$matrix_commit_nonce
     if (identical(input$matrix_group, "PARS")) {
       if (is.null(input$pars_vector)) return(NULL)
       return(list(PARS = ctgui_parse_pars_vector(input$pars_vector)))
@@ -792,7 +791,7 @@ ctgui_matrix_server <- function(
       out[[matrix_name]] <- values
     }
     out
-  })
+  }
   matrix_metadata_values <- function(spec) {
     names <- unique(c(
       matrix_group_names(spec),
@@ -838,8 +837,8 @@ ctgui_matrix_server <- function(
     }
     values
   }
-  apply_current_matrix <- function(show_notification = FALSE) {
-    values <- matrix_input_values()
+  apply_current_matrix <- function(show_notification = FALSE, commit = NULL) {
+    values <- matrix_input_values(commit = commit)
     if (is.null(values)) return(invisible(FALSE))
     result <- tryCatch(
       ctgui_apply_matrix_batch(
@@ -870,9 +869,11 @@ ctgui_matrix_server <- function(
     }
     invisible(TRUE)
   }
-  shiny::observeEvent(
-    input$matrix_commit_nonce, apply_current_matrix(show_notification = FALSE)
-  )
+  shiny::observeEvent(input$matrix_commit_nonce, {
+    commit <- input$matrix_commit_nonce
+    if (!is.list(commit) || is.null(commit$id)) return()
+    apply_current_matrix(show_notification = FALSE, commit = commit)
+  })
   shiny::observeEvent(
     input$matrix_metadata_commit,
     apply_current_matrix(show_notification = FALSE)

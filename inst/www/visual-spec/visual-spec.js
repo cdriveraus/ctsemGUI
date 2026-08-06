@@ -354,14 +354,13 @@
   }
 
   function resetLayout(editor) {
-    var counters = { latent: 0, manifest: 0, tdpred: 0, system_noise: 0, measurement_noise: 0, initial_noise: 0 };
-    editor.cy.nodes().forEach(function (node) {
-      var kind = node.data("kind"), index = counters[kind] || 0;
-      counters[kind] = index + 1;
-      if (editor.view === "tipred_effects" || kind === "parameter" || kind === "tipred") return;
-      node.position(semanticPosition(editor, kind, index, node.id()));
-    });
-    send(editor, false, true);
+    Shiny.setInputValue(editor.id + "_reset_layout", { view: editor.view, nonce: Math.random() }, { priority: "event" });
+  }
+
+  function resetView(editor) {
+    // Fit the elements visible in this view, which restores both the centre
+    // and a readable zoom without changing any saved node positions.
+    editor.cy.fit(editor.cy.elements(":visible"), 35);
   }
 
   function renameSelectedVariable(editor) {
@@ -410,6 +409,15 @@
     return null;
   }
 
+  function lowerTriangularNoiseCoordinates(sourceNode, targetNode) {
+    var sourceName = sourceNode.data("name"), targetName = targetNode.data("name");
+    var sourceIndex = Number(sourceNode.data("index")), targetIndex = Number(targetNode.data("index"));
+    if (isFinite(sourceIndex) && isFinite(targetIndex) && sourceIndex < targetIndex) {
+      return { row: targetName, col: sourceName };
+    }
+    return { row: sourceName, col: targetName };
+  }
+
   function addEdge(editor, source, target) {
     var sourceNode = editor.cy.getElementById(source), targetNode = editor.cy.getElementById(target);
     if (!sourceNode.length || !targetNode.length) return;
@@ -438,8 +446,8 @@
         return;
       } else {
         directed = false; edgeKind = "correlation";
-        row = noiseName(sourceNode); col = noiseName(targetNode);
-        if (row < col) { var swap = row; row = col; col = swap; }
+        var coordinates = lowerTriangularNoiseCoordinates(sourceNode, targetNode);
+        row = coordinates.row; col = coordinates.col;
       }
     } else return;
     var value = "__free__";
@@ -532,7 +540,8 @@
 
     addButton(tools, "Delete selection", "data-action", "delete");
     addButton(tools, "Mode: move nodes", "data-action", "mode");
-    addButton(tools, "Reset layout", "data-action", "fit");
+    addButton(tools, "Reset view", "data-action", "reset-view").title = "Centre and fit the current view without changing node positions";
+    addButton(tools, "Reset layout", "data-action", "reset-layout").title = "Restore the default node positions for the current view";
   }
 
   function init(el) {
@@ -549,6 +558,7 @@
     warning.setAttribute("role", "status"); body.appendChild(canvas); body.appendChild(legend); shell.appendChild(tools); shell.appendChild(filters); shell.appendChild(body); shell.appendChild(warning); el.appendChild(shell);
     var editor = { id: el.id, el: el, shell: shell, canvas: canvas, tools: tools, filters: filters, legend: legend, warning: warning, warningTimer: null, dataColumns: [], dataRoles: {}, view: "state_space", cy: null, rightDragSource: null, rightDragTarget: null, rightDragSourcePosition: null, rightDragSourceWasGrabbable: false, rightDragPreviewNode: null, rightDragPreviewEdge: null, drawSource: null, drawTarget: null, drawMoved: false, pendingSource: null, suppressTap: false, mode: "move" };
     editor.cy = cytoscape({ container: canvas, elements: [], boxSelectionEnabled: true,
+      minZoom: 0.45, maxZoom: 2.25, wheelSensitivity: 0.08,
       style: [
         { selector: "node", style: { label: "data(label)", "text-wrap": "wrap", "text-valign": "center", "text-halign": "center", "background-color": "#f8fafc", "border-color": "#475569", "border-width": 1.5, width: 72, height: 48, "font-size": 12 } },
         { selector: "node.latent", style: { shape: "ellipse", "background-color": "#dbeafe", "border-color": "#1d4ed8" } },
@@ -693,7 +703,8 @@
       if (action === "tipred-all") applyTipredDefault(editor, true);
       if (action === "tipred-none") applyTipredDefault(editor, false);
       if (action === "delete") removeSelection(editor);
-      if (action === "fit") resetLayout(editor);
+      if (action === "reset-view") resetView(editor);
+      if (action === "reset-layout") resetLayout(editor);
       if (action === "mode") {
         editor.mode = editor.mode === "move" ? "draw" : "move";
         event.target.textContent = editor.mode === "draw" ? "Mode: draw paths" : "Mode: move nodes";

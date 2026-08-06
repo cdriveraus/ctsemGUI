@@ -163,7 +163,7 @@ ctgui_visual_position <- function(spec, view, id, index, column, kind = NULL) {
 
 ctgui_visual_node <- function(spec, view, id, kind, name, index, column, label = name) {
   position <- ctgui_visual_position(spec, view, id, index, column, kind)
-  list(id = id, kind = kind, name = name, label = label, original_name = name,
+  list(id = id, kind = kind, name = name, index = index, label = label, original_name = name,
     x = position$x, y = position$y)
 }
 
@@ -402,6 +402,17 @@ ctgui_visual_save_layout <- function(spec, graph) {
   spec
 }
 
+# Resetting a layout is intentionally separate from resetting the browser
+# viewport.  Layout belongs to the persistent specification; pan and zoom do
+# not, so the latter is handled entirely in the browser.
+ctgui_visual_reset_layout <- function(spec, view) {
+  spec <- ctgui_visual_ensure(spec)
+  view <- as.character(view %||% "state_space")
+  if (!view %in% names(spec$visual$layouts)) return(spec)
+  spec$visual$layouts[[view]] <- list()
+  spec
+}
+
 ctgui_visual_set_edge <- function(spec, edge) {
   required <- c("matrix", "row", "col", "value")
   if (!all(required %in% names(edge))) return(spec)
@@ -418,8 +429,27 @@ ctgui_visual_set_edge <- function(spec, edge) {
   spec
 }
 
+# DIFFUSION, MANIFESTVAR, and T0VAR store a symmetric covariance matrix in
+# lower-triangular form.  Graph edges are undirected, so their drag direction
+# must never determine which triangular cell is written.
+ctgui_visual_normalize_symmetric_edge <- function(spec, edge) {
+  matrix <- as.character(edge$matrix %||% "")
+  if (!matrix %in% c("DIFFUSION", "MANIFESTVAR", "T0VAR") ||
+      !matrix %in% names(spec$matrices)) return(edge)
+  mat <- spec$matrices[[matrix]]
+  row <- as.character(edge$row %||% "")
+  col <- as.character(edge$col %||% "")
+  row_index <- match(row, rownames(mat))
+  col_index <- match(col, colnames(mat))
+  if (is.na(row_index) || is.na(col_index) || row_index >= col_index) return(edge)
+  edge$row <- col
+  edge$col <- row
+  edge
+}
+
 ctgui_visual_update_edge <- function(spec, edge) {
   ctgui_check_spec(spec)
+  edge <- ctgui_visual_normalize_symmetric_edge(spec, edge)
   previous_metadata <- spec$parameter_metadata
   previous_keys <- ctgui_metadata_keys(previous_metadata)
   spec <- ctgui_visual_set_edge(spec, edge)
@@ -636,7 +666,10 @@ ctgui_visual_apply_graph <- function(spec, graph) {
     )
     spec$matrices[["T0VAR"]][inactive_cells] <- preserved_t0var[inactive_cells]
   }
-  for (edge in graph$edges %||% list()) {
+  graph$edges <- lapply(graph$edges %||% list(), function(edge) {
+    ctgui_visual_normalize_symmetric_edge(spec, edge)
+  })
+  for (edge in graph$edges) {
     if (!isTRUE(edge$visual_only)) spec <- ctgui_visual_set_edge(spec, edge)
   }
   if (length(new_latents) && "DIFFUSION" %in% names(spec$matrices)) {
@@ -683,7 +716,7 @@ ctgui_visual_apply_graph <- function(spec, graph) {
         colnames(spec$matrices$MANIFESTMEANS)[1L], indvarying = TRUE, sync = FALSE)
     }
   }
-  for (edge in graph$edges %||% list()) {
+  for (edge in graph$edges) {
     if (isTRUE(edge$visual_only)) next
     if (!all(c("matrix", "row", "col") %in% names(edge))) next
     if (!is.null(edge$transform) || !is.null(edge$indvarying) || !is.null(edge$sdscale) ||

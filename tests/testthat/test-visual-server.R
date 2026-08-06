@@ -72,6 +72,11 @@ test_that("visual server commits layouts and graph edits through its boundary", 
     expect_equal(tail(commits(), 1L), "visual_layout")
     expect_equal(visual$status(), "Visual layout saved.")
 
+    session$setInputs(visual_spec_canvas_reset_layout = list(view = "state_space"))
+    expect_equal(current_spec()$visual$layouts$state_space, list())
+    expect_equal(tail(commits(), 1L), "visual_layout_reset")
+    expect_equal(visual$status(), "Visual layout reset to its default positions.")
+
     graph <- visual$drafts()$state_space
     edge_index <- which(vapply(graph$edges, function(edge) {
       identical(edge$matrix, "DRIFT") &&
