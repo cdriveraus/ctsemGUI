@@ -398,7 +398,6 @@ ui <- shiny::fluidPage(
             shiny::div(
               class = "control-grid",
               shiny::numericInput("fit_gen_samples", arg_label("nsamples", "help_fit_gen_nsamples", "ctGenerateFromFit argument: nsamples"), value = 200, min = 1, step = 1),
-              shiny::checkboxInput("fit_gen_follow_cores", "Follow fit cores", value = TRUE),
               shiny::numericInput("fit_gen_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_gen_cores", "ctGenerateFromFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::checkboxInput("fit_gen_fullposterior", arg_label("fullposterior", "help_fit_gen_fullposterior", "ctGenerateFromFit argument: fullposterior"), value = FALSE),
               shiny::textAreaInput("fit_gen_extra_args", arg_label("Extra ctGenerateFromFit arguments", "help_ctGenerateFromFit", "Full ctGenerateFromFit help"), value = "", height = "70px"),
@@ -507,7 +506,6 @@ ui <- shiny::fluidPage(
       "Output",
       shiny::tabsetPanel(
         shiny::tabPanel("Model Code", shiny::verbatimTextOutput("code_output")),
-        shiny::tabPanel("Model PARS", shiny::tableOutput("output_pars")),
         shiny::tabPanel("Fit Summary", shiny::verbatimTextOutput("fit_summary")),
         shiny::tabPanel("Summary Matrices", shiny::verbatimTextOutput("fit_summary_matrices")),
         shiny::tabPanel("Fit Comparison", shiny::tableOutput("fit_comparison")),

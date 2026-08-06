@@ -50,14 +50,14 @@ test_that("application exposes each consolidated output once", {
 
   for (id in c(
     "data_preview", "validation_table_spec", "fit_log_inline",
-    "fit_warnings_inline", "code_output", "output_pars", "fit_summary",
+    "fit_warnings_inline", "code_output", "fit_summary",
     "fit_summary_matrices", "fit_comparison", "output_code"
   )) {
     expect_equal(count_fixed(html, paste0('id="', id, '"')), 1L)
   }
   for (removed in c(
     "data_preview_import", "data_preview_generate", "validation_table",
-    "pars_table", "fit_log", "fit_warnings", "fit_summary_diagnostics",
+    "pars_table", "output_pars", "fit_log", "fit_warnings", "fit_summary_diagnostics",
     "fit_summary_matrices_diagnostics", "data_manifest_names",
     "data_tdpred_names", "data_tipred_names", "data_id", "data_time"
   )) {

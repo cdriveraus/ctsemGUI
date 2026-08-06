@@ -39,6 +39,7 @@ diagnostics_status <- shiny::reactiveVal("No fit diagnostics have been run.")
 matrix_status <- shiny::reactiveVal("Matrix edits update the current model spec.")
 plot_cache <- shiny::reactiveValues()
 spec_inputs_suspended <- shiny::reactiveVal(FALSE)
+fit_gen_cores_follow_fit <- shiny::reactiveVal(TRUE)
 
 sync_matrix_inputs_from_spec <- function(spec) {
   ctgui_sync_matrix_inputs_from_spec(
@@ -182,19 +183,19 @@ parse_text_vector <- function(x, default = character()) {
 is_omitted_arg <- function(x) inherits(x, "ctgui_omitted_arg")
 
 generate_from_fit_cores <- function() {
-  if (!identical(input$fit_gen_follow_cores, FALSE)) input$fit_cores else input$fit_gen_cores
+  if (isTRUE(fit_gen_cores_follow_fit())) input$fit_cores else input$fit_gen_cores
 }
 
 shiny::observeEvent(input$fit_cores, {
-  if (isTRUE(input$fit_gen_follow_cores)) {
+  if (isTRUE(fit_gen_cores_follow_fit())) {
     shiny::updateNumericInput(session, "fit_gen_cores", value = input$fit_cores)
   }
 }, ignoreInit = TRUE)
 
 shiny::observeEvent(input$fit_gen_cores, {
-  if (isTRUE(input$fit_gen_follow_cores) &&
+  if (isTRUE(fit_gen_cores_follow_fit()) &&
       !identical(as.integer(input$fit_gen_cores), as.integer(input$fit_cores))) {
-    shiny::updateCheckboxInput(session, "fit_gen_follow_cores", value = FALSE)
+    fit_gen_cores_follow_fit(FALSE)
   }
 }, ignoreInit = TRUE)
 
@@ -1049,13 +1050,6 @@ model_code <- shiny::reactive({
 
 output$code_output <- shiny::renderText(model_code())
 output$output_code <- shiny::renderText(workflow_code())
-
-output$output_pars <- shiny::renderTable({
-  pars <- current_spec()$pars
-  if (is.null(pars)) return(data.frame(message = "No model pars available"))
-  record_output_code("model_pars", output_code_snippet("model_pars"))
-  pars
-}, rownames = FALSE)
 
 fit_comparison_stats <- ctgui_fit_comparison_stats
 

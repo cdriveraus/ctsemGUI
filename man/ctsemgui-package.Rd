@@ -16,5 +16,10 @@ Authors:
   \item Charles Driver \email{charles.driver2@uzh.ch}
 }
 
+Other contributors:
+\itemize{
+  \item The Cytoscape Consortium [copyright holder]
+}
+
 }
 \keyword{internal}

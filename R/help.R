@@ -24,7 +24,7 @@ ctgui_help_catalog <- function() {
     ),
     help_ctGenerateFromFit = list(topic = "ctGenerateFromFit", tooltip = "Generate data from a fitted ctsem model."),
     help_fit_gen_nsamples = list(topic = "ctGenerateFromFit", param = "nsamples", tooltip = "Number of draws or generated datasets to return."),
-    help_fit_gen_cores = list(topic = "ctGenerateFromFit", param = "cores", tooltip = "Number of processor cores used for generation. By default it follows the fit core selection."),
+    help_fit_gen_cores = list(topic = "ctGenerateFromFit", param = "cores", tooltip = "Number of processor cores used for generation. It initially follows the fit core selection; changing this value uses the value you enter."),
     help_fit_gen_fullposterior = list(topic = "ctGenerateFromFit", param = "fullposterior", tooltip = "Use posterior draws rather than only point estimates when generating data."),
     help_ctFitCovCheck = list(topic = "ctFitCovCheck", tooltip = "Compare model-implied and observed covariance structure."),
     help_cov_lags = list(topic = "ctFitCovCheck", param = "lags", tooltip = "Optional sequence of lag values, for example 0:10 for lags 0 through 10. Leave blank to use ctsem's default."),

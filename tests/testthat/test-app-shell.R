@@ -27,6 +27,15 @@ test_that("close GUI control stops the Shiny app", {
   expect_match(server_source, 'shiny::stopApp()', fixed = TRUE)
 })
 
+test_that("generation cores follow fit cores until manually adjusted", {
+  ui_source <- paste(readLines(ctgui_test_source_path("R", "app_ui.R"), warn = FALSE), collapse = "\n")
+  server_source <- paste(readLines(ctgui_test_source_path("R", "app_server.R"), warn = FALSE), collapse = "\n")
+
+  expect_false(grepl('fit_gen_follow_cores', ui_source, fixed = TRUE))
+  expect_match(server_source, 'fit_gen_cores_follow_fit <- shiny::reactiveVal(TRUE)', fixed = TRUE)
+  expect_match(server_source, 'fit_gen_cores_follow_fit(FALSE)', fixed = TRUE)
+})
+
 test_that("fit settings warn when the specification contains an expression", {
   skip_if_not_installed("shiny")
   spec <- ctgui_spec(latent_names = "eta", manifest_names = "y")

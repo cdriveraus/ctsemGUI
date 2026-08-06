@@ -36,7 +36,6 @@ test_that("approved outputs have one canonical UI and server destination", {
     validation = "validation_table_spec",
     model_code = "code_output",
     generated_code = "output_code",
-    pars = "output_pars",
     fit_summary = "fit_summary",
     summary_matrices = "fit_summary_matrices",
     fit_messages = "fit_log_inline",
@@ -46,7 +45,7 @@ test_that("approved outputs have one canonical UI and server destination", {
   obsolete <- c(
     "validation_table", "pars_table",
     "fit_summary_diagnostics", "fit_summary_matrices_diagnostics",
-    "fit_log", "fit_warnings", "data_preview_import", "data_preview_generate"
+    "fit_log", "fit_warnings", "output_pars", "data_preview_import", "data_preview_generate"
   )
 
   for (id in unname(canonical)) {
@@ -166,7 +165,8 @@ test_that("approved consolidation retains substantive workflows", {
   expect_equal(ui_id_count(html, "fit_save_name"), 0L)
   expect_match(html, "Store fit for comparison", fixed = TRUE)
   expect_match(html, "choose_fit_rds", fixed = TRUE)
-  expect_match(html, "Follow fit cores", fixed = TRUE)
+  expect_match(html, 'id="fit_gen_cores"', fixed = TRUE)
+  expect_false(grepl("Follow fit cores", html, fixed = TRUE))
   expect_match(source, "assign_fit_object_name", fixed = TRUE)
   expect_match(source, "store_fit_name", fixed = TRUE)
   expect_match(source, "progress_callback = function(lines)", fixed = TRUE)
