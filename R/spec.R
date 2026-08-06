@@ -893,12 +893,20 @@ ctgui_refresh_parameter_metadata <- function(spec, matrices = spec$matrices) {
       row <- data.frame(matrix = matrix_name, row = rownames(mat)[r], col = colnames(mat)[c],
         param = parsed$param, transform = parsed$transform, indvarying = parsed$indvarying,
         sdscale = parsed$sdscale, extra_pars = "", stringsAsFactors = FALSE)
+      has_annotation <- grepl("|", as.character(mat[r, c]), fixed = TRUE)
       if (nrow(prior) && !grepl("|", as.character(mat[r, c]), fixed = TRUE)) {
         row$transform <- prior$transform[1L] %||% ""
         row$indvarying <- isTRUE(prior$indvarying[1L])
         row$sdscale <- suppressWarnings(as.numeric(prior$sdscale[1L]))
         if (is.na(row$sdscale)) row$sdscale <- if (isTRUE(prior$sdscale[1L])) 1 else 0
         if ("extra_pars" %in% names(prior)) row$extra_pars <- prior$extra_pars[1L] %||% ""
+      }
+      # These mean/intercept paths are individual-varying by default in the
+      # visual and matrix editors.  An existing metadata row or an explicit
+      # compact annotation (including ||FALSE) always takes precedence.
+      if (!nrow(prior) && !has_annotation &&
+          matrix_name %in% c("CINT", "MANIFESTMEANS", "T0MEANS")) {
+        row$indvarying <- TRUE
       }
       for (tipred in tipred_names) {
         field <- paste0(tipred, "_effect")

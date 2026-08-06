@@ -158,6 +158,24 @@ test_that("visual parameter metadata can override ctsem random-effect defaults",
   manifest_mean <- ctgui_visual_metadata(spec, "MANIFESTMEANS", "y1", "MANIFESTMEANS")
   expect_false(cint$indvarying[1L])
   expect_false(manifest_mean$indvarying[1L])
+  expect_match(
+    ctgui_matrices_with_metadata(spec)$CINT["eta1", "CINT"],
+    "\\|FALSE$"
+  )
+  model <- ctgui_to_ctsem_model(spec)
+  cint_par <- subset(model$pars, matrix == "CINT" & param == "cint_eta1")
+  expect_false(cint_par$indvarying[1L])
+})
+
+test_that("mean and intercept paths default to random effects when created", {
+  spec <- ctgui_spec(latent_names = "eta1", manifest_names = "y1")
+  expect_true(ctgui_visual_metadata(spec, "T0MEANS", "eta1", "T0MEANS")$indvarying[1L])
+  expect_true(ctgui_visual_metadata(spec, "MANIFESTMEANS", "y1", "MANIFESTMEANS")$indvarying[1L])
+
+  updated <- ctgui_visual_update_edge(spec, list(
+    matrix = "CINT", row = "eta1", col = "CINT", value = "__free__"
+  ))
+  expect_true(ctgui_visual_metadata(updated, "CINT", "eta1", "CINT")$indvarying[1L])
 })
 
 test_that("nonlinear paths inherit random-effect styling from their PARS elements", {

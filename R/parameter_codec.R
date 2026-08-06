@@ -70,7 +70,10 @@ ctgui_parameter_annotation_encode <- function(param, transform = "",
   scale <- suppressWarnings(as.numeric(sdscale)[1L])
   if (is.na(scale)) scale <- if (isTRUE(sdscale)) 1 else 0
   tipreds <- ctgui_split_pars(tipreds)
-  suffix <- c(transform, if (isTRUE(indvarying)) "TRUE" else "", if (identical(scale, 1)) "" else as.character(scale))
+  # An omitted individual-differences field asks ctsem to use that matrix's
+  # default, which can be TRUE.  Keep FALSE explicit so disabling random
+  # effects in either editor is preserved when the model is rebuilt.
+  suffix <- c(transform, if (isTRUE(indvarying)) "TRUE" else "FALSE", if (identical(scale, 1)) "" else as.character(scale))
   if (length(tipreds)) suffix <- c(suffix, paste(tipreds, collapse = ","))
   while (length(suffix) && !nzchar(suffix[length(suffix)])) suffix <- suffix[-length(suffix)]
   if (!length(suffix)) return(param)
