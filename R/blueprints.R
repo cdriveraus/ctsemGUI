@@ -96,7 +96,7 @@ ctgui_blueprint_structure <- function(structure) {
 
 #' Describe a model to build
 #'
-#' @param structure One of [ctgui_blueprint_structure_ids()].
+#' @param structure One of the ids returned by `ctgui_blueprint_structure_ids()`.
 #' @param processes Names of the processes to create.
 #' @param indicators Number of manifest indicators measuring each process.
 #' @param free_noise_correlations Whether system noise may correlate across
