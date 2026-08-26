@@ -340,6 +340,77 @@ ctgui_set_matrix_value <- function(spec, matrix, row, col = 1, value = NULL,
   ctgui_commit_result(ctgui_commit_spec(previous = previous, updated = spec, reason = "matrix-cell"))
 }
 
+# Rebuild a specification at new variable dimensions, carrying over everything
+# that still has somewhere to live.
+#
+# Adding one variable must not discard the rest of the model.  A ctsemgui_spec
+# holds its matrices at fixed dimensions, so any change to the variable names
+# needs a differently shaped spec; building that from ctgui_spec() alone
+# regenerates default matrices and silently throws away every edited cell, its
+# parameter metadata, and the visual layout.  Cells are matched by name, so a
+# renamed variable carries its cells across only when the rename is known.
+ctgui_respec_preserving <- function(previous, latent_names, manifest_names,
+    tdpred_names = previous$tdpred_names, tipred_names = previous$tipred_names,
+    manifest_type = NULL, rename = character()) {
+  ctgui_check_spec(previous)
+
+  inverse_name <- function(name) {
+    found <- names(rename)[rename == name]
+    if (length(found)) found[1L] else name
+  }
+
+  if (is.null(manifest_type)) {
+    manifest_type <- vapply(manifest_names, function(name) {
+      index <- match(inverse_name(name), previous$manifest_names)
+      if (is.na(index)) 0L else as.integer(previous$manifest_type[index])
+    }, integer(1L))
+  }
+
+  rebuilt <- ctgui_spec(
+    latent_names = latent_names, manifest_names = manifest_names,
+    type = previous$type, id = previous$id, time = previous$time,
+    Tpoints = previous$Tpoints, manifest_type = manifest_type,
+    tdpred_names = tdpred_names, tipred_names = tipred_names,
+    tipredDefault = previous$tipredDefault
+  )
+
+  # PARS carries free parameters that belong to no particular variable, so it
+  # survives a resize whole rather than cell by cell.
+  rebuilt$matrices[["PARS"]] <- previous$matrices[["PARS"]]
+  for (matrix in intersect(names(previous$matrices), names(rebuilt$matrices))) {
+    old <- previous$matrices[[matrix]]
+    target <- rebuilt$matrices[[matrix]]
+    if (!is.matrix(old) || !is.matrix(target)) next
+    for (r in seq_len(nrow(target))) for (c in seq_len(ncol(target))) {
+      source_r <- match(inverse_name(rownames(target)[r]), rownames(old))
+      source_c <- match(inverse_name(colnames(target)[c]), colnames(old))
+      if (!is.na(source_r) && !is.na(source_c)) target[r, c] <- old[source_r, source_c]
+    }
+    rebuilt$matrices[[matrix]] <- target
+  }
+
+  metadata <- previous$parameter_metadata
+  if (!is.null(metadata) && nrow(metadata)) {
+    rename_values <- function(values) {
+      mapped <- unname(rename[values])
+      missing <- is.na(mapped) | !nzchar(mapped)
+      mapped[missing] <- values[missing]
+      mapped
+    }
+    metadata$row <- rename_values(metadata$row)
+    metadata$col <- rename_values(metadata$col)
+    keep <- vapply(seq_len(nrow(metadata)), function(i) {
+      mat <- rebuilt$matrices[[metadata$matrix[i]]]
+      !is.null(mat) && metadata$row[i] %in% rownames(mat) && metadata$col[i] %in% colnames(mat)
+    }, logical(1L))
+    rebuilt$parameter_metadata <- metadata[keep, , drop = FALSE]
+  }
+
+  rebuilt$matrix_extra_pars <- previous$matrix_extra_pars
+  rebuilt$visual <- previous$visual
+  ctgui_refresh_parameter_metadata(rebuilt)
+}
+
 #' @rdname ctgui_spec
 #' @param silent Retained for compatibility. GUI model construction is always
 #'   quiet (`silent = TRUE`).

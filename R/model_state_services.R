@@ -63,17 +63,25 @@ ctgui_commit_spec_fields <- function(previous, fields, reason = "specification")
   if (!ctgui_spec_fields_changed(previous, fields)) {
     return(ctgui_commit_spec(previous, previous, reason = reason))
   }
-  updated <- ctgui_spec(
+  # Data roles and model options are set on the spec being rebuilt so that
+  # ctgui_respec_preserving() reshapes around the new variable set while every
+  # matrix cell, parameter annotation and layout that still has a home is
+  # carried over.  Rebuilding from ctgui_spec() alone would regenerate default
+  # matrices, so adding one variable would silently discard the whole model.
+  carrier <- previous
+  carrier$type <- fields$type
+  carrier$id <- fields$id
+  carrier$time <- fields$time
+  carrier$Tpoints <- fields$Tpoints
+  carrier$tipredDefault <- fields$tipredDefault
+
+  updated <- ctgui_respec_preserving(
+    carrier,
     latent_names = fields$latent_names,
     manifest_names = fields$manifest_names,
-    type = fields$type,
-    id = fields$id,
-    time = fields$time,
-    Tpoints = fields$Tpoints,
-    manifest_type = fields$manifest_type,
     tdpred_names = fields$tdpred_names,
     tipred_names = fields$tipred_names,
-    tipredDefault = fields$tipredDefault
+    manifest_type = fields$manifest_type
   )
   ctgui_commit_spec(previous, updated, reason = reason)
 }

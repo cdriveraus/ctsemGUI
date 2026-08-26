@@ -516,44 +516,12 @@ ctgui_visual_resize_spec <- function(spec, nodes, enforce_model_nodes = TRUE) {
     found <- names(rename)[rename == name]
     if (length(found)) found[1L] else name
   }
-  rebuilt <- ctgui_spec(latent_names = latent, manifest_names = manifest, type = spec$type,
-    id = spec$id, time = spec$time, Tpoints = spec$Tpoints,
-    manifest_type = vapply(manifest, function(name) {
-      old <- inverse_name(name); index <- match(old, spec$manifest_names)
-      if (is.na(index)) 0L else as.integer(spec$manifest_type[index])
-    }, integer(1L)), tdpred_names = tdpred, tipred_names = tipred,
-    tipredDefault = spec$tipredDefault)
-  rebuilt$matrices[["PARS"]] <- spec$matrices[["PARS"]]
-  for (matrix in intersect(names(spec$matrices), names(rebuilt$matrices))) {
-    old <- spec$matrices[[matrix]]; target <- rebuilt$matrices[[matrix]]
-    if (!is.matrix(old) || !is.matrix(target)) next
-    for (r in seq_len(nrow(target))) for (c in seq_len(ncol(target))) {
-      old_r <- inverse_name(rownames(target)[r]); old_c <- inverse_name(colnames(target)[c])
-      source_r <- match(old_r, rownames(old)); source_c <- match(old_c, colnames(old))
-      if (!is.na(source_r) && !is.na(source_c)) target[r, c] <- old[source_r, source_c]
-    }
-    rebuilt$matrices[[matrix]] <- target
-  }
-  metadata <- spec$parameter_metadata
-  if (!is.null(metadata) && nrow(metadata)) {
-    rename_values <- function(values) {
-      mapped <- unname(rename[values])
-      missing <- is.na(mapped) | !nzchar(mapped)
-      mapped[missing] <- values[missing]
-      mapped
-    }
-    metadata$row <- rename_values(metadata$row)
-    metadata$col <- rename_values(metadata$col)
-    keep <- vapply(seq_len(nrow(metadata)), function(i) {
-      mat <- rebuilt$matrices[[metadata$matrix[i]]]
-      !is.null(mat) && metadata$row[i] %in% rownames(mat) && metadata$col[i] %in% colnames(mat)
-    }, logical(1L))
-    rebuilt$parameter_metadata <- metadata[keep, , drop = FALSE]
-  }
-  rebuilt$matrix_extra_pars <- spec$matrix_extra_pars
-  rebuilt$visual <- spec$visual
-  rebuilt <- ctgui_refresh_parameter_metadata(rebuilt)
-  rebuilt
+  ctgui_respec_preserving(
+    spec,
+    latent_names = latent, manifest_names = manifest,
+    tdpred_names = tdpred, tipred_names = tipred,
+    rename = rename
+  )
 }
 
 ctgui_visual_resize_tipreds <- function(spec, nodes) {
