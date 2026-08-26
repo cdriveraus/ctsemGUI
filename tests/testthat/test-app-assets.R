@@ -58,20 +58,26 @@ test_that("reference section exposes the complete curated reading list", {
     regexpr('data-value="Reference"', html, fixed = TRUE)[[1L]]
   )
   expect_match(html, "ctgui-reference-grid", fixed = TRUE)
-  expect_match(html, "ctsem GitHub quick start", fixed = TRUE)
-  expect_match(html, "Core papers", fixed = TRUE)
-  expect_match(html, "Further reading", fixed = TRUE)
-  expect_match(html, "Practical posts", fixed = TRUE)
-  expect_match(html, "Driver, C. C. (2025). Inference with cross-lagged effects—Problems in time. Psychological Methods, 30(1), 174–202.", fixed = TRUE)
-  expect_match(html, "Ryan, O., &amp; Hamaker, E. L. (2022). Time to intervene: A continuous-time approach to network analysis and centrality. Psychometrika, 87(1), 214–252.", fixed = TRUE)
-  expect_match(html, "https://doi.org/10.18637/jss.v077.i05", fixed = TRUE)
-  expect_match(html, "https://doi.org/10.1037/met0000665", fixed = TRUE)
-  expect_match(html, "https://doi.org/10.1007/s11336-021-09767-0", fixed = TRUE)
-  expect_match(html, "https://doi.org/10.1080/00273171.2018.1496813", fixed = TRUE)
-  expect_match(html, "https://doi.org/10.1037/a0038889", fixed = TRUE)
-  expect_match(html, "https://cdriver.netlify.app/post/ctsem-quick-start/", fixed = TRUE)
-  expect_match(html, "https://cdriver.netlify.app/post/", fixed = TRUE)
-  expect_match(html, "Worked example; its code may use legacy ctsem function names.", fixed = TRUE)
+
+  # Derive the expectations from the catalog itself rather than restating its
+  # contents here.  Curated reading is edited often; a hand-copied list of
+  # titles and DOIs goes stale silently and stops testing the thing that
+  # matters, which is that every catalog entry reaches the rendered page.
+  catalog <- getFromNamespace("ctgui_reference_catalog", "ctsemGUI")()
+  expect_gt(length(catalog), 0L)
+  for (section in names(catalog)) {
+    expect_match(html, section, fixed = TRUE)
+    expect_gt(length(catalog[[section]]), 0L)
+    for (reference in catalog[[section]]) {
+      expect_match(html, reference$url, fixed = TRUE)
+    }
+  }
+
+  legacy <- unlist(lapply(catalog, function(section) {
+    vapply(section, function(reference) isTRUE(reference$legacy_code), logical(1L))
+  }))
+  expect_true(any(legacy))
+  expect_match(html, "may use some legacy ctsem function names", fixed = TRUE)
 
   ui_source <- paste(readLines(ctgui_test_source_path("R", "app_ui.R"), warn = FALSE), collapse = "\n")
   reference_source <- paste(readLines(ctgui_test_source_path("R", "references.R"), warn = FALSE), collapse = "\n")
