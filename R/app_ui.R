@@ -118,6 +118,67 @@ ui <- shiny::fluidPage(
     id = "workflow",
     selected = "Data",
     shiny::tabPanel(
+      "Data",
+      shiny::textOutput("data_status"),
+      shiny::tabsetPanel(
+        id = "data_tabs",
+        shiny::tabPanel(
+          "Import",
+          shiny::div(
+            class = "control-band",
+            ctgui_explanation_ui("spec_data"),
+            shiny::div(
+              class = "control-grid",
+              shiny::selectInput("env_data", "R data.frame or matrix", choices = character()),
+              shiny::fileInput("csv_file", "Browse", accept = c(
+                ".csv", "text/csv", ".rds", "application/octet-stream"
+              )),
+              shiny::actionButton("load_ctsem_test_data", "Load ctsem test data")
+            )
+          )
+        ),
+        shiny::tabPanel(
+          "Generate",
+          shiny::div(
+            class = "control-band",
+            ctgui_explanation_ui("generation"),
+            shiny::tags$p(class = "help-note ctgui-explain-detail", "Fitted TD predictor effects belong in TDPREDEFFECT under Model > Matrices > Predictors, not here."),
+            shiny::div(
+              class = "control-grid",
+              shiny::numericInput("gen_subjects", "Generated subjects", value = 20, min = 1, step = 1),
+              shiny::numericInput("gen_tpoints", "Generated time points", value = spec$Tpoints %||% 10, min = 1, step = 1),
+              shiny::numericInput("gen_dtmean", "Generated mean dt", value = 1, min = 0.0001, step = 0.1),
+              shiny::numericInput("gen_logdtsd", arg_label("Generated logdtsd", "help_gui_logdtsd", "sd of log timeintervals"), value = 0, min = 0, step = 0.05),
+              shiny::numericInput("gen_burnin", "Generated burn-in", value = 0, min = 0, step = 1),
+              shiny::checkboxInput("gen_free_defaults", arg_label("Preview by replacing free labels with simple numeric values", "help_gui_generation_defaults", "Generation preview with substituted numeric values"), value = TRUE),
+              shiny::actionButton("generate_data", "Generate data", class = "btn-primary")
+            )
+          )
+        ),
+        shiny::tabPanel("Preview", shiny::div(class = "data-preview", shiny::tableOutput("data_preview"))),
+        shiny::tabPanel(
+          "Summary",
+          shiny::tags$h4("Numeric summary"),
+          shiny::tableOutput("data_summary"),
+          shiny::tags$h4("Missingness"),
+          shiny::tableOutput("missingness_summary"),
+          shiny::tags$h4("Within/between numeric variation"),
+          shiny::tableOutput("within_between_summary")
+        ),
+        shiny::tabPanel(
+          "Visuals",
+          shiny::div(
+            class = "control-band",
+          shiny::uiOutput("explain_raw_visuals"),
+            shiny::uiOutput("raw_plot_controls")
+          ),
+          shiny::plotOutput("raw_plot", height = 420),
+          ctgui_plot_export_controls("raw_plot", 420)
+        )
+      )
+    ),
+    shiny::tabPanel("Build", ctgui_build_ui()),
+    shiny::tabPanel(
       "Model",
       shiny::tabsetPanel(
         id = "model_tabs",
@@ -220,66 +281,6 @@ ui <- shiny::fluidPage(
             shiny::tags$summary("LaTeX source"),
             shiny::verbatimTextOutput("equation_source")
           )
-        )
-      )
-    ),
-    shiny::tabPanel(
-      "Data",
-      shiny::textOutput("data_status"),
-      shiny::tabsetPanel(
-        id = "data_tabs",
-        shiny::tabPanel(
-          "Import",
-          shiny::div(
-            class = "control-band",
-            ctgui_explanation_ui("spec_data"),
-            shiny::div(
-              class = "control-grid",
-              shiny::selectInput("env_data", "R data.frame or matrix", choices = character()),
-              shiny::fileInput("csv_file", "Browse", accept = c(
-                ".csv", "text/csv", ".rds", "application/octet-stream"
-              )),
-              shiny::actionButton("load_ctsem_test_data", "Load ctsem test data")
-            )
-          )
-        ),
-        shiny::tabPanel(
-          "Generate",
-          shiny::div(
-            class = "control-band",
-            ctgui_explanation_ui("generation"),
-            shiny::tags$p(class = "help-note ctgui-explain-detail", "Fitted TD predictor effects belong in TDPREDEFFECT under Model > Matrices > Predictors, not here."),
-            shiny::div(
-              class = "control-grid",
-              shiny::numericInput("gen_subjects", "Generated subjects", value = 20, min = 1, step = 1),
-              shiny::numericInput("gen_tpoints", "Generated time points", value = spec$Tpoints %||% 10, min = 1, step = 1),
-              shiny::numericInput("gen_dtmean", "Generated mean dt", value = 1, min = 0.0001, step = 0.1),
-              shiny::numericInput("gen_logdtsd", arg_label("Generated logdtsd", "help_gui_logdtsd", "sd of log timeintervals"), value = 0, min = 0, step = 0.05),
-              shiny::numericInput("gen_burnin", "Generated burn-in", value = 0, min = 0, step = 1),
-              shiny::checkboxInput("gen_free_defaults", arg_label("Preview by replacing free labels with simple numeric values", "help_gui_generation_defaults", "Generation preview with substituted numeric values"), value = TRUE),
-              shiny::actionButton("generate_data", "Generate data", class = "btn-primary")
-            )
-          )
-        ),
-        shiny::tabPanel("Preview", shiny::div(class = "data-preview", shiny::tableOutput("data_preview"))),
-        shiny::tabPanel(
-          "Summary",
-          shiny::tags$h4("Numeric summary"),
-          shiny::tableOutput("data_summary"),
-          shiny::tags$h4("Missingness"),
-          shiny::tableOutput("missingness_summary"),
-          shiny::tags$h4("Within/between numeric variation"),
-          shiny::tableOutput("within_between_summary")
-        ),
-        shiny::tabPanel(
-          "Visuals",
-          shiny::div(
-            class = "control-band",
-          shiny::uiOutput("explain_raw_visuals"),
-            shiny::uiOutput("raw_plot_controls")
-          ),
-          shiny::plotOutput("raw_plot", height = 420),
-          ctgui_plot_export_controls("raw_plot", 420)
         )
       )
     ),

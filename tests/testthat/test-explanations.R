@@ -36,6 +36,7 @@ test_that("an unknown key contributes nothing rather than an empty box", {
 test_that("the application reaches every explanation it defines", {
   ui_files <- c(
     ctgui_test_source_path("R", "app_ui.R"),
+    ctgui_test_source_path("R", "app_ui_helpers.R"),
     ctgui_test_source_path("R", "app_server.R")
   )
   source <- paste(unlist(lapply(ui_files, readLines, warn = FALSE)), collapse = "\n")

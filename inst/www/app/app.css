@@ -81,3 +81,14 @@ pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-
 #ctgui-app.ctgui-explain-brief .ctgui-explain-detail { display: none; }
 .ctgui-explain { display: contents; }
 .ctgui-explain-detail { color: #4b5563; }
+
+/* Template choices are read as descriptions, not scanned as a list of names,
+   so each option gets room for its summary rather than sitting on one line. */
+#build_structure .radio { margin: 0 0 4px; }
+#build_structure .radio label { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 10px 12px; border: 1px solid #d9dde3; border-radius: 6px; background: #ffffff; }
+#build_structure .radio label:hover { border-color: #9ca3af; }
+#build_structure input[type="radio"] { position: static; margin: 3px 0 0; flex: 0 0 auto; }
+.blueprint-choice-body { min-width: 0; }
+.blueprint-choice-body strong { display: block; margin-bottom: 3px; }
+.blueprint-choice-body .help-note { margin-bottom: 0; }
+.blueprint-choice-body .help-note + .help-note { margin-top: 6px; }

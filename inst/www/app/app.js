@@ -217,10 +217,6 @@
       }
     );
 
-    var workflow = app.find("#workflow");
-    var dataTab = workflow.children("ul.nav").find("a[data-value=\"Data\"]").parent();
-    if (dataTab.length) dataTab.prependTo(workflow.children("ul.nav"));
-
     app.on("click", "#run_fit", function () {
       app.find("input, select, textarea, button").not("#run_fit").prop("disabled", true);
       app.find("#run_fit").prop("disabled", true).text("Fitting...");

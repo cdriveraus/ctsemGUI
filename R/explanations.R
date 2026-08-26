@@ -13,6 +13,19 @@
 
 ctgui_explanation_catalog <- function() {
   list(
+    build = list(
+      brief = "Start from a standard model shape rather than an empty canvas.",
+      detail = paste(
+        "Each template creates its own latent processes, manifest variables and",
+        "every matrix cell together, so you do not have to set up the variables",
+        "first. What you get is a complete, valid model you can fit immediately",
+        "and then edit anywhere else in the application. Templates are starting",
+        "points, not recommendations: the right shape depends on your process,",
+        "your sampling rate and what you are trying to find out. Building the",
+        "same data under two shapes and comparing them is usually more",
+        "informative than agonising over which to pick first."
+      )
+    ),
     spec_data = list(
       brief = "Tell ctsem which column plays which role in your data.",
       detail = paste(

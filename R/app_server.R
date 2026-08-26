@@ -79,6 +79,60 @@ explain_ui <- function(key) {
   ctgui_explanation_ui(key)
 }
 
+# Model templates ------------------------------------------------------------
+
+build_mode <- function() {
+  if (identical(input$build_mode, "extend")) "extend" else "replace"
+}
+
+# Invalid input is normal while a name is being typed, so the blueprint reports
+# why it cannot be built and the panel says so, rather than erroring.
+current_blueprint <- shiny::reactive({
+  tryCatch(
+    ctgui_blueprint(
+      structure = input$build_structure %||% "coupled",
+      processes = ctgui_parse_names(input$build_processes),
+      indicators = input$build_indicators %||% 1L,
+      free_noise_correlations = isTRUE(input$build_noise_correlations),
+      connect_existing = isTRUE(input$build_connect_existing)
+    ),
+    error = function(e) e
+  )
+})
+
+output$build_summary <- shiny::renderText({
+  blueprint <- current_blueprint()
+  if (inherits(blueprint, "error")) return(conditionMessage(blueprint))
+  ctgui_blueprint_summary(current_spec(), blueprint, build_mode())
+})
+
+shiny::observeEvent(input$build_apply, {
+  blueprint <- current_blueprint()
+  if (inherits(blueprint, "error")) {
+    shiny::showNotification(conditionMessage(blueprint), type = "error")
+    return()
+  }
+  updated <- tryCatch(
+    ctgui_blueprint_apply(current_spec(), blueprint, mode = build_mode()),
+    error = function(e) e
+  )
+  if (inherits(updated, "error")) {
+    shiny::showNotification(conditionMessage(updated), type = "error")
+    return()
+  }
+  commit_current_spec(updated, reason = "blueprint")
+  fit_status_value("The model changed. Refit when ready.")
+  matrix_status("Built from a template. Every matrix cell was set by the template.")
+  shiny::showNotification(
+    paste0(
+      ctgui_blueprint_structure(blueprint$structure)$title,
+      if (identical(build_mode(), "extend")) " added." else " built."
+    ),
+    type = "message"
+  )
+  shiny::updateTabsetPanel(session, "workflow", selected = "Model")
+})
+
 output$explain_spec_data <- shiny::renderUI(explain_ui("spec_data"))
 output$explain_raw_visuals <- shiny::renderUI(explain_ui("raw_visuals"))
 output$explain_model_visuals <- shiny::renderUI(explain_ui("model_visuals"))

@@ -208,11 +208,20 @@ ctgui_validate <- function(spec) {
 
   lambda <- spec$matrices[["LAMBDA"]]
   if (!is.null(lambda) && is.matrix(lambda)) {
+    reaches <- ctgui_latents_reaching_measurement(spec)
     for (col in seq_len(ncol(lambda))) {
       active <- vapply(lambda[, col], ctgui_cell_active, logical(1L))
-      if (!any(active)) {
-        add_message("warning", "LAMBDA", paste("Latent process", colnames(lambda)[col], "has no active manifest loading"))
-      }
+      latent <- colnames(lambda)[col]
+      if (any(active)) next
+      # An unmeasured latent is normal and often the point: velocities, slopes
+      # and trends are never observed directly, they act through the process
+      # they drive. Only a latent that reaches nothing observed is a problem,
+      # because nothing in the data can inform it.
+      if (isTRUE(reaches[[latent]])) next
+      add_message("warning", "LAMBDA", paste0(
+        "Latent process ", latent, " is not measured and does not influence any measured process, ",
+        "so the data cannot inform it. Give it a manifest loading, or a DRIFT effect on a measured process."
+      ))
     }
     for (row in seq_len(nrow(lambda))) {
       active <- vapply(lambda[row, ], ctgui_cell_active, logical(1L))
@@ -338,6 +347,46 @@ ctgui_set_matrix_value <- function(spec, matrix, row, col = 1, value = NULL,
 
   spec$matrices[[matrix]] <- mat
   ctgui_commit_result(ctgui_commit_spec(previous = previous, updated = spec, reason = "matrix-cell"))
+}
+
+# Which latent processes can affect something that is actually observed.
+#
+# DRIFT[i, j] active means latent j influences latent i, so influence travels
+# from column to row.  A latent that is not measured itself but drives one that
+# is remains identifiable; a latent that reaches nothing measured cannot be
+# informed by the data at all.
+ctgui_latents_reaching_measurement <- function(spec) {
+  lambda <- spec$matrices[["LAMBDA"]]
+  drift <- spec$matrices[["DRIFT"]]
+  latents <- spec$latent_names
+  if (!length(latents)) return(stats::setNames(logical(), character()))
+
+  measured <- vapply(latents, function(latent) {
+    if (is.null(lambda) || !is.matrix(lambda) || !latent %in% colnames(lambda)) return(FALSE)
+    any(vapply(lambda[, latent], ctgui_cell_active, logical(1L)))
+  }, logical(1L))
+
+  if (is.null(drift) || !is.matrix(drift)) return(measured)
+
+  # Repeatedly extend the reachable set until it stops growing: a slope drives
+  # a level that drives an observed process, and every step of that chain is
+  # identifiable.
+  reaches <- measured
+  repeat {
+    grown <- reaches
+    for (source in latents) {
+      if (isTRUE(grown[[source]])) next
+      targets <- latents[vapply(latents, function(target) {
+        ctgui_cell_active(drift[target, source])
+      }, logical(1L))]
+      if (any(vapply(targets, function(target) isTRUE(reaches[[target]]), logical(1L)))) {
+        grown[[source]] <- TRUE
+      }
+    }
+    if (identical(grown, reaches)) break
+    reaches <- grown
+  }
+  reaches
 }
 
 # Rebuild a specification at new variable dimensions, carrying over everything
