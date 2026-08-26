@@ -273,7 +273,7 @@ ctgui_example_truth_spec <- function(example) {
 
 #' Load a worked example's data
 #'
-#' @param example An entry from [ctgui_example_catalog()].
+#' @param example An entry from `ctgui_example_catalog()`.
 #' @return A long-format data frame.
 #' @keywords internal
 ctgui_example_data <- function(example) {

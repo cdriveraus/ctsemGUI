@@ -7,7 +7,7 @@
 ctgui_example_data(example)
 }
 \arguments{
-\item{example}{An entry from \code{\link[=ctgui_example_catalog]{ctgui_example_catalog()}}.}
+\item{example}{An entry from \code{ctgui_example_catalog()}.}
 }
 \value{
 A long-format data frame.
