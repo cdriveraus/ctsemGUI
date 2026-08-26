@@ -101,6 +101,8 @@ ui <- shiny::fluidPage(
     shiny::titlePanel("ctsemGUI"),
     shiny::div(
       class = "app-header-actions",
+      shiny::actionButton("history_undo", "Undo", title = "Undo the last model change"),
+      shiny::actionButton("history_redo", "Redo", title = "Redo an undone model change"),
       shiny::tags$button(
         id = "toggle_explanations", type = "button", class = "btn btn-default",
         `aria-pressed` = "true",
@@ -257,6 +259,19 @@ ui <- shiny::fluidPage(
             ctgui_explanation_ui("validation"),
             shiny::tableOutput("validation_table_spec")
           )
+        ),
+        shiny::tabPanel(
+          "History",
+          shiny::div(
+            class = "control-band",
+            ctgui_explanation_ui("history"),
+            shiny::textOutput("history_status"),
+            shiny::div(
+              class = "control-grid",
+              shiny::numericInput("history_go", "Go to step", value = 1, min = 1, step = 1)
+            )
+          ),
+          shiny::div(class = "history-log", shiny::tableOutput("history_log"))
         ),
         shiny::tabPanel(
           "Matrices",

@@ -13,6 +13,17 @@
 
 ctgui_explanation_catalog <- function() {
   list(
+    history = list(
+      brief = "Every change to the model, most recent first, and a way back to any of them.",
+      detail = paste(
+        "Undo and redo move one step at a time; Go to step jumps straight to an",
+        "earlier state. Changing the model from an earlier step discards the",
+        "steps that came after it, the same way any editor behaves. Only the",
+        "model is tracked: data, fits and diagnostics are not, and going back",
+        "clears the current fit because it no longer belongs to the model on",
+        "screen."
+      )
+    ),
     examples = list(
       brief = "Complete projects you can open and fit straight away.",
       detail = paste(

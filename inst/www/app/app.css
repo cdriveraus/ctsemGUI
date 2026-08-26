@@ -96,3 +96,6 @@ pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-
 #example_id .radio label { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 10px 12px; border: 1px solid #d9dde3; border-radius: 6px; background: #ffffff; }
 #example_id .radio label:hover { border-color: #9ca3af; }
 #example_id input[type="radio"] { position: static; margin: 3px 0 0; flex: 0 0 auto; }
+.history-log { overflow-x: auto; }
+.history-log table { width: auto; }
+.history-log td:first-child { text-align: right; font-variant-numeric: tabular-nums; }

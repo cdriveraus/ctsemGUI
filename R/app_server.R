@@ -6,6 +6,7 @@ ctgui_app_server <- function(initial_spec, help_catalog) {
     ctgui_arg_label(help_catalog, label, help_id, title)
   }
   current_spec <- shiny::reactiveVal(initial_spec)
+spec_history <- shiny::reactiveVal(ctgui_history_new(initial_spec))
 current_data <- shiny::reactiveVal(NULL)
 current_data_name <- shiny::reactiveVal("No data selected")
 current_fit <- shiny::reactiveVal(NULL)
@@ -78,6 +79,62 @@ manifest_type_choices <- c(
 explain_ui <- function(key) {
   ctgui_explanation_ui(key)
 }
+
+# Model history ---------------------------------------------------------------
+
+# Moving through history restores a specification that was already committed,
+# so it applies the spec directly instead of going back through
+# commit_current_spec(), which would push the restored state on as a new entry
+# and make undo unreachable.
+restore_history <- function(history) {
+  spec_history(history)
+  spec <- ctgui_history_current(history)
+  current_spec(spec)
+  current_fit(NULL)
+  clear_uncertainty_state()
+  clear_diagnostics()
+  sync_matrix_inputs_from_spec(spec)
+  # visual_server is created further down this closure; restore_history only
+  # runs from an observer, which is long after the server body has finished.
+  visual_server$refresh(spec)
+  fit_status_value("The model changed. Refit when ready.")
+}
+
+shiny::observeEvent(input$history_undo, {
+  history <- spec_history()
+  if (!ctgui_history_can_undo(history)) {
+    shiny::showNotification("Nothing to undo.", type = "warning")
+    return()
+  }
+  restore_history(ctgui_history_undo(history))
+})
+
+shiny::observeEvent(input$history_redo, {
+  history <- spec_history()
+  if (!ctgui_history_can_redo(history)) {
+    shiny::showNotification("Nothing to redo.", type = "warning")
+    return()
+  }
+  restore_history(ctgui_history_redo(history))
+})
+
+shiny::observeEvent(input$history_go, {
+  restore_history(ctgui_history_go(spec_history(), input$history_go))
+})
+
+output$history_log <- shiny::renderTable(
+  ctgui_history_log(spec_history()),
+  rownames = FALSE
+)
+
+output$history_status <- shiny::renderText({
+  history <- spec_history()
+  paste0(
+    "Step ", history$position, " of ", length(history$entries), ". ",
+    if (ctgui_history_can_undo(history)) "" else "Nothing to undo. ",
+    if (ctgui_history_can_redo(history)) "There are undone steps you can redo." else ""
+  )
+})
 
 # Worked examples -------------------------------------------------------------
 
@@ -532,6 +589,14 @@ commit_current_spec <- function(updated, reason = "edit", refresh_visual = NULL,
     )
   }
   current_spec(commit$spec)
+  # Only model changes become history entries. Recording every commit would
+  # fill the log with steps that changed nothing the user can see -- a graph
+  # relayout, most often -- and make undo appear not to work when pressed.
+  history <- spec_history()
+  if (isTRUE(commit$effects$changed) &&
+      ctgui_history_is_model_change(ctgui_history_current(history), commit$spec)) {
+    spec_history(ctgui_history_push(history, commit$spec, reason = reason))
+  }
   effects <- commit$effects
   if (isTRUE(effects$invalidate_fit)) {
     current_fit(NULL)
