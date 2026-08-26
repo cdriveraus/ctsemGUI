@@ -456,28 +456,6 @@ ctgui_latex_fallback <- function(spec, error) {
   paste(lines, collapse = "\n")
 }
 
-ctgui_latex_png <- function(spec, folder = tempdir(), filename = NULL, ...) {
-  ctgui_check_spec(spec)
-  if (!ctgui_has_ctsem()) stop("ctsem must be installed to render model equations", call. = FALSE)
-  if (is.null(filename)) {
-    filename <- paste0("ctgui_equations_", Sys.getpid(), "_", as.integer(Sys.time()), "_", sample.int(1e6, 1L))
-  }
-  model <- ctgui_to_ctsem_model(spec, silent = TRUE)
-  ctgui_ctsem_call("ctModelLatex", model,
-    compile = TRUE,
-    open = FALSE,
-    equationonly = FALSE,
-    includeNote = FALSE,
-    savepng = TRUE,
-    folder = folder,
-    filename = filename,
-    ...
-  )
-  png <- file.path(folder, paste0(filename, ".png"))
-  if (!file.exists(png)) stop("ctModelLatex did not create a PNG file", call. = FALSE)
-  png
-}
-
 #' @rdname ctgui_spec
 #' @param n.subjects Number of subjects to generate.
 #' @param burnin Number of initial generated time points to discard.

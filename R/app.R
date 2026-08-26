@@ -21,7 +21,7 @@ ctgui_create_app <- function(
   } else {
     as.character(utils::packageVersion("ctsemGUI"))
   }
-  application_asset_files <- file.path(www_path, "app", c("app.js", "app.css"))
+  application_asset_files <- file.path(www_path, "app", c("app.js", "app.css", "equations.js"))
   application_asset_version <- if (
       length(application_asset_files) && all(file.exists(application_asset_files))) {
     format(max(file.info(application_asset_files)$mtime), "%Y%m%d%H%M%S")

@@ -88,7 +88,10 @@ ui <- shiny::fluidPage(
   id = "ctgui-app",
   shiny::tags$head(
     shiny::tags$link(rel = "stylesheet", type = "text/css", href = application_asset_url("app.css")),
+    shiny::tags$link(rel = "stylesheet", type = "text/css", href = "ctsemgui-assets/katex/katex.min.css"),
+    shiny::tags$script(src = "ctsemgui-assets/katex/katex.min.js"),
     shiny::tags$script(src = application_asset_url("app.js")),
+    shiny::tags$script(src = application_asset_url("equations.js")),
     shiny::tags$script(src = "ctsemgui-assets/visual-spec/cytoscape.min.js"),
     shiny::tags$script(src = visual_asset_url("visual-spec.js")),
     shiny::tags$link(rel = "stylesheet", type = "text/css", href = visual_asset_url("visual-spec.css"))
@@ -200,8 +203,7 @@ ui <- shiny::fluidPage(
               shiny::numericInput("equation_digits", "Digits", value = 2, min = 0, max = 8, step = 1)
             )
           ),
-          shiny::div(class = "equation-pane", shiny::imageOutput("equation_image", inline = TRUE)),
-          shiny::textOutput("equation_status"),
+          shiny::div(class = "equation-pane", shiny::uiOutput("equation_blocks")),
           shiny::tags$details(
             shiny::tags$summary("LaTeX source"),
             shiny::verbatimTextOutput("equation_source")
@@ -377,8 +379,7 @@ ui <- shiny::fluidPage(
               shiny::numericInput("fit_equation_digits", "Digits", value = 2, min = 0, max = 8, step = 1)
             )
           ),
-          shiny::div(class = "equation-pane", shiny::imageOutput("fit_equation_image", inline = TRUE)),
-          shiny::textOutput("fit_equation_status"),
+          shiny::div(class = "equation-pane", shiny::uiOutput("fit_equation_blocks")),
           shiny::tags$details(
             shiny::tags$summary("LaTeX source"),
             shiny::verbatimTextOutput("fit_equation_source")

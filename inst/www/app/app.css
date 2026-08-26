@@ -50,7 +50,6 @@ table { background: #ffffff; }
 .matrix-inactive { background: #f3f4f6; color: #6b7280; }
 .matrix-inactive input { background: #f3f4f6; color: #6b7280; border-color: #d1d5db; }
 .pars-editor textarea { font-family: Consolas, monospace; }
-.equation-pane { overflow: auto; background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px; }
 .data-preview { overflow-x: auto; }
 .arg-help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 5px; border: 1px solid #9ca3af; border-radius: 50%; background: #ffffff; color: #374151; font-size: 11px; line-height: 1; text-decoration: none; vertical-align: middle; cursor: help; }
 .arg-help:hover, .arg-help:focus { background: #eef2ff; color: #111827; text-decoration: none; }
@@ -59,3 +58,19 @@ table { background: #ffffff; }
 .fit-inline-output { margin-top: 12px; }
 .fit-capture-note { color: #4b5563; margin-top: 6px; }
 pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-space: pre; word-break: normal; word-wrap: normal; overflow-x: auto; max-width: 100%; }
+/* Each row scrolls on its own so a wide matrix never drags the whole pane
+   sideways and leaves the row labels off-screen. */
+.equation-pane { --ctgui-equation-scale: 1; display: flex; flex-direction: column; gap: 4px; background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px; }
+.equation-row { display: grid; grid-template-columns: 12em 1fr; gap: 0 16px; align-items: center; padding: 10px 0; border-top: 1px solid #eef0f2; }
+.equation-row:first-child { border-top: 0; }
+.equation-row-label { color: #374151; font-size: 13px; line-height: 1.35; text-align: right; }
+.equation-row-math { overflow-x: auto; overflow-y: hidden; min-width: 0; font-size: calc(1em * var(--ctgui-equation-scale)); }
+.equation-row-math .katex-display { margin: 0; text-align: left; }
+.equation-row-math .katex-display > .katex { text-align: left; }
+.equation-empty { color: #4b5563; }
+.ctgui-equation-unrendered pre { white-space: pre-wrap; font-size: 11px; }
+.ctgui-equation-note { color: #92400e; font-size: 12px; margin: 0 0 6px 0; }
+@media (max-width: 760px) {
+  .equation-row { grid-template-columns: 1fr; gap: 4px; }
+  .equation-row-label { text-align: left; font-weight: 600; }
+}

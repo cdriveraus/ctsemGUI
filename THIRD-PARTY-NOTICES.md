@@ -20,3 +20,16 @@ The product concept and selected interaction patterns of the visual
 specification editor were informed by [lavaangui](https://github.com/karchjd/lavaangui)
 by Julian D. Karch (GPL-3.0-or-later). ctsemGUI does not embed lavaangui or
 depend on lavaan; its visual editor is an independent implementation.
+
+## KaTeX
+
+Model equations are typeset in the browser by [KaTeX](https://katex.org/)
+version 0.16.22, bundled in `inst/www/katex/katex.min.js` and
+`inst/www/katex/katex.min.css`, with its web fonts in `inst/www/katex/fonts`.
+Only the WOFF2 font format is retained and the stylesheet's `src` lists have
+been reduced accordingly; no other modification is made.
+
+Copyright (c) 2013-2020 Khan Academy and other contributors. KaTeX is licensed
+under the MIT License; its complete license is retained in
+`inst/www/katex/LICENSE-katex.txt`. For installed-package attribution, see
+`inst/COPYRIGHTS`.

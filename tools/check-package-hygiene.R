@@ -13,7 +13,7 @@ if ("shiny" %in% suggests || !is.na(enhances) || "htmltools" %in% imports) {
 }
 
 asset_contract <- list(
-  app = c("app.css", "app.js"),
+  app = c("app.css", "app.js", "equations.js"),
   `visual-spec` = c("cytoscape.min.js", "visual-spec.css", "visual-spec.js")
 )
 source_contract <- list(
@@ -37,6 +37,28 @@ if (any(grepl(
   fixed = TRUE
 ))) {
   stop("Removed cytoscape-edgehandles assets are still present", call. = FALSE)
+}
+
+# KaTeX is vendored so equations render without a TeX installation. Only WOFF2
+# is shipped, and the stylesheet is pruned to match; a stray WOFF or TTF here
+# means an unpruned upgrade has tripled the font payload for no benefit.
+katex_dir <- file.path("inst", "www", "katex")
+katex_expected <- c("katex.min.css", "katex.min.js", "LICENSE-katex.txt")
+katex_files <- list.files(katex_dir, full.names = FALSE)
+if (!setequal(setdiff(katex_files, "fonts"), katex_expected)) {
+  stop(
+    "Unexpected katex assets: expected ", paste(katex_expected, collapse = ", "),
+    "; found ", paste(setdiff(katex_files, "fonts"), collapse = ", "),
+    call. = FALSE
+  )
+}
+katex_fonts <- list.files(file.path(katex_dir, "fonts"), full.names = FALSE)
+if (!length(katex_fonts) || !all(grepl("[.]woff2$", katex_fonts))) {
+  stop("KaTeX fonts must be present and WOFF2 only", call. = FALSE)
+}
+katex_css <- paste(readLines(file.path(katex_dir, "katex.min.css"), warn = FALSE), collapse = "\n")
+if (grepl("[.](woff|ttf)[)\"]", katex_css)) {
+  stop("KaTeX stylesheet still references non-WOFF2 fonts", call. = FALSE)
 }
 
 app_files <- list.files("R", pattern = "^app.*\\.R$", full.names = TRUE)

@@ -726,50 +726,19 @@ model_latex_source <- function(model, args, fallback = NULL) {
   if (inherits(out, "error")) paste("Could not create equations:", conditionMessage(out)) else out
 }
 
-model_latex_png <- function(model, args, prefix, fallback = NULL) {
-  if (is.null(model)) stop("No model object is available from the fit.", call. = FALSE)
-  filename <- paste0(prefix, "_", Sys.getpid(), "_", as.integer(Sys.time()), "_", sample.int(1e6, 1L))
-  out <- tryCatch(ctgui_ctsem_call("ctModelLatex", .args = c(list(
-    model,
-    compile = TRUE,
-    open = FALSE,
-    equationonly = FALSE,
-    includeNote = FALSE,
-    savepng = TRUE,
-    folder = tempdir(),
-    filename = filename
-  ), args)), error = function(e) e)
-  if (inherits(out, "error") && !is.null(fallback)) return(model_latex_png(fallback, args, prefix))
-  if (inherits(out, "error")) stop(conditionMessage(out), call. = FALSE)
-  png <- file.path(tempdir(), paste0(filename, ".png"))
-  if (!file.exists(png)) stop("ctModelLatex did not create a PNG file", call. = FALSE)
-  png
-}
-
 latex_source <- shiny::reactive({
   args <- c(list(spec = current_spec()), equation_args())
   tryCatch(do.call(ctgui_latex, args), error = function(e) paste("Could not create equations:", conditionMessage(e)))
 })
 
-equation_png <- shiny::reactive({
-  args <- c(list(spec = current_spec()), equation_args())
-  tryCatch(do.call(ctgui_latex_png, args), error = function(e) e)
-})
-
-output$equation_image <- shiny::renderImage({
-  png <- equation_png()
-  if (inherits(png, "error")) return(list(src = "", alt = conditionMessage(png)))
-  list(
-    src = png,
-    contentType = "image/png",
-    width = paste0(round(input$equation_zoom * 100), "%"),
-    alt = "ctsem model equations"
+# Any reason the equations cannot be shown as rows is reported by the view
+# itself, beside the source it is explaining, so there is no separate status
+# line to keep in step with it.
+output$equation_blocks <- shiny::renderUI({
+  ctgui_equation_view_ui(
+    ctgui_equation_view(latex_source()),
+    empty_message = "Add latent processes and manifest variables to see the model equations."
   )
-}, deleteFile = FALSE)
-
-output$equation_status <- shiny::renderText({
-  png <- equation_png()
-  if (inherits(png, "error")) paste("Equation image unavailable:", conditionMessage(png)) else ""
 })
 
 output$equation_source <- shiny::renderText(latex_source())
@@ -780,26 +749,15 @@ fit_latex_source <- shiny::reactive({
   model_latex_source(fit, fit_equation_args(), fallback = fit_model_object(fit))
 })
 
-fit_equation_png <- shiny::reactive({
-  fit <- active_fit()
-  if (is.null(fit)) return(simpleError("No fit available."))
-  tryCatch(model_latex_png(fit, fit_equation_args(), "ctgui_fit_equations", fallback = fit_model_object(fit)), error = function(e) e)
-})
-
-output$fit_equation_image <- shiny::renderImage({
-  png <- fit_equation_png()
-  if (inherits(png, "error")) return(list(src = "", alt = conditionMessage(png)))
-  list(
-    src = png,
-    contentType = "image/png",
-    width = paste0(round((input$fit_equation_zoom %||% 1) * 100), "%"),
-    alt = "ctsem fit equations"
-  )
-}, deleteFile = FALSE)
-
-output$fit_equation_status <- shiny::renderText({
-  png <- fit_equation_png()
-  if (inherits(png, "error")) paste("Fit equation image unavailable:", conditionMessage(png)) else ""
+output$fit_equation_blocks <- shiny::renderUI({
+  latex <- fit_latex_source()
+  if (identical(latex, "No fit available.")) {
+    return(ctgui_equation_view_ui(
+      list(status = "empty", blocks = list(), source = "", message = ""),
+      empty_message = "Fit a model to see its estimated equations."
+    ))
+  }
+  ctgui_equation_view_ui(ctgui_equation_view(latex))
 })
 
 output$fit_equation_source <- shiny::renderText(fit_latex_source())

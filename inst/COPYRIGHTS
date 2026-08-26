@@ -11,3 +11,14 @@ www/visual-spec/LICENSE-cytoscape.txt and in the headers of both bundled files.
 The visual editor is an original ctsemGUI integration. Its product concept and
 selected interaction patterns were informed by lavaangui by Julian D. Karch
 (GPL-3.0-or-later); ctsemGUI does not embed lavaangui or depend on lavaan.
+
+KaTeX 0.16.22
+Copyright (c) 2013-2020 Khan Academy and other contributors
+
+Model equations are typeset in the browser by KaTeX, bundled in
+www/katex/katex.min.js and www/katex/katex.min.css with its web fonts in
+www/katex/fonts. Only the WOFF2 font format is retained; the stylesheet has
+been reduced to match.
+
+KaTeX is licensed under the MIT License. Its complete license is in
+www/katex/LICENSE-katex.txt.
