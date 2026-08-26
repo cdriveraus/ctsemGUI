@@ -11,6 +11,10 @@ current_data <- shiny::reactiveVal(NULL)
 current_data_name <- shiny::reactiveVal("No data selected")
 current_fit <- shiny::reactiveVal(NULL)
 fit_busy <- shiny::reactiveVal(FALSE)
+fit_process <- shiny::reactiveVal(NULL)
+fit_log_path <- shiny::reactiveVal(NULL)
+fit_log_offset <- shiny::reactiveVal(0)
+fit_cancelled <- shiny::reactiveVal(FALSE)
 fit_messages <- shiny::reactiveVal("No fit has been run.")
 fit_warnings <- shiny::reactiveVal("No warnings.")
 fit_status_value <- shiny::reactiveVal("No fit available.")
@@ -1431,74 +1435,183 @@ output$raw_plot <- shiny::renderPlot({
   }
 })
 
+fit_call_args <- function(data) {
+  args <- list(
+    datalong = data,
+    model = ctgui_to_ctsem_model(current_spec(), silent = TRUE),
+    optimize = input$fit_optimize,
+    priors = input$fit_priors,
+    cores = input$fit_cores,
+    plot = FALSE
+  )
+  extra <- parse_extra_args(input$fit_extra_args)
+  if (isTRUE(input$fit_optimize)) {
+    supplied_optimcontrol <- extra$optimcontrol
+    extra$optimcontrol <- NULL
+    args$optimcontrol <- ctgui_uncertainty_merge_optimcontrol(
+      uncertainty_optimcontrol(), supplied_optimcontrol)
+  }
+  c(args, extra[!names(extra) %in% names(args)])
+}
+
+fit_succeeded <- function(fit) {
+  current_fit(fit)
+  clear_diagnostics()
+  fit_status_value("Fit available (ctsem::ctFit result).")
+  uncertainty_status_value("Uncertainty was estimated as part of fitting.")
+  record_output_code("fit", output_code_snippet("fit"))
+  shiny::showNotification("Fit complete", type = "message")
+}
+
+fit_finished <- function() {
+  fit_busy(FALSE)
+  session$sendCustomMessage(
+    "ctgui-fit-finished",
+    list(beep = isTRUE(input$fit_completion_beep))
+  )
+}
+
+fit_in_background <- function() {
+  isTRUE(input$fit_async %||% TRUE) && requireNamespace("callr", quietly = TRUE)
+}
+
 shiny::observeEvent(input$run_fit, {
   if (isTRUE(fit_busy())) return()
-  # The browser disables the fit form immediately on click. Register cleanup
-  # before every precondition so guarded exits restore the form as well.
-  fit_busy(TRUE)
-  on.exit({
-    fit_busy(FALSE)
-    session$sendCustomMessage(
-      "ctgui-fit-finished",
-      list(beep = isTRUE(input$fit_completion_beep))
-    )
-  }, add = TRUE)
   data <- current_data()
   if (is.null(data)) {
     shiny::showNotification("Load or generate data before fitting", type = "error")
+    fit_finished()
     return()
   }
 
   current_fit(NULL)
   clear_uncertainty_state()
+  fit_busy(TRUE)
+  fit_cancelled(FALSE)
   fit_status_value("Fitting...")
-  fit_messages("Fitting...")
   fit_warnings("No warnings.")
 
-  result <- NULL
-  shiny::withProgress(message = "Fitting ctsem model", value = 0.1, {
-    model <- ctgui_to_ctsem_model(current_spec(), silent = TRUE)
-    shiny::incProgress(0.2, detail = "Calling ctFit")
-    result <- capture_conditions({
-      args <- list(
-        datalong = data,
-        model = model,
-        optimize = input$fit_optimize,
-        priors = input$fit_priors,
-        cores = input$fit_cores,
-        plot = FALSE
-      )
-      extra <- parse_extra_args(input$fit_extra_args)
-      if (isTRUE(input$fit_optimize)) {
-        supplied_optimcontrol <- extra$optimcontrol
-        extra$optimcontrol <- NULL
-        args$optimcontrol <- ctgui_uncertainty_merge_optimcontrol(
-          uncertainty_optimcontrol(), supplied_optimcontrol)
-      }
-      args <- c(args, extra[!names(extra) %in% names(args)])
-      ctgui_ctsem_call("ctFit", .args = args)
-    }, progress_callback = function(lines) {
-      fit_messages(paste(lines, collapse = "\n"))
-    })
-    shiny::incProgress(0.7, detail = "Fit call returned")
-  })
-
-  if (inherits(result$value, "error")) {
+  args <- tryCatch(fit_call_args(data), error = function(e) e)
+  if (inherits(args, "error")) {
     fit_status_value("Fit failed.")
-    fit_messages(paste(c(result$messages, conditionMessage(result$value)), collapse = "\n"))
-    fit_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
-    shiny::showNotification(conditionMessage(result$value), type = "error")
+    fit_messages(conditionMessage(args))
+    shiny::showNotification(conditionMessage(args), type = "error")
+    fit_finished()
     return()
   }
 
-  current_fit(result$value)
-  clear_diagnostics()
-  fit_status_value("Fit available (ctsem::ctFit result).")
-  uncertainty_status_value("Uncertainty was estimated as part of fitting.")
-  fit_messages(if (length(result$messages)) paste(result$messages, collapse = "\n") else "Fit complete.")
-  fit_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
-  record_output_code("fit", output_code_snippet("fit"))
-  shiny::showNotification("Fit complete", type = "message")
+  if (!fit_in_background()) {
+    # The in-session path is kept as a fallback. It blocks the interface for
+    # the whole fit and cannot be stopped, which is why it is not the default,
+    # but it needs no extra package and no second process.
+    fit_messages("Fitting in this session. The interface will not respond until it finishes.")
+    result <- NULL
+    shiny::withProgress(message = "Fitting ctsem model", value = 0.1, {
+      shiny::incProgress(0.2, detail = "Calling ctFit")
+      result <- capture_conditions(
+        ctgui_ctsem_call("ctFit", .args = args),
+        progress_callback = function(lines) fit_messages(paste(lines, collapse = "\n"))
+      )
+      shiny::incProgress(0.7, detail = "Fit call returned")
+    })
+    if (inherits(result$value, "error")) {
+      fit_status_value("Fit failed.")
+      fit_messages(paste(c(result$messages, conditionMessage(result$value)), collapse = "\n"))
+      fit_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
+      shiny::showNotification(conditionMessage(result$value), type = "error")
+    } else {
+      fit_messages(if (length(result$messages)) paste(result$messages, collapse = "\n") else "Fit complete.")
+      fit_warnings(if (length(result$warnings)) paste(result$warnings, collapse = "\n") else "No warnings.")
+      fit_succeeded(result$value)
+    }
+    fit_finished()
+    return()
+  }
+
+  log_path <- ctgui_fit_log_path()
+  process <- tryCatch(ctgui_fit_process_start(args, log_path), error = function(e) e)
+  if (inherits(process, "error")) {
+    fit_status_value("Fit failed.")
+    fit_messages(conditionMessage(process))
+    shiny::showNotification(conditionMessage(process), type = "error")
+    fit_finished()
+    return()
+  }
+
+  fit_log_path(log_path)
+  fit_log_offset(0)
+  fit_messages("Starting a background fit...\n")
+  fit_process(process)
+})
+
+# supervise = TRUE covers the session dying unexpectedly. Closing a browser tab
+# is not that, so a fit nobody is waiting for is stopped here rather than left
+# to finish into a session that no longer exists.
+session$onSessionEnded(function() {
+  process <- shiny::isolate(fit_process())
+  if (ctgui_fit_process_alive(process)) {
+    invisible(tryCatch(process$kill(), error = function(e) NULL))
+  }
+  unlink(shiny::isolate(fit_log_path()))
+})
+
+# Polling is what turns the child's log file into a live message window. It
+# runs only while a fit is running, so an idle session does no work.
+shiny::observe({
+  process <- fit_process()
+  if (is.null(process)) return()
+  shiny::invalidateLater(500)
+
+  chunk <- ctgui_fit_log_read(shiny::isolate(fit_log_path()), shiny::isolate(fit_log_offset()))
+  if (nzchar(chunk$text)) {
+    fit_log_offset(chunk$offset)
+    fit_messages(ctgui_fit_log_tail(paste0(
+      shiny::isolate(fit_messages()), ctgui_fit_log_clean(chunk$text)
+    )))
+  }
+
+  if (ctgui_fit_process_alive(process)) return()
+
+  # The process has exited. Read whatever it wrote between the last poll and
+  # exiting before reporting, so the reason for a failure is not lost.
+  final <- ctgui_fit_log_read(shiny::isolate(fit_log_path()), shiny::isolate(fit_log_offset()))
+  if (nzchar(final$text)) {
+    fit_log_offset(final$offset)
+    fit_messages(ctgui_fit_log_tail(paste0(
+      shiny::isolate(fit_messages()), ctgui_fit_log_clean(final$text)
+    )))
+  }
+
+  cancelled <- isTRUE(shiny::isolate(fit_cancelled()))
+  outcome <- ctgui_fit_process_collect(process, cancelled = cancelled)
+  fit_process(NULL)
+  unlink(shiny::isolate(fit_log_path()))
+  fit_log_path(NULL)
+
+  if (identical(outcome$status, "cancelled")) {
+    fit_status_value("Fit stopped.")
+    shiny::showNotification("Fit stopped.", type = "warning")
+  } else if (identical(outcome$status, "error")) {
+    fit_status_value("Fit failed.")
+    shiny::showNotification(conditionMessage(outcome$error), type = "error")
+    fit_messages(ctgui_fit_log_tail(paste0(
+      shiny::isolate(fit_messages()), "\n", conditionMessage(outcome$error)
+    )))
+  } else {
+    fit_succeeded(outcome$value)
+  }
+  fit_finished()
+})
+
+shiny::observeEvent(input$cancel_fit, {
+  process <- fit_process()
+  if (!ctgui_fit_process_alive(process)) {
+    shiny::showNotification("No fit is running.", type = "warning")
+    return()
+  }
+  fit_cancelled(TRUE)
+  fit_status_value("Stopping the fit...")
+  invisible(tryCatch(process$kill(), error = function(e) NULL))
 })
 
 shiny::observeEvent(input$store_fit, {

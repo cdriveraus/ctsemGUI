@@ -18,6 +18,7 @@ Roxygen: list(markdown = TRUE)
 Depends:
     R (>= 4.2.0)
 Imports:
+    callr,
     ctsem (>= 3.11.1),
     shiny,
     methods,

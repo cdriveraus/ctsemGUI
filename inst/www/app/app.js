@@ -217,15 +217,21 @@
       }
     );
 
+    // A background fit leaves the rest of the interface usable, which is most
+    // of the point of it: you can read the equations or set up a second
+    // candidate while the first one runs. Only the controls that would change
+    // the fit under way are disabled.
     app.on("click", "#run_fit", function () {
-      app.find("input, select, textarea, button").not("#run_fit").prop("disabled", true);
       app.find("#run_fit").prop("disabled", true).text("Fitting...");
+      app.find("#store_fit, #assign_fit, #run_uncertainty").prop("disabled", true);
+      app.find("#cancel_fit").prop("disabled", false);
     });
 
     if (window.Shiny) {
       Shiny.addCustomMessageHandler("ctgui-fit-finished", function (message) {
-        app.find("input, select, textarea, button").prop("disabled", false);
-        app.find("#run_fit").text("Fit model");
+        app.find("#run_fit").prop("disabled", false).text("Fit model");
+        app.find("#store_fit, #assign_fit, #run_uncertainty").prop("disabled", false);
+        app.find("#cancel_fit").prop("disabled", true);
         if (message.beep) {
           try {
             var context = new (window.AudioContext || window.webkitAudioContext)();

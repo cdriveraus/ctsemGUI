@@ -99,3 +99,6 @@ pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-
 .history-log { overflow-x: auto; }
 .history-log table { width: auto; }
 .history-log td:first-child { text-align: right; font-variant-numeric: tabular-nums; }
+/* The fit log grows to thousands of lines; a fixed viewport keeps the controls
+   above it reachable instead of pushing them off the screen. */
+.fit-log pre { max-height: 320px; overflow-y: auto; font-size: 12px; line-height: 1.45; }

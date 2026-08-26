@@ -13,6 +13,19 @@
 
 ctgui_explanation_catalog <- function() {
   list(
+    fitting = list(
+      brief = "Fitting runs in a separate process, so the interface stays usable and can be stopped.",
+      detail = paste(
+        "The messages below are the fit's own console output, streamed live",
+        "while it runs. Watch the objective value settle: a value still moving",
+        "when the optimiser stops, or one that jumps around, is worth more",
+        "attention than the fit statistics afterwards. Because the fit is in its",
+        "own process you can keep reading the model, the data or the equations",
+        "while it runs, and Stop ends it without losing anything else. Turning",
+        "background fitting off runs it in this session instead, which freezes",
+        "the interface until it finishes and cannot be stopped."
+      )
+    ),
     history = list(
       brief = "Every change to the model, most recent first, and a way back to any of them.",
       detail = paste(

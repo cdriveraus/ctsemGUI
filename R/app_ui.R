@@ -322,7 +322,9 @@ ui <- shiny::fluidPage(
               shiny::numericInput("fit_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_cores", "ctFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::textAreaInput("fit_extra_args", arg_label("Extra ctFit arguments", "help_ctFit", "Full ctFit help"), value = "", height = "70px"),
               shiny::checkboxInput("fit_completion_beep", "Play a sound when fitting finishes", value = FALSE),
+              shiny::checkboxInput("fit_async", "Fit in the background", value = TRUE),
               shiny::actionButton("run_fit", "Fit model", class = "btn-primary"),
+              shiny::actionButton("cancel_fit", "Stop fitting", class = "btn-warning", disabled = "disabled"),
               shiny::actionButton("store_fit", "Store fit for comparison"),
               shiny::actionButton("assign_fit", "Return fit to R"),
               shiny::downloadButton("download_fit_rds", "Save fit RDS"),
@@ -336,10 +338,11 @@ ui <- shiny::fluidPage(
           shiny::uiOutput("explain_fit_registry"),
           shiny::textOutput("fit_status"),
           shiny::selectInput("active_fit_name", "Active saved fit", choices = character()),
+          ctgui_explanation_ui("fitting"),
           shiny::div(
             class = "fit-inline-output",
             shiny::tags$h4("Messages"),
-            shiny::verbatimTextOutput("fit_log_inline"),
+            shiny::div(class = "fit-log", shiny::verbatimTextOutput("fit_log_inline")),
             shiny::tags$h4("Warnings"),
             shiny::verbatimTextOutput("fit_warnings_inline")
           ),
