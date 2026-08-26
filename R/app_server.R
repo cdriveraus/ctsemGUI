@@ -39,6 +39,11 @@ dynamics_log <- shiny::reactiveVal("No dynamics plot has been run.")
 tipred_effects_result <- shiny::reactiveVal(NULL)
 tipred_effects_log <- shiny::reactiveVal("No TI predictor effects plot has been run.")
 fit_registry <- shiny::reactiveVal(list())
+# The specification each stored fit was produced from, kept beside the registry
+# rather than inside it so the registry's shape, and everything that reads it,
+# stays as it was. Without this the comparison table can only report names and
+# fit statistics, which is not enough to know what is actually being compared.
+fit_specs <- shiny::reactiveVal(list())
 output_code_snippets <- shiny::reactiveVal(list())
 diagnostics_status <- shiny::reactiveVal("No fit diagnostics have been run.")
 matrix_status <- shiny::reactiveVal("Matrix edits update the current model spec.")
@@ -1158,12 +1163,29 @@ output$fit_comparison <- shiny::renderTable({
   registry <- fit_registry()
   if (length(registry) == 0L) return(data.frame(message = "No stored fits. Store current fits from the Fit tab."))
   record_output_code("fit_comparison", output_code_snippet("fit_comparison"))
+  specs <- fit_specs()
+  # Comparing fit statistics only tells you which number is larger. The first
+  # stored fit is the baseline and every other row says how its model differs
+  # from it, so the reader can see what the difference in fit is buying.
+  baseline_name <- names(registry)[1L]
+  baseline_spec <- specs[[baseline_name]]
   do.call(rbind, lapply(names(registry), function(name) {
     fit <- registry[[name]]
     model_base <- ctgui_ctsem_fit_model(fit, list())
     stats <- fit_comparison_stats(fit)
+    spec <- specs[[name]]
+    model_difference <- if (identical(name, baseline_name)) {
+      "baseline"
+    } else if (is.null(spec) || is.null(baseline_spec)) {
+      "model not recorded"
+    } else if (!ctgui_history_is_model_change(baseline_spec, spec)) {
+      "same model as baseline"
+    } else {
+      ctgui_history_describe(baseline_spec, spec, reason = "specification")
+    }
     data.frame(
       fit = name,
+      model = model_difference,
       class = "ctsem fit",
       manifests = length(model_base$manifestNames %||% character()),
       latents = length(model_base$latentNames %||% character()),
@@ -1644,6 +1666,9 @@ shiny::observeEvent(input$confirm_store_fit, {
   registry <- fit_registry()
   registry[[name]] <- fit
   fit_registry(registry)
+  specs <- fit_specs()
+  specs[[name]] <- current_spec()
+  fit_specs(specs)
   update_fit_choices(selected = name)
   shiny::removeModal()
   shiny::showNotification(paste("Saved fit", name), type = "message")

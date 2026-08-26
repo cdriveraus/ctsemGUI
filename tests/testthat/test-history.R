@@ -215,3 +215,29 @@ test_that("one user action produces one history step", {
     expect_equal(current_spec()$latent_names, c("stress", "sleep"))
   }))
 })
+
+test_that("the fit comparison says what differs between the models", {
+  skip_if_not_installed("shiny")
+  ctgui_blueprint_apply <- getFromNamespace("ctgui_blueprint_apply", "ctsemGUI")
+
+  empty <- quiet_history(ctgui_spec(latent_names = character(), manifest_names = character()))
+  server <- ctgui_app_server(empty, ctgui_help_catalog())
+
+  suppressWarnings(shiny::testServer(server, {
+    base <- quiet_history(ctgui_blueprint_apply(
+      empty, ctgui_blueprint("coupled", c("stress", "sleep")), "replace"
+    ))
+    nocross <- quiet_history(ctgui_set_matrix_value(base, "DRIFT", "stress", "sleep", value = 0))
+
+    stub <- structure(list(), class = c("ctStanFit", "ctFit"))
+    fit_registry(list(baseline = stub, nocross = stub, twin = stub))
+    fit_specs(list(baseline = base, nocross = nocross, twin = base))
+
+    table <- output$fit_comparison
+    # Comparing fit statistics alone tells you which number is larger, not what
+    # the difference is buying.
+    expect_match(table, "baseline", fixed = TRUE)
+    expect_match(table, "Fixed DRIFT[stress, sleep] to 0", fixed = TRUE)
+    expect_match(table, "same model as baseline", fixed = TRUE)
+  }))
+})
