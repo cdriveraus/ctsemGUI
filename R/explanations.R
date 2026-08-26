@@ -13,6 +13,18 @@
 
 ctgui_explanation_catalog <- function() {
   list(
+    examples = list(
+      brief = "Complete projects you can open and fit straight away.",
+      detail = paste(
+        "Each example brings its own data, a model, and a note on what to look",
+        "at once it has fitted. Most generate their data from parameter values",
+        "the example tells you, so fitting becomes a check on whether the model",
+        "recovers what produced the data rather than a demonstration you have to",
+        "take on trust. Two of them hand you a model that disagrees with the",
+        "truth on purpose, because knowing what a misspecified fit looks like is",
+        "worth more than another well-behaved one."
+      )
+    ),
     build = list(
       brief = "Start from a standard model shape rather than an empty canvas.",
       detail = paste(

@@ -177,7 +177,14 @@ ui <- shiny::fluidPage(
         )
       )
     ),
-    shiny::tabPanel("Build", ctgui_build_ui()),
+    shiny::tabPanel(
+      "Build",
+      shiny::tabsetPanel(
+        id = "build_tabs",
+        shiny::tabPanel("Examples", ctgui_examples_ui()),
+        shiny::tabPanel("Templates", ctgui_build_ui())
+      )
+    ),
     shiny::tabPanel(
       "Model",
       shiny::tabsetPanel(

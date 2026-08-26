@@ -152,3 +152,42 @@ ctgui_build_ui <- function() {
     )
   )
 }
+
+# Examples are chosen by what they demonstrate, so each option shows its own
+# description rather than a bare title.
+ctgui_example_choice_ui <- function(selected = "coupled") {
+  catalog <- ctgui_example_catalog()
+  shiny::radioButtons(
+    "example_id", NULL,
+    choiceValues = names(catalog),
+    choiceNames = unname(lapply(catalog, function(example) {
+      shiny::div(
+        class = "blueprint-choice-body",
+        shiny::tags$strong(example$title),
+        shiny::tags$p(class = "help-note", example$brief),
+        shiny::tags$p(class = "help-note ctgui-explain-detail", example$detail)
+      )
+    })),
+    selected = selected
+  )
+}
+
+ctgui_examples_ui <- function() {
+  shiny::tagList(
+    shiny::div(
+      class = "control-band",
+      ctgui_explanation_ui("examples"),
+      ctgui_example_choice_ui()
+    ),
+    shiny::div(
+      class = "control-band",
+      shiny::tags$h4("What to look at"),
+      shiny::verbatimTextOutput("example_guidance"),
+      shiny::actionButton("example_load", "Open this example", class = "btn-primary"),
+      shiny::tags$p(
+        class = "help-note",
+        "Opening an example replaces the current data and model."
+      )
+    )
+  )
+}

@@ -92,3 +92,7 @@ pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-
 .blueprint-choice-body strong { display: block; margin-bottom: 3px; }
 .blueprint-choice-body .help-note { margin-bottom: 0; }
 .blueprint-choice-body .help-note + .help-note { margin-top: 6px; }
+#example_id .radio { margin: 0 0 4px; }
+#example_id .radio label { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 10px 12px; border: 1px solid #d9dde3; border-radius: 6px; background: #ffffff; }
+#example_id .radio label:hover { border-color: #9ca3af; }
+#example_id input[type="radio"] { position: static; margin: 3px 0 0; flex: 0 0 auto; }

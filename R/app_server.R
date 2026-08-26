@@ -79,6 +79,46 @@ explain_ui <- function(key) {
   ctgui_explanation_ui(key)
 }
 
+# Worked examples -------------------------------------------------------------
+
+selected_example <- shiny::reactive({
+  tryCatch(ctgui_example(input$example_id %||% "coupled"), error = function(e) e)
+})
+
+output$example_guidance <- shiny::renderText({
+  example <- selected_example()
+  if (inherits(example, "error")) return(conditionMessage(example))
+  paste(c(example$look_for, "", ctgui_example_truth_note(example)), collapse = "\n")
+})
+
+shiny::observeEvent(input$example_load, {
+  example <- selected_example()
+  if (inherits(example, "error")) {
+    shiny::showNotification(conditionMessage(example), type = "error")
+    return()
+  }
+  loaded <- NULL
+  shiny::withProgress(message = paste("Opening", example$title), value = 0.3, {
+    loaded <- tryCatch(
+      list(
+        spec = ctgui_example_spec(example),
+        data = ctgui_example_data(example)
+      ),
+      error = function(e) e
+    )
+  })
+  if (inherits(loaded, "error")) {
+    shiny::showNotification(conditionMessage(loaded), type = "error")
+    return()
+  }
+  current_data(loaded$data)
+  current_data_name(ctgui_example_data_label(example))
+  commit_current_spec(loaded$spec, reason = "example")
+  fit_status_value("Example loaded. Fit when ready.")
+  shiny::showNotification(paste(example$title, "opened."), type = "message")
+  shiny::updateTabsetPanel(session, "workflow", selected = "Model")
+})
+
 # Model templates ------------------------------------------------------------
 
 build_mode <- function() {
