@@ -10,6 +10,41 @@
       event.stopPropagation();
     });
 
+    // Explanations are shown by default because the interface is meant to be
+    // followable by someone new to continuous-time models. Anyone who does not
+    // need them says so once: the choice is remembered, so an experienced user
+    // is not asked to dismiss the same text on every visit.
+    var EXPLAIN_KEY = "ctsemgui.explanations";
+
+    function readExplainPreference() {
+      try {
+        return window.localStorage.getItem(EXPLAIN_KEY) !== "brief";
+      } catch (error) {
+        // Private browsing and locked-down profiles deny storage; the default
+        // is still the better one to land on.
+        return true;
+      }
+    }
+
+    function applyExplainPreference(full) {
+      app.toggleClass("ctgui-explain-brief", !full);
+      app.find("#toggle_explanations")
+        .attr("aria-pressed", full ? "true" : "false")
+        .text(full ? "Explanations: full" : "Explanations: brief");
+    }
+
+    applyExplainPreference(readExplainPreference());
+
+    app.on("click", "#toggle_explanations", function () {
+      var full = app.hasClass("ctgui-explain-brief");
+      applyExplainPreference(full);
+      try {
+        window.localStorage.setItem(EXPLAIN_KEY, full ? "full" : "brief");
+      } catch (error) {
+        // Preference is not persisted, but the current session still honours it.
+      }
+    });
+
     app.on("click", "#toggle_app_width", function () {
       var expanded = app.toggleClass("ctgui-full-width").hasClass("ctgui-full-width");
       $(this)

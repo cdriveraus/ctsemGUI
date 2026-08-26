@@ -73,7 +73,14 @@ test_that("data import provides requirements and ctsem test data", {
   html <- paste(as.character(ui), collapse = "\n")
 
   expect_match(html, 'id="load_ctsem_test_data"', fixed = TRUE)
-  expect_match(html, "one row per subject and measurement occasion", fixed = TRUE)
-  expect_match(html, "time-dependent predictors", fixed = TRUE)
-  expect_match(html, "time-independent predictors", fixed = TRUE)
+
+  # The panel must explain the required data layout and both predictor kinds.
+  # Assert that against the explanation catalog rather than a copy of its
+  # wording, so editing the prose does not fail a test about the panel.
+  catalog <- getFromNamespace("ctgui_explanation_catalog", "ctsemGUI")()
+  expect_match(html, catalog$spec_data$brief, fixed = TRUE)
+  expect_match(html, substr(catalog$spec_data$detail, 1L, 60L), fixed = TRUE)
+  expect_match(catalog$spec_data$detail, "row of the data is one subject")
+  expect_match(catalog$spec_data$detail, "Time-dependent predictors")
+  expect_match(catalog$spec_data$detail, "Time-independent predictors")
 })

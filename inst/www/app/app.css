@@ -74,3 +74,10 @@ pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-
   .equation-row { grid-template-columns: 1fr; gap: 4px; }
   .equation-row-label { text-align: left; font-weight: 600; }
 }
+
+/* Brief mode keeps the one-line orientation on every panel and drops only the
+   teaching text, so the interface stays self-describing without becoming a
+   wall of prose for someone who already knows what a DRIFT matrix is. */
+#ctgui-app.ctgui-explain-brief .ctgui-explain-detail { display: none; }
+.ctgui-explain { display: contents; }
+.ctgui-explain-detail { color: #4b5563; }

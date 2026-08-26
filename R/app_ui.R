@@ -102,6 +102,12 @@ ui <- shiny::fluidPage(
     shiny::div(
       class = "app-header-actions",
       shiny::tags$button(
+        id = "toggle_explanations", type = "button", class = "btn btn-default",
+        `aria-pressed` = "true",
+        title = "Show or hide the explanatory text on every panel",
+        "Explanations: full"
+      ),
+      shiny::tags$button(
         id = "toggle_app_width", type = "button", class = "btn btn-default app-width-toggle",
         `aria-pressed` = "false", "Use full width"
       ),
@@ -130,7 +136,7 @@ ui <- shiny::fluidPage(
             shiny::conditionalPanel(
               condition = "input.visual_view == 'initial_state'",
               shiny::tags$p(
-                class = "matrix-note",
+                class = "matrix-note ctgui-explain-detail",
                 "Initial-state noise maps directly to T0VAR. When a T0MEANS parameter has RandomEffects enabled, ctsem ignores the corresponding T0VAR row and column during fitting: its diagonal is fixed to 1e-6 and its off-diagonals to 0. This view shows the ignored diagonal as a dotted 1e-6 loop and omits its zero correlations."
               )
             )
@@ -177,10 +183,16 @@ ui <- shiny::fluidPage(
               shiny::fileInput("load_model_rds", "Load model RDS", accept = ".rds")
             )
           ),
-          shiny::tableOutput("validation_table_spec")
+          shiny::div(
+            class = "control-band",
+            shiny::tags$h4("Specification checks"),
+            ctgui_explanation_ui("validation"),
+            shiny::tableOutput("validation_table_spec")
+          )
         ),
         shiny::tabPanel(
           "Matrices",
+          ctgui_explanation_ui("matrices"),
           shiny::tabsetPanel(
             id = "matrix_group",
             type = "pills",
@@ -220,10 +232,7 @@ ui <- shiny::fluidPage(
           "Import",
           shiny::div(
             class = "control-band",
-            shiny::tags$p(
-              class = "help-note",
-              "Data should have one row per subject and measurement occasion, with an ID variable, a time variable, and one or more manifest variables to model. You may also include time-dependent predictors (covariates that change over time and have impulse effects on processes or parameters) and time-independent predictors (subject-stable covariates that linearly moderate one or more parameters)."
-            ),
+            ctgui_explanation_ui("spec_data"),
             shiny::div(
               class = "control-grid",
               shiny::selectInput("env_data", "R data.frame or matrix", choices = character()),
@@ -238,7 +247,8 @@ ui <- shiny::fluidPage(
           "Generate",
           shiny::div(
             class = "control-band",
-            shiny::tags$p(class = "help-note", "This is the data-generation workflow. TDPREDMEANS and TDPREDVAR are used here to describe generated time-dependent predictors; they are not fitted model parameters. Fitted TD predictor effects belong in TDPREDEFFECT under Model > Matrices > Predictors."),
+            ctgui_explanation_ui("generation"),
+            shiny::tags$p(class = "help-note ctgui-explain-detail", "Fitted TD predictor effects belong in TDPREDEFFECT under Model > Matrices > Predictors, not here."),
             shiny::div(
               class = "control-grid",
               shiny::numericInput("gen_subjects", "Generated subjects", value = 20, min = 1, step = 1),
@@ -313,7 +323,8 @@ ui <- shiny::fluidPage(
           shiny::div(
             class = "control-band",
             shiny::tags$h4("Optimized-fit uncertainty"),
-            shiny::tags$p(class = "help-note", "These settings are used by Fit model when Optimize is selected. They can also be applied to an existing optimized fit. Importance sampling and full bootstrap can take substantially longer."),
+            shiny::tags$p(class = "help-note", "These settings are used by Fit model when Optimize is selected, and can also be applied to an existing optimized fit."),
+            ctgui_explanation_ui("uncertainty"),
             shiny::div(
               class = "control-grid",
               shiny::selectInput("fit_uncertainty_method", arg_label("Method", "help_uncertainty_method", "ctOptimUncertainty argument: uncertainty"), choices = ctgui_uncertainty_method_choices(), selected = "hessian"),

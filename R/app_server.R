@@ -75,26 +75,8 @@ manifest_type_choices <- c(
   "Binary" = 1L
 )
 
-explanation_text <- function(key) {
-  brief <- switch(key,
-    spec_data = "Choose active-data columns or type new names for each ctsem data role. Typed names remain available when no data are loaded.",
-    matrices = "Use fixed numeric values or free labels; add ||FALSE to disable random effects where ctsem supports it.",
-    raw_visuals = "Use these plots to inspect trajectories, variable relationships, time gaps, and missingness before fitting.",
-    model_visuals = "These plots show what the current model structure implies before any fit is run.",
-    fit_registry = "Save fitted models here to compare several candidate specifications.",
-    kalman = "Prediction plots compare observed data with model predictions or smoothed latent states using ctPredict.",
-    postpred = "Posterior predictive plots compare observed data patterns against data generated from the fitted model.",
-    acf = "Residual autocorrelation helps detect predictable structure left unexplained by the model.",
-    dynamics = "Discrete parameter plots show model-implied impulse responses and dynamic propagation.",
-    NULL
-  )
-  brief
-}
-
 explain_ui <- function(key) {
-  text <- explanation_text(key)
-  if (is.null(text) || !nzchar(text)) return(NULL)
-  shiny::tags$p(class = "help-note", text)
+  ctgui_explanation_ui(key)
 }
 
 output$explain_spec_data <- shiny::renderUI(explain_ui("spec_data"))
