@@ -357,7 +357,8 @@ ui <- shiny::fluidPage(
             shiny::tags$h4("Messages"),
             shiny::div(class = "fit-log", shiny::verbatimTextOutput("fit_log_inline")),
             shiny::tags$h4("Warnings"),
-            shiny::verbatimTextOutput("fit_warnings_inline")
+            shiny::verbatimTextOutput("fit_warnings_inline"),
+            shiny::uiOutput("fit_warning_guidance")
           ),
           shiny::div(
             class = "control-band",
@@ -565,6 +566,14 @@ ui <- shiny::fluidPage(
         shiny::tabPanel("Model Code", shiny::verbatimTextOutput("code_output")),
         shiny::tabPanel("Fit Summary", shiny::verbatimTextOutput("fit_summary")),
         shiny::tabPanel("Summary Matrices", shiny::verbatimTextOutput("fit_summary_matrices")),
+        shiny::tabPanel(
+          "Reading",
+          shiny::div(
+            class = "control-band",
+            ctgui_explanation_ui("interpretation")
+          ),
+          shiny::uiOutput("fit_reading")
+        ),
         shiny::tabPanel("Fit Comparison", shiny::tableOutput("fit_comparison")),
         shiny::tabPanel("Generated Code", shiny::verbatimTextOutput("output_code"))
       )

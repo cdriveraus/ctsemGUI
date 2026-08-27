@@ -1691,6 +1691,53 @@ shiny::observeEvent(input$cancel_generate, {
 
 output$generate_log <- shiny::renderText(gen_messages())
 
+# Reading a fit in words ------------------------------------------------------
+
+# A separate panel, so nothing here interposes itself between the user and the
+# estimates. It computes only when opened, because outputs on hidden tabs are
+# suspended.
+output$fit_reading <- shiny::renderUI({
+  fit <- active_fit()
+  if (is.null(fit)) {
+    return(shiny::div(class = "help-note", "Fit a model to read it in words."))
+  }
+  spec <- current_spec()
+  notes <- tryCatch(
+    ctgui_interpret_fit(fit, current_data(), spec$id, spec$time),
+    error = function(e) NULL
+  )
+  if (!length(notes)) {
+    return(shiny::div(
+      class = "help-note",
+      "There is nothing to read from this fit. That happens when the drift matrix could not be recovered from it."
+    ))
+  }
+  shiny::div(
+    class = "reading-list",
+    lapply(notes, function(note) {
+      shiny::div(
+        class = if (identical(note$kind, "caution")) "reading-note reading-caution" else "reading-note",
+        note$text
+      )
+    })
+  )
+})
+
+output$fit_warning_guidance <- shiny::renderUI({
+  guidance <- ctgui_warning_guidance(fit_warnings())
+  if (!length(guidance)) return(NULL)
+  shiny::div(
+    class = "reading-list",
+    lapply(guidance, function(entry) {
+      shiny::div(
+        class = "reading-note",
+        shiny::tags$strong(entry$title),
+        shiny::tags$p(class = "help-note", entry$text)
+      )
+    })
+  )
+})
+
 fit_finished <- function() {
   fit_busy(FALSE)
   session$sendCustomMessage(

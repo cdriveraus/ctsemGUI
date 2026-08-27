@@ -134,3 +134,10 @@ pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-
 @media (prefers-reduced-motion: reduce) {
   .ctgui-disclosure > summary::before { transition: none; }
 }
+
+/* Readings are prose about the fit, not output from it, so they are set as
+   text rather than in the dark console blocks the numbers use. */
+.reading-list { display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
+.reading-note { background: #ffffff; border: 1px solid #d9dde3; border-left: 3px solid #2563eb; border-radius: 4px; padding: 10px 14px; line-height: 1.55; }
+.reading-note .help-note { margin: 6px 0 0; }
+.reading-caution { border-left-color: #b45309; background: #fffbeb; }

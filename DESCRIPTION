@@ -19,6 +19,7 @@ Depends:
     R (>= 4.2.0)
 Imports:
     callr,
+    Matrix,
     ctsem (>= 3.11.1),
     shiny,
     methods,

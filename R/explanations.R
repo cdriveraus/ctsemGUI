@@ -13,6 +13,20 @@
 
 ctgui_explanation_catalog <- function() {
   list(
+    interpretation = list(
+      brief = "What the estimates say, in the time units you collected your data in.",
+      detail = paste(
+        "These are readings, not conclusions, and they are here rather than",
+        "beside the estimates so they never stand in for looking at them. Each",
+        "one is arithmetic on the fitted drift matrix at its point estimate:",
+        "half-lives, the size of an effect over your median observation",
+        "interval, and the interval at which each effect is largest. The",
+        "uncertainty around all of it is in the fit summary and the dynamics",
+        "plot, which is where to go before quoting any of these numbers.",
+        "Anything the model implies at an interval you never observed is",
+        "extrapolation, and is flagged as such."
+      )
+    ),
     generate_from_fit = list(
       brief = "Data simulated from the fitted model, which most diagnostics need.",
       detail = paste(
