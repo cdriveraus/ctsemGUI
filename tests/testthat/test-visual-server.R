@@ -93,3 +93,27 @@ test_that("visual server commits layouts and graph edits through its boundary", 
     expect_equal(matrix_status(), "Visual change applied to model matrices.")
   }))
 })
+
+test_that("replacing the whole model refreshes the visual editor", {
+  # The editor rebuilds itself when the Model sub-tab is opened. Opening an
+  # example or applying a template switches the top-level tab instead, so no
+  # sub-tab change ever fires and the canvas keeps showing a model that is no
+  # longer there.
+  source <- paste(
+    readLines(ctgui_test_source_path("R", "app_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(source, "refresh_visual_editor <- function", fixed = TRUE)
+  # Every path that swaps the model wholesale has to say so: opening an
+  # example, applying a template, and moving through history.
+  expect_gte(length(gregexpr("refresh_visual_editor(", source, fixed = TRUE)[[1L]]), 3L)
+
+  # Refreshing on every commit would send the graph back mid-interaction and
+  # undo a drag in progress, so it must not be wired into commit_current_spec.
+  lines <- readLines(ctgui_test_source_path("R", "app_server.R"), warn = FALSE)
+  start <- grep("^commit_current_spec <- function", lines)
+  expect_length(start, 1L)
+  end <- start + which(lines[start:length(lines)] == "}")[1L] - 1L
+  expect_false(any(grepl("refresh_visual_editor", lines[start:end], fixed = TRUE)))
+})

@@ -1736,7 +1736,20 @@ shiny::observeEvent(input$run_fit, {
 
   fit_log_path(log_path)
   fit_log_offset(0)
-  fit_log_state(ctgui_fit_log_state("Starting a background fit..."))
+  # Julia builds and precompiles its engine the first time a given version is
+  # used, which can take several minutes and prints almost nothing while it
+  # happens. Without a word here the fit looks stalled at "Activating project".
+  opening <- if (identical(args$backend, "julia")) {
+    paste(
+      "Starting a background fit with the Julia engine.",
+      "The first fit after a ctsem or Julia update also precompiles the engine,",
+      "which can take several minutes and prints little while it runs.",
+      "Later fits reuse it and start immediately."
+    )
+  } else {
+    "Starting a background fit..."
+  }
+  fit_log_state(ctgui_fit_log_state(opening))
   publish_fit_log()
   fit_process(process)
 })
