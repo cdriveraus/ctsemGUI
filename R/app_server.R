@@ -96,6 +96,85 @@ explain_ui <- function(key) {
   ctgui_explanation_ui(key)
 }
 
+# Surviving a crash -----------------------------------------------------------
+
+# Read before anything can overwrite it. The autosave observer below fires as
+# the session initialises, so a state read later would already be this
+# session's empty starting model rather than the one being recovered.
+recoverable_state <- ctgui_autosave_read()
+
+# The model is the one thing in a session that cannot be reconstructed from
+# anything else, so it is written to the cache directory whenever it changes.
+# Commits are discrete events rather than keystrokes, so this does not write on
+# every character typed.
+#
+# An empty starting model is not written at all: it holds nothing anyone would
+# miss, and saving it would overwrite a real model left by an earlier session
+# before its owner had the chance to recover it.
+shiny::observe({
+  spec <- current_spec()
+  if (!ctgui_autosave_worth_offering(list(spec = spec))) return()
+  shiny::isolate({
+    ctgui_autosave_write(
+      spec = spec,
+      history = spec_history(),
+      data = current_data(),
+      data_name = current_data_name()
+    )
+  })
+})
+
+restore_autosave <- function(state) {
+  spec <- state$spec
+  if (!is.null(state$data)) {
+    current_data(state$data)
+    current_data_name(state$data_name %||% "Recovered data")
+  }
+  current_spec(spec)
+  spec_history(state$history %||% ctgui_history_new(spec))
+  sync_matrix_inputs_from_spec(spec)
+  refresh_visual_editor(spec)
+  fit_status_value("Model recovered. Refit when ready.")
+  shiny::showNotification("Recovered the model from your last session.", type = "message")
+}
+
+shiny::observeEvent(input$autosave_restore, {
+  shiny::removeModal()
+  if (is.null(recoverable_state)) {
+    shiny::showNotification("There was nothing left to recover.", type = "warning")
+    return()
+  }
+  restore_autosave(recoverable_state)
+})
+
+shiny::observeEvent(input$autosave_discard, {
+  ctgui_autosave_clear()
+  shiny::removeModal()
+})
+
+# Asked once, at the start, and only when there is something worth asking
+# about: a model from a different R process that has variables in it.
+if (ctgui_autosave_worth_offering(recoverable_state) &&
+    ctgui_autosave_from_other_session(recoverable_state)) {
+  session$onFlushed(function() {
+    shiny::showModal(shiny::modalDialog(
+      title = "Recover your last model?",
+      shiny::tags$p(
+        "A model from an earlier session was saved automatically and has not been opened since."
+      ),
+      shiny::tags$p(class = "help-note", ctgui_autosave_describe(recoverable_state)),
+      shiny::tags$p(
+        class = "help-note",
+        "Fits are not saved. Recovering brings back the model, its history and any data small enough to keep."
+      ),
+      footer = shiny::tagList(
+        shiny::actionButton("autosave_discard", "Start fresh"),
+        shiny::actionButton("autosave_restore", "Recover", class = "btn-primary")
+      )
+    ))
+  }, once = TRUE)
+}
+
 # The visual editor rebuilds itself when the Model sub-tab is opened, which is
 # enough while the user is navigating but not when the whole model is replaced
 # from somewhere else. Opening an example or applying a template switches the
