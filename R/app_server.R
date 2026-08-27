@@ -1179,6 +1179,35 @@ model_code <- shiny::reactive({
 output$code_output <- shiny::renderText(model_code())
 output$output_code <- shiny::renderText(workflow_code())
 
+# The same material as the generated code, arranged for someone to read. It is
+# written out as Quarto source rather than rendered, so it needs no Quarto or
+# pandoc installation and can be edited before it is rendered.
+output$download_report <- shiny::downloadHandler(
+  filename = function() {
+    paste0("ctsemgui-report-", format(Sys.time(), "%Y%m%d-%H%M"), ".qmd")
+  },
+  content = function(file) {
+    fit <- active_fit()
+    spec <- current_spec()
+    notes <- if (is.null(fit)) list() else tryCatch(
+      ctgui_interpret_fit(fit, current_data(), spec$id, spec$time),
+      error = function(e) list()
+    )
+    writeLines(
+      ctgui_report_document(
+        spec = spec,
+        source = output_data_source(),
+        snippets = output_code_snippets(),
+        notes = notes,
+        warnings = fit_warnings(),
+        latex = tryCatch(latex_source(), error = function(e) NULL),
+        has_fit = !is.null(fit)
+      ),
+      file
+    )
+  }
+)
+
 fit_comparison_stats <- ctgui_fit_comparison_stats
 
 output$fit_comparison <- shiny::renderTable({

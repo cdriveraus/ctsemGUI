@@ -13,6 +13,18 @@
 
 ctgui_explanation_catalog <- function() {
   list(
+    report = list(
+      brief = "The whole analysis as a Quarto document you can run, edit and publish.",
+      detail = paste(
+        "The report contains the model, the code that produced every result,",
+        "the diagnostics you ran, the warnings and the readings, in the order",
+        "they belong in a write-up rather than the order you happened to click",
+        "them. Because the results come from code rather than being copied in,",
+        "rendering the document reproduces the analysis instead of describing",
+        "it. It downloads as Quarto source, so it needs no Quarto installation",
+        "to produce and you can edit it before rendering."
+      )
+    ),
     interpretation = list(
       brief = "What the estimates say, in the time units you collected your data in.",
       detail = paste(

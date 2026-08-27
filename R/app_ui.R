@@ -575,7 +575,15 @@ ui <- shiny::fluidPage(
           shiny::uiOutput("fit_reading")
         ),
         shiny::tabPanel("Fit Comparison", shiny::tableOutput("fit_comparison")),
-        shiny::tabPanel("Generated Code", shiny::verbatimTextOutput("output_code"))
+        shiny::tabPanel(
+          "Generated Code",
+          shiny::div(
+            class = "control-band",
+            ctgui_explanation_ui("report"),
+            shiny::downloadButton("download_report", "Download report (.qmd)")
+          ),
+          shiny::verbatimTextOutput("output_code")
+        )
       )
     ),
     shiny::tabPanel(
