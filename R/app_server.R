@@ -1479,21 +1479,75 @@ output$raw_plot <- shiny::renderPlot({
   }
 })
 
-# Asked for when the Fit panel is first opened rather than at launch: the check
-# starts Julia and costs a few seconds, and a session that never fits should
-# never pay for it. Outputs on hidden tabs are suspended, so opening Fit is
-# what triggers it.
-output$fit_backend_controls <- shiny::renderUI({
-  julia <- ctgui_julia_status()
-  choices <- ctgui_backend_choices(julia)
+# Answering starts Julia, which costs seconds and may build the engine. The
+# question is asked in a background process as soon as the session loads and
+# the application carries on without the answer: by the time anyone reaches
+# the Fit panel it has arrived, and asking early also warms the engine cache
+# before the first fit needs it.
+julia_status <- shiny::reactiveVal(ctgui_julia_known() %||% ctgui_julia_pending())
+julia_check <- shiny::reactiveVal(NULL)
+
+julia_check_log <- shiny::reactiveVal(NULL)
+
+if (ctgui_julia_is_pending(shiny::isolate(julia_status()))) {
+  if (requireNamespace("callr", quietly = TRUE)) {
+    check_log <- ctgui_fit_log_path()
+    started <- tryCatch(
+      ctgui_background_start(ctgui_julia_check_worker, list(), check_log),
+      error = function(e) NULL
+    )
+    julia_check_log(check_log)
+    if (is.null(started)) {
+      julia_status(ctgui_julia_remember(list(
+        available = FALSE, message = "Could not check for the Julia engine."
+      )))
+    } else {
+      julia_check(started)
+    }
+  } else {
+    julia_status(ctgui_julia_remember(list(
+      available = FALSE,
+      message = "Checking for the Julia engine needs the callr package."
+    )))
+  }
+}
+
+shiny::observe({
+  process <- julia_check()
+  if (is.null(process)) return()
+  shiny::invalidateLater(500)
+  if (ctgui_fit_process_alive(process)) return()
+
+  outcome <- ctgui_fit_process_collect(process)
+  julia_check(NULL)
+  unlink(shiny::isolate(julia_check_log()))
+  julia_check_log(NULL)
+  status <- ctgui_julia_remember(ctgui_julia_status_from_check(
+    if (identical(outcome$status, "value")) outcome$value else NULL
+  ))
+  julia_status(status)
+
+  if (!isTRUE(status$available)) return()
+  # The selector starts with Stan alone because that is all that is known to
+  # work until the check comes back. Julia is added and preferred once it is
+  # confirmed, unless the user has already chosen for themselves.
+  chosen <- shiny::isolate(input$fit_backend)
+  if (!is.null(chosen) && !identical(chosen, "stan")) return()
+  shiny::updateSelectInput(
+    session, "fit_backend",
+    choices = ctgui_backend_choices(status),
+    selected = ctgui_default_backend(status)
+  )
+})
+
+output$fit_backend_status <- shiny::renderUI({
+  status <- julia_status()
   shiny::tagList(
-    shiny::selectInput(
-      "fit_backend", "Fitting engine",
-      choices = choices, selected = ctgui_default_backend(julia)
-    ),
     shiny::tags$p(
-      class = if (isTRUE(julia$available)) "help-note" else "help-note ctgui-explain-detail",
-      julia$message
+      class = if (ctgui_julia_is_pending(status)) "help-note" else {
+        if (isTRUE(status$available)) "help-note" else "help-note ctgui-explain-detail"
+      },
+      status$message
     ),
     shiny::tags$p(
       class = "help-note ctgui-explain-detail",
@@ -1504,7 +1558,9 @@ output$fit_backend_controls <- shiny::renderUI({
 
 fit_backend <- function() {
   selected <- input$fit_backend
-  if (is.null(selected) || !nzchar(selected)) return(ctgui_default_backend())
+  if (is.null(selected) || !nzchar(selected)) {
+    return(ctgui_default_backend(shiny::isolate(julia_status())))
+  }
   selected
 }
 
@@ -1758,11 +1814,20 @@ shiny::observeEvent(input$run_fit, {
 # is not that, so a fit nobody is waiting for is stopped here rather than left
 # to finish into a session that no longer exists.
 session$onSessionEnded(function() {
-  process <- shiny::isolate(fit_process())
-  if (ctgui_fit_process_alive(process)) {
-    invisible(tryCatch(process$kill(), error = function(e) NULL))
+  for (handle in list(
+    shiny::isolate(fit_process()),
+    shiny::isolate(gen_process()),
+    shiny::isolate(julia_check())
+  )) {
+    if (ctgui_fit_process_alive(handle)) {
+      invisible(tryCatch(handle$kill(), error = function(e) NULL))
+    }
   }
-  unlink(shiny::isolate(fit_log_path()))
+  unlink(c(
+    shiny::isolate(fit_log_path()),
+    shiny::isolate(gen_log_path()),
+    shiny::isolate(julia_check_log())
+  ))
 })
 
 # Polling is what turns the child's log file into a live message window. It

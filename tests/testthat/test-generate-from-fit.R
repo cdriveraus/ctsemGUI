@@ -45,9 +45,10 @@ test_that("the fit panel offers an engine and the fit carries the choice", {
   )
 
   expect_match(server_source, "backend = fit_backend()", fixed = TRUE)
-  # The availability check starts Julia and costs a few seconds, so it belongs
-  # behind an output that only renders when the Fit panel is opened.
-  expect_match(server_source, "output$fit_backend_controls", fixed = TRUE)
+  # The availability check starts Julia and costs seconds, so it runs in a
+  # background process as the session loads rather than blocking anything.
+  expect_match(server_source, "ctgui_julia_check_worker", fixed = TRUE)
+  expect_match(server_source, "output$fit_backend_status", fixed = TRUE)
 })
 
 test_that("a first Julia fit warns that it may precompile", {

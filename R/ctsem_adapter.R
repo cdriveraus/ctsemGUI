@@ -232,15 +232,63 @@ ctgui_ctsem_dormant_t0var <- function(spec, build) {
 
 ctgui_julia_cache <- new.env(parent = emptyenv())
 
-# Whether ctsem can fit through Julia here. The first check starts Julia and
-# costs a few seconds, so the answer is remembered. It is asked for when the
-# Fit panel is first opened rather than at launch, so a session that never
-# fits never pays for it.
+# Whether ctsem can fit through Julia here.
+#
+# Answering starts Julia, which costs seconds and may build the engine, so the
+# application asks in a background process as soon as it loads and carries on
+# without the answer. By the time anyone reaches the Fit panel it has arrived,
+# and asking early also warms the engine cache before the first fit needs it.
+# The answer is remembered so a second session in the same R process is free.
 ctgui_julia_status <- function(refresh = FALSE) {
   if (!isTRUE(refresh) && !is.null(ctgui_julia_cache$status)) return(ctgui_julia_cache$status)
-  status <- ctgui_julia_status_uncached()
+  ctgui_julia_remember(ctgui_julia_status_uncached())
+}
+
+ctgui_julia_known <- function() ctgui_julia_cache$status
+
+ctgui_julia_remember <- function(status) {
   ctgui_julia_cache$status <- status
   status
+}
+
+# The answer is not in yet. Distinguished from a negative answer so the panel
+# can say it is still looking rather than that Julia is unavailable.
+ctgui_julia_pending <- function() {
+  list(
+    available = NA,
+    pending = TRUE,
+    message = "Looking for the Julia engine..."
+  )
+}
+
+ctgui_julia_is_pending <- function(status) {
+  isTRUE(status$pending) || (length(status$available) == 1L && is.na(status$available))
+}
+
+# Runs in the child. Only ctsem is needed, so the worker does not depend on
+# ctsemGUI being loadable there.
+ctgui_julia_check_worker <- function(args) {
+  if (!requireNamespace("ctsem", quietly = TRUE)) return(NULL)
+  if (!"ctJuliaStatus" %in% getNamespaceExports("ctsem")) return(NULL)
+  tryCatch(ctsem::ctJuliaStatus(), error = function(e) NULL)
+}
+
+# Turn whatever the child reported into the shape the panel expects. A child
+# that failed or returned nothing means Julia is not usable here, which is a
+# real answer rather than a reason to keep waiting.
+ctgui_julia_status_from_check <- function(status) {
+  if (is.null(status) || !is.list(status) || !isTRUE(status$available)) {
+    return(list(
+      available = FALSE,
+      message = "Julia is not set up. Run ctsem::ctJuliaInstall() to use it."
+    ))
+  }
+  list(
+    available = TRUE,
+    version = status$julia %||% "",
+    threads = status$threads %||% NA_integer_,
+    message = paste0("Julia ", status$julia %||% "", " is available.")
+  )
 }
 
 ctgui_julia_status_uncached <- function() {

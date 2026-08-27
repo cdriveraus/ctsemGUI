@@ -6,6 +6,9 @@ ctgui_ctsem_fit_statistics <- getFromNamespace("ctgui_ctsem_fit_statistics", "ct
 ctgui_optim_uncertainty_eligibility <- getFromNamespace("ctgui_optim_uncertainty_eligibility", "ctsemGUI")
 ctgui_backend_choices <- getFromNamespace("ctgui_backend_choices", "ctsemGUI")
 ctgui_default_backend <- getFromNamespace("ctgui_default_backend", "ctsemGUI")
+ctgui_julia_pending <- getFromNamespace("ctgui_julia_pending", "ctsemGUI")
+ctgui_julia_is_pending <- getFromNamespace("ctgui_julia_is_pending", "ctsemGUI")
+ctgui_julia_status_from_check <- getFromNamespace("ctgui_julia_status_from_check", "ctsemGUI")
 
 # A Julia fit as ctsem 3.12 returns it: no stanfit, stanmodel or standata, the
 # engine recorded on the object, and the fitted data carried alongside.
@@ -88,8 +91,8 @@ test_that("Julia is offered and preferred only when it is actually available", {
 })
 
 test_that("the Julia check is only made once", {
-  # Asking starts Julia and costs a few seconds; a reactive read would pay it
-  # over and over.
+  # Asking starts Julia and costs seconds; a reactive read would pay it over
+  # and over.
   cache <- getFromNamespace("ctgui_julia_cache", "ctsemGUI")
   old <- cache$status
   on.exit({
@@ -98,4 +101,58 @@ test_that("the Julia check is only made once", {
 
   cache$status <- list(available = TRUE, message = "cached answer")
   expect_equal(getFromNamespace("ctgui_julia_status", "ctsemGUI")()$message, "cached answer")
+  expect_equal(getFromNamespace("ctgui_julia_known", "ctsemGUI")()$message, "cached answer")
+})
+
+test_that("an unanswered check is not the same as a negative answer", {
+  # Until the background check reports, the panel has to say it is still
+  # looking rather than that Julia is unavailable.
+  pending <- ctgui_julia_pending()
+  expect_true(ctgui_julia_is_pending(pending))
+  expect_true(is.na(pending$available))
+
+  # Nothing is offered or preferred on the strength of an answer not yet given.
+  expect_equal(unname(ctgui_backend_choices(pending)), "stan")
+  expect_equal(ctgui_default_backend(pending), "stan")
+
+  expect_false(ctgui_julia_is_pending(list(available = TRUE)))
+  expect_false(ctgui_julia_is_pending(list(available = FALSE)))
+})
+
+test_that("whatever the check reports becomes a definite answer", {
+  positive <- ctgui_julia_status_from_check(list(available = TRUE, julia = "1.12.5", threads = 1L))
+  expect_true(positive$available)
+  expect_match(positive$message, "1.12.5", fixed = TRUE)
+
+  # A child that crashed, returned nothing, or reported unavailable all mean
+  # Julia is not usable here, which is an answer rather than a reason to wait.
+  for (reported in list(NULL, list(available = FALSE), "nonsense")) {
+    negative <- ctgui_julia_status_from_check(reported)
+    expect_false(negative$available)
+    expect_false(ctgui_julia_is_pending(negative))
+  }
+})
+
+test_that("the check worker needs only ctsem", {
+  # It runs in a child started with package = FALSE.
+  worker <- getFromNamespace("ctgui_julia_check_worker", "ctsemGUI")
+  body_text <- paste(deparse(body(worker)), collapse = " ")
+  expect_match(body_text, "ctsem::ctJuliaStatus", fixed = TRUE)
+  expect_false(grepl("ctgui_", body_text, fixed = TRUE))
+})
+
+test_that("the check runs in the background and never blocks the panel", {
+  server_lines <- readLines(ctgui_test_source_path("R", "app_server.R"), warn = FALSE)
+  ui_lines <- readLines(ctgui_test_source_path("R", "app_ui.R"), warn = FALSE)
+  server <- paste(server_lines, collapse = " ")
+
+  # Started as the session loads, not when the Fit panel is opened.
+  expect_match(server, "ctgui_julia_check_worker", fixed = TRUE)
+  expect_match(server, "updateSelectInput(", fixed = TRUE)
+
+  # The selector is static UI, so a late answer updates it rather than
+  # re-rendering it and discarding a choice the user already made.
+  expect_true(any(grepl('"fit_backend"', ui_lines, fixed = TRUE)))
+  expect_true(any(grepl("shiny::selectInput(", ui_lines, fixed = TRUE)))
+  expect_false(grepl("output$fit_backend_controls", server, fixed = TRUE))
 })

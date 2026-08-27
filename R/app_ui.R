@@ -322,7 +322,13 @@ ui <- shiny::fluidPage(
               shiny::checkboxInput("fit_priors", arg_label("priors", "help_fit_priors", "ctFit argument: priors"), value = FALSE),
               shiny::numericInput("fit_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_cores", "ctFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::textAreaInput("fit_extra_args", arg_label("Extra ctFit arguments", "help_ctFit", "Full ctFit help"), value = "", height = "70px"),
-              shiny::uiOutput("fit_backend_controls"),
+              # Stan alone until the background check confirms Julia; the
+              # server adds Julia and prefers it once it is known to work.
+              shiny::selectInput(
+                "fit_backend", "Fitting engine",
+                choices = c("Stan" = "stan"), selected = "stan"
+              ),
+              shiny::uiOutput("fit_backend_status"),
               shiny::checkboxInput("fit_completion_beep", "Play a sound when fitting finishes", value = FALSE),
               shiny::checkboxInput("fit_async", "Fit in the background", value = TRUE),
               shiny::checkboxInput(
