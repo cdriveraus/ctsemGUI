@@ -119,7 +119,23 @@ ctgui_build_ui <- function() {
     ),
     shiny::div(
       class = "control-band",
-      shiny::tags$h4("Model shape"),
+      # In extend mode the template describes only the processes being added,
+      # not the model as a whole. Reading "Model shape" there suggests the
+      # existing model is about to be reshaped, which is the opposite of what
+      # happens.
+      shiny::conditionalPanel(
+        "input.build_mode != 'extend'",
+        shiny::tags$h4("Model shape"),
+        shiny::tags$p(class = "help-note", "The shape of the model you are about to build.")
+      ),
+      shiny::conditionalPanel(
+        "input.build_mode == 'extend'",
+        shiny::tags$h4("Shape of the processes you are adding"),
+        shiny::tags$p(
+          class = "help-note",
+          "This describes only the new processes. The model you already have keeps its own shape and none of its parameters change."
+        )
+      ),
       ctgui_blueprint_choice_ui()
     ),
     shiny::div(

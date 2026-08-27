@@ -105,10 +105,11 @@ ctgui_example_catalog <- function() {
         )
       ),
       generation_note = paste(
-        "The near-zero drift and diffusion entries are not part of the model:",
-        "ctGenerate needs an invertible system with non-degenerate noise, and a",
-        "growth curve has neither. The model you are given has them at exactly",
-        "zero, which is the model actually being fitted."
+        "Two of the values above are a tiny number rather than zero. That is",
+        "only so the data could be simulated: ctsem's simulator cannot handle a",
+        "process with no random variation at all. The model you are fitting has",
+        "them at exactly zero, which is what a growth curve means. You can",
+        "ignore them."
       ),
       generate = list(n.subjects = 80, Tpoints = 8, dtmean = 1, logdtsd = 0.2, burnin = 0)
     ),
@@ -175,9 +176,10 @@ ctgui_example_catalog <- function() {
         )
       ),
       generation_note = paste(
-        "The near-zero entries on the trend processes are there because",
-        "ctGenerate needs an invertible system with non-degenerate noise; a",
-        "constant trend has neither. They are not part of what is being fitted."
+        "The tiny values on the trend processes are only so the data could be",
+        "simulated: ctsem's simulator cannot handle a process with no random",
+        "variation at all. They are not part of what is being fitted, and you",
+        "can ignore them."
       ),
       model = list(structure = "coupled", processes = c("skill", "effort"), indicators = 1L),
       generate = list(n.subjects = 60, Tpoints = 14, dtmean = 1, logdtsd = 0.2, burnin = 5)

@@ -14,7 +14,14 @@ fit_busy <- shiny::reactiveVal(FALSE)
 fit_process <- shiny::reactiveVal(NULL)
 fit_log_path <- shiny::reactiveVal(NULL)
 fit_log_offset <- shiny::reactiveVal(0)
+fit_log_state <- shiny::reactiveVal(ctgui_fit_log_state())
 fit_cancelled <- shiny::reactiveVal(FALSE)
+gen_process <- shiny::reactiveVal(NULL)
+gen_log_path <- shiny::reactiveVal(NULL)
+gen_log_offset <- shiny::reactiveVal(0)
+gen_log_state <- shiny::reactiveVal(ctgui_fit_log_state())
+gen_cancelled <- shiny::reactiveVal(FALSE)
+gen_messages <- shiny::reactiveVal("Nothing has been generated from a fit yet.")
 fit_messages <- shiny::reactiveVal("No fit has been run.")
 fit_warnings <- shiny::reactiveVal("No warnings.")
 fit_status_value <- shiny::reactiveVal("No fit available.")
@@ -89,6 +96,19 @@ explain_ui <- function(key) {
   ctgui_explanation_ui(key)
 }
 
+# The visual editor rebuilds itself when the Model sub-tab is opened, which is
+# enough while the user is navigating but not when the whole model is replaced
+# from somewhere else. Opening an example or applying a template switches the
+# top-level tab, so the sub-tab never changes and the canvas keeps showing the
+# model that is no longer there -- blank, for a model that started empty.
+#
+# This is called only where a wholesale replacement happens. Refreshing on
+# every commit would send the graph back mid-interaction and undo a drag the
+# user was in the middle of.
+refresh_visual_editor <- function(spec = current_spec()) {
+  invisible(tryCatch(visual_server$refresh(spec), error = function(e) NULL))
+}
+
 # Model history ---------------------------------------------------------------
 
 # Moving through history restores a specification that was already committed,
@@ -105,7 +125,7 @@ restore_history <- function(history) {
   sync_matrix_inputs_from_spec(spec)
   # visual_server is created further down this closure; restore_history only
   # runs from an observer, which is long after the server body has finished.
-  visual_server$refresh(spec)
+  refresh_visual_editor(spec)
   fit_status_value("The model changed. Refit when ready.")
 }
 
@@ -180,6 +200,7 @@ shiny::observeEvent(input$example_load, {
   current_data(loaded$data)
   current_data_name(ctgui_example_data_label(example))
   commit_current_spec(loaded$spec, reason = "example")
+  refresh_visual_editor(loaded$spec)
   fit_status_value("Example loaded. Fit when ready.")
   shiny::showNotification(paste(example$title, "opened."), type = "message")
   shiny::updateTabsetPanel(session, "workflow", selected = "Model")
@@ -227,6 +248,7 @@ shiny::observeEvent(input$build_apply, {
     return()
   }
   commit_current_spec(updated, reason = "blueprint")
+  refresh_visual_editor(updated)
   fit_status_value("The model changed. Refit when ready.")
   matrix_status("Built from a template. Every matrix cell was set by the template.")
   shiny::showNotification(
@@ -1457,6 +1479,35 @@ output$raw_plot <- shiny::renderPlot({
   }
 })
 
+# Asked for when the Fit panel is first opened rather than at launch: the check
+# starts Julia and costs a few seconds, and a session that never fits should
+# never pay for it. Outputs on hidden tabs are suspended, so opening Fit is
+# what triggers it.
+output$fit_backend_controls <- shiny::renderUI({
+  julia <- ctgui_julia_status()
+  choices <- ctgui_backend_choices(julia)
+  shiny::tagList(
+    shiny::selectInput(
+      "fit_backend", "Fitting engine",
+      choices = choices, selected = ctgui_default_backend(julia)
+    ),
+    shiny::tags$p(
+      class = if (isTRUE(julia$available)) "help-note" else "help-note ctgui-explain-detail",
+      julia$message
+    ),
+    shiny::tags$p(
+      class = "help-note ctgui-explain-detail",
+      "Both engines fit the same model and report the same likelihood. Julia is generally faster; Stan is the long-standing default and is what to fall back to if a fit behaves oddly."
+    )
+  )
+})
+
+fit_backend <- function() {
+  selected <- input$fit_backend
+  if (is.null(selected) || !nzchar(selected)) return(ctgui_default_backend())
+  selected
+}
+
 fit_call_args <- function(data) {
   args <- list(
     datalong = data,
@@ -1464,6 +1515,7 @@ fit_call_args <- function(data) {
     optimize = input$fit_optimize,
     priors = input$fit_priors,
     cores = input$fit_cores,
+    backend = fit_backend(),
     plot = FALSE
   )
   extra <- parse_extra_args(input$fit_extra_args)
@@ -1479,11 +1531,109 @@ fit_call_args <- function(data) {
 fit_succeeded <- function(fit) {
   current_fit(fit)
   clear_diagnostics()
-  fit_status_value("Fit available (ctsem::ctFit result).")
+  fit_status_value(paste0(
+    "Fit available (", ctgui_ctsem_fit_backend_name(fit), " backend)."
+  ))
   uncertainty_status_value("Uncertainty was estimated as part of fitting.")
   record_output_code("fit", output_code_snippet("fit"))
   shiny::showNotification("Fit complete", type = "message")
+  # Almost every diagnostic needs generated data, so producing it once here
+  # saves the user discovering that one panel at a time and running it by hand.
+  if (isTRUE(input$fit_generate_after)) start_generate_from_fit(fit)
 }
+
+# Generating from a fit is as slow as a fit and equally worth watching, so it
+# uses the same background process and the same live log.
+start_generate_from_fit <- function(fit) {
+  if (is.null(fit)) return(invisible(FALSE))
+  if (ctgui_fit_process_alive(shiny::isolate(gen_process()))) return(invisible(FALSE))
+  if (!requireNamespace("callr", quietly = TRUE)) return(invisible(FALSE))
+
+  args <- tryCatch(
+    append_extra_args(
+      list(
+        fit = fit,
+        nsamples = input$fit_gen_samples %||% 200,
+        fullposterior = isTRUE(input$fit_gen_fullposterior),
+        cores = generate_from_fit_cores()
+      ),
+      input$fit_gen_extra_args
+    ),
+    error = function(e) e
+  )
+  if (inherits(args, "error")) {
+    diagnostics_status(conditionMessage(args))
+    return(invisible(FALSE))
+  }
+
+  log_path <- ctgui_fit_log_path()
+  process <- tryCatch(ctgui_generate_process_start(args, log_path), error = function(e) e)
+  if (inherits(process, "error")) {
+    diagnostics_status(conditionMessage(process))
+    return(invisible(FALSE))
+  }
+  gen_log_path(log_path)
+  gen_log_offset(0)
+  gen_log_state(ctgui_fit_log_state("Generating samples from the fitted model..."))
+  gen_messages(ctgui_fit_log_text(shiny::isolate(gen_log_state())))
+  diagnostics_status("Generating samples from the fitted model...")
+  gen_process(process)
+  invisible(TRUE)
+}
+
+drain_gen_log <- function() {
+  chunk <- ctgui_fit_log_read(
+    shiny::isolate(gen_log_path()), shiny::isolate(gen_log_offset())
+  )
+  if (!nzchar(chunk$text)) return(invisible(FALSE))
+  gen_log_offset(chunk$offset)
+  gen_log_state(ctgui_fit_log_append(shiny::isolate(gen_log_state()), chunk$text))
+  gen_messages(ctgui_fit_log_text(shiny::isolate(gen_log_state())))
+  invisible(TRUE)
+}
+
+shiny::observe({
+  process <- gen_process()
+  if (is.null(process)) return()
+  shiny::invalidateLater(500)
+  drain_gen_log()
+  if (ctgui_fit_process_alive(process)) return()
+  drain_gen_log()
+
+  outcome <- ctgui_fit_process_collect(process, cancelled = isTRUE(shiny::isolate(gen_cancelled())))
+  gen_process(NULL)
+  unlink(shiny::isolate(gen_log_path()))
+  gen_log_path(NULL)
+
+  if (identical(outcome$status, "cancelled")) {
+    diagnostics_status("Generation stopped.")
+  } else if (identical(outcome$status, "error")) {
+    diagnostics_status(paste("Generation failed:", conditionMessage(outcome$error)))
+    gen_log_state(ctgui_fit_log_append(
+      shiny::isolate(gen_log_state()),
+      paste0("\n", conditionMessage(outcome$error), "\n")
+    ))
+    gen_messages(ctgui_fit_log_text(shiny::isolate(gen_log_state())))
+  } else {
+    replace_active_fit(outcome$value)
+    generated_fit(ctgui_ctsem_fit_generated(outcome$value))
+    diagnostics_status("Fit-generated data available.")
+    record_output_code("generate_from_fit", output_code_snippet("generate_from_fit"))
+  }
+})
+
+shiny::observeEvent(input$cancel_generate, {
+  process <- gen_process()
+  if (!ctgui_fit_process_alive(process)) {
+    shiny::showNotification("No generation is running.", type = "warning")
+    return()
+  }
+  gen_cancelled(TRUE)
+  diagnostics_status("Stopping generation...")
+  invisible(tryCatch(process$kill(), error = function(e) NULL))
+})
+
+output$generate_log <- shiny::renderText(gen_messages())
 
 fit_finished <- function() {
   fit_busy(FALSE)
@@ -1495,6 +1645,30 @@ fit_finished <- function() {
 
 fit_in_background <- function() {
   isTRUE(input$fit_async %||% TRUE) && requireNamespace("callr", quietly = TRUE)
+}
+
+# Warnings are pulled out of the fit's output into the panel that exists for
+# them. Left only in the message stream, the box a user checks stays empty
+# while the thing they need is buried in a few hundred lines.
+publish_fit_log <- function() {
+  state <- shiny::isolate(fit_log_state())
+  fit_messages(ctgui_fit_log_text(state))
+  warnings <- ctgui_fit_log_warnings(state$lines)
+  fit_warnings(if (length(warnings)) paste(warnings, collapse = "\n") else "No warnings.")
+}
+
+# Read whatever the child has written since the last read and render it. The
+# incomplete tail of a line is carried inside the state, so a progress line
+# caught mid-rewrite is shown once, finished, rather than once per poll.
+drain_fit_log <- function() {
+  chunk <- ctgui_fit_log_read(
+    shiny::isolate(fit_log_path()), shiny::isolate(fit_log_offset())
+  )
+  if (!nzchar(chunk$text)) return(invisible(FALSE))
+  fit_log_offset(chunk$offset)
+  fit_log_state(ctgui_fit_log_append(shiny::isolate(fit_log_state()), chunk$text))
+  publish_fit_log()
+  invisible(TRUE)
 }
 
 shiny::observeEvent(input$run_fit, {
@@ -1562,7 +1736,8 @@ shiny::observeEvent(input$run_fit, {
 
   fit_log_path(log_path)
   fit_log_offset(0)
-  fit_messages("Starting a background fit...\n")
+  fit_log_state(ctgui_fit_log_state("Starting a background fit..."))
+  publish_fit_log()
   fit_process(process)
 })
 
@@ -1584,25 +1759,13 @@ shiny::observe({
   if (is.null(process)) return()
   shiny::invalidateLater(500)
 
-  chunk <- ctgui_fit_log_read(shiny::isolate(fit_log_path()), shiny::isolate(fit_log_offset()))
-  if (nzchar(chunk$text)) {
-    fit_log_offset(chunk$offset)
-    fit_messages(ctgui_fit_log_tail(paste0(
-      shiny::isolate(fit_messages()), ctgui_fit_log_clean(chunk$text)
-    )))
-  }
+  drain_fit_log()
 
   if (ctgui_fit_process_alive(process)) return()
 
   # The process has exited. Read whatever it wrote between the last poll and
   # exiting before reporting, so the reason for a failure is not lost.
-  final <- ctgui_fit_log_read(shiny::isolate(fit_log_path()), shiny::isolate(fit_log_offset()))
-  if (nzchar(final$text)) {
-    fit_log_offset(final$offset)
-    fit_messages(ctgui_fit_log_tail(paste0(
-      shiny::isolate(fit_messages()), ctgui_fit_log_clean(final$text)
-    )))
-  }
+  drain_fit_log()
 
   cancelled <- isTRUE(shiny::isolate(fit_cancelled()))
   outcome <- ctgui_fit_process_collect(process, cancelled = cancelled)
@@ -1616,9 +1779,11 @@ shiny::observe({
   } else if (identical(outcome$status, "error")) {
     fit_status_value("Fit failed.")
     shiny::showNotification(conditionMessage(outcome$error), type = "error")
-    fit_messages(ctgui_fit_log_tail(paste0(
-      shiny::isolate(fit_messages()), "\n", conditionMessage(outcome$error)
-    )))
+    fit_log_state(ctgui_fit_log_append(
+      shiny::isolate(fit_log_state()),
+      paste0("\n", conditionMessage(outcome$error), "\n")
+    ))
+    publish_fit_log()
   } else {
     fit_succeeded(outcome$value)
   }

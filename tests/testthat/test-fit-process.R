@@ -1,3 +1,9 @@
+ctgui_fit_log_overwrite <- getFromNamespace("ctgui_fit_log_overwrite", "ctsemGUI")
+ctgui_fit_log_state <- getFromNamespace("ctgui_fit_log_state", "ctsemGUI")
+ctgui_fit_log_append <- getFromNamespace("ctgui_fit_log_append", "ctsemGUI")
+ctgui_fit_log_text <- getFromNamespace("ctgui_fit_log_text", "ctsemGUI")
+ctgui_fit_log_warnings <- getFromNamespace("ctgui_fit_log_warnings", "ctsemGUI")
+ctgui_fit_log_collapse <- getFromNamespace("ctgui_fit_log_collapse", "ctsemGUI")
 ctgui_fit_log_read <- getFromNamespace("ctgui_fit_log_read", "ctsemGUI")
 ctgui_fit_log_clean <- getFromNamespace("ctgui_fit_log_clean", "ctsemGUI")
 ctgui_fit_log_tail <- getFromNamespace("ctgui_fit_log_tail", "ctsemGUI")
@@ -32,12 +38,61 @@ test_that("a missing log reads as empty rather than failing", {
   expect_equal(ctgui_fit_log_read(NULL, 0)$text, "")
 })
 
-test_that("progress rewritten in place becomes readable lines", {
+test_that("progress rewritten in place stays one line", {
   # ctsem reports optimiser progress by overwriting one line with a carriage
-  # return. Left alone that arrives as a single unreadable run of text.
-  expect_equal(ctgui_fit_log_clean("iter 1\riter 2\riter 3"), "iter 1\niter 2\niter 3")
+  # return, the way a terminal shows a counter ticking in place. Turning each
+  # rewrite into its own line reproduces exactly the flood the console avoids:
+  # a single fit rewrites its progress line a few hundred times.
+  expect_equal(ctgui_fit_log_clean("iter 1\riter 2\riter 3"), "iter 3")
   expect_equal(ctgui_fit_log_clean("line\r\nnext"), "line\nnext")
   expect_equal(ctgui_fit_log_clean(""), "")
+
+  # A shorter rewrite leaves the tail of what it overwrote, as a terminal does.
+  expect_equal(ctgui_fit_log_overwrite("abcdef\rXY"), "XYcdef")
+  expect_equal(ctgui_fit_log_overwrite("plain"), "plain")
+})
+
+test_that("a progress line split across reads is rendered once, finished", {
+  # A read of the log can stop anywhere, including part way through a line the
+  # child is still overwriting.
+  state <- ctgui_fit_log_state()
+  state <- ctgui_fit_log_append(state, "prog 1\rprog 2")
+  expect_equal(ctgui_fit_log_text(state), "prog 2")
+
+  state <- ctgui_fit_log_append(state, "\rprog 3\ndone")
+  expect_equal(ctgui_fit_log_text(state), "prog 3\ndone")
+
+  state <- ctgui_fit_log_append(state, " line\nnext\n")
+  expect_equal(ctgui_fit_log_text(state), "prog 3\ndone line\nnext")
+})
+
+test_that("repeated identical lines are counted rather than repeated", {
+  # Cluster workers announce themselves and repeat their startup warnings once
+  # per worker per pass, which says the same thing many times over.
+  state <- ctgui_fit_log_append(
+    ctgui_fit_log_state(), "worker up\nworker up\nworker up\nfitting\n"
+  )
+  expect_equal(ctgui_fit_log_text(state), "worker up   (x3)\nfitting")
+})
+
+test_that("warnings are pulled out of the output into their own panel", {
+  # Left only in the message stream, the box a user checks for warnings stays
+  # empty while the thing they need is buried in a few hundred lines.
+  lines <- c(
+    "fitting", "Warning message:", "Hessian required numerical repair", "",
+    "more output", "Warning in ctFit(...) : something odd",
+    "Warning messages:", "1: first thing", "2: second thing", "", "end"
+  )
+  warnings <- ctgui_fit_log_warnings(lines)
+
+  expect_true("Hessian required numerical repair" %in% warnings)
+  expect_true("Warning in ctFit(...) : something odd" %in% warnings)
+  expect_true("1: first thing" %in% warnings)
+  expect_false("fitting" %in% warnings)
+  expect_false("end" %in% warnings)
+
+  expect_equal(ctgui_fit_log_warnings(character()), character())
+  expect_equal(ctgui_fit_log_warnings(c("all", "quiet")), character())
 })
 
 test_that("only the recent tail of a long log is kept", {

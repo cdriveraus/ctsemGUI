@@ -83,8 +83,14 @@ test_that("values added only to make generation possible are disclosed", {
   # that is not part of the model and must not read as though it were.
   for (id in c("growth", "ignored_trend")) {
     example <- ctgui_example(id)
-    expect_true(nzchar(example$generation_note %||% ""), info = id)
-    expect_match(ctgui_example_truth_note(example), "ctGenerate needs", fixed = TRUE)
+    note <- example$generation_note %||% ""
+    expect_true(nzchar(note), info = id)
+    # The reader has to be told these values are an artefact of simulating, not
+    # part of the model, and told it without needing to know what a singular
+    # drift matrix is.
+    expect_match(note, "only so the data could be simulated", fixed = TRUE)
+    expect_match(note, "ignore them", fixed = TRUE)
+    expect_true(grepl(note, ctgui_example_truth_note(example), fixed = TRUE), info = id)
   }
 })
 

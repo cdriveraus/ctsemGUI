@@ -4,7 +4,8 @@ ctgui_ctsem_capabilities <- function() {
   required <- c("ctModel", "ctModelMatrices")
   optional <- c("ctFit", "ctModelLatex", "ctGenerate", "ctGenerateFromFit", "ctOptimUncertainty",
     "ctSummaryMatrices", "ctFitCovCheck", "ctFitCovCheckPlot", "ctPredict",
-    "ctPredictTIP", "ctPostPredPlots", "ctACFresiduals", "ctDiscretePars", "plotctACF")
+    "ctPredictTIP", "ctPostPredPlots", "ctACFresiduals", "ctDiscretePars", "plotctACF",
+    "ctJuliaStatus", "ctJuliaInstall")
   installed <- requireNamespace("ctsem", quietly = TRUE)
   exports <- if (installed) getNamespaceExports("ctsem") else character()
   list(installed = installed,
@@ -111,14 +112,42 @@ ctgui_ctsem_fit_backend <- function(fit, default = NULL) {
   ), default)
 }
 
+# The engine's own name for itself, for display. A Julia fit records it
+# directly; a Stan fit is identified by its class.
+ctgui_ctsem_fit_backend_name <- function(fit) {
+  engine <- ctgui_ctsem_fit_engine(fit)
+  if (is.na(engine)) return("unknown")
+  recorded <- ctgui_ctsem_fit_value(fit, list(c("backend")))
+  if (is.character(recorded) && length(recorded) == 1L && nzchar(recorded)) return(recorded)
+  engine
+}
+
+# Which engine produced this fit. ctsem can fit through Stan or through Julia,
+# and the two produce differently shaped objects, so anything that reaches into
+# a fit has to know which one it has rather than assuming Stan.
+ctgui_ctsem_fit_engine <- function(fit) {
+  if (is.null(fit)) return(NA_character_)
+  if (inherits(fit, "ctJuliaFit")) return("julia")
+  if (inherits(fit, "ctStanFit")) return("stan")
+  NA_character_
+}
+
 ctgui_ctsem_fit_is_sampled <- function(fit) {
   backend <- ctgui_ctsem_fit_backend(fit)
   sim <- ctgui_ctsem_object_path(backend, "sim", default = NULL)
   length(sim) > 0L
 }
 
+# stanfit, stanmodel and standata exist only on a Stan fit. Asking a Julia fit
+# for them reports it as broken when it is merely a different shape.
+ctgui_ctsem_fit_required_components <- function(fit) {
+  if (identical(ctgui_ctsem_fit_engine(fit), "julia")) return(character())
+  c("stanfit", "stanmodel", "standata")
+}
+
 ctgui_ctsem_fit_missing_components <- function(fit,
-    required = c("stanfit", "stanmodel", "standata")) {
+    required = ctgui_ctsem_fit_required_components(fit)) {
+  if (!length(required)) return(character())
   required[!vapply(required, function(name) {
     !is.null(ctgui_ctsem_fit_value(fit, list(
       c(name), c("stanfit", name)
@@ -164,6 +193,13 @@ ctgui_ctsem_fit_statistics <- function(fit) {
     suppressWarnings(as.integer(ctgui_ctsem_numeric_scalar(ctgui_ctsem_fit_value(
       fit, list(c("fitStatistics", "nobs"), c("nobs")), NA_real_))))
   }
+  if (is.na(nobs) && identical(ctgui_ctsem_fit_engine(fit), "julia")) {
+    # A Julia fit keeps no llrow, but it does carry the data it was fitted to.
+    # Its row count matches what the Stan path reports for the same fit, which
+    # is what makes BIC comparable across the two engines.
+    fitted_data <- ctgui_ctsem_fit_value(fit, list(c("data")))
+    if (is.data.frame(fitted_data)) nobs <- as.integer(nrow(fitted_data))
+  }
 
   if (is.na(loglik)) {
     summary_fit <- tryCatch(summary(fit), error = function(error) NULL)
@@ -192,4 +228,48 @@ ctgui_ctsem_dormant_t0var <- function(spec, build) {
   model <- build()
   if (!is.null(saved)) spec$matrices[["T0VAR"]] <- saved
   list(spec = spec, model = model)
+}
+
+ctgui_julia_cache <- new.env(parent = emptyenv())
+
+# Whether ctsem can fit through Julia here. The first check starts Julia and
+# costs a few seconds, so the answer is remembered. It is asked for when the
+# Fit panel is first opened rather than at launch, so a session that never
+# fits never pays for it.
+ctgui_julia_status <- function(refresh = FALSE) {
+  if (!isTRUE(refresh) && !is.null(ctgui_julia_cache$status)) return(ctgui_julia_cache$status)
+  status <- ctgui_julia_status_uncached()
+  ctgui_julia_cache$status <- status
+  status
+}
+
+ctgui_julia_status_uncached <- function() {
+  if (!ctgui_has_ctsem()) return(list(available = FALSE, message = "ctsem is not installed."))
+  if (!isTRUE(ctgui_ctsem_capabilities()$optional[["ctJuliaStatus"]])) {
+    return(list(available = FALSE, message = "This ctsem version has no Julia backend."))
+  }
+  status <- tryCatch(ctgui_ctsem_call("ctJuliaStatus"), error = function(e) e)
+  if (inherits(status, "error")) {
+    return(list(available = FALSE, message = paste("Julia is unavailable:", conditionMessage(status))))
+  }
+  if (!isTRUE(status$available)) {
+    return(list(
+      available = FALSE,
+      message = "Julia is not set up. Run ctsem::ctJuliaInstall() to use it."
+    ))
+  }
+  list(
+    available = TRUE,
+    version = status$julia %||% "",
+    threads = status$threads %||% NA_integer_,
+    message = paste0("Julia ", status$julia %||% "", " is available.")
+  )
+}
+
+ctgui_backend_choices <- function(julia = ctgui_julia_status()) {
+  if (isTRUE(julia$available)) c("Julia" = "julia", "Stan" = "stan") else c("Stan" = "stan")
+}
+
+ctgui_default_backend <- function(julia = ctgui_julia_status()) {
+  if (isTRUE(julia$available)) "julia" else "stan"
 }

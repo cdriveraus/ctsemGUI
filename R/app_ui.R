@@ -300,7 +300,8 @@ ui <- shiny::fluidPage(
           ),
           shiny::div(class = "equation-pane", shiny::uiOutput("equation_blocks")),
           shiny::tags$details(
-            shiny::tags$summary("LaTeX source"),
+            class = "ctgui-disclosure",
+            shiny::tags$summary("Show LaTeX source"),
             shiny::verbatimTextOutput("equation_source")
           )
         )
@@ -321,8 +322,14 @@ ui <- shiny::fluidPage(
               shiny::checkboxInput("fit_priors", arg_label("priors", "help_fit_priors", "ctFit argument: priors"), value = FALSE),
               shiny::numericInput("fit_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_cores", "ctFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::textAreaInput("fit_extra_args", arg_label("Extra ctFit arguments", "help_ctFit", "Full ctFit help"), value = "", height = "70px"),
+              shiny::uiOutput("fit_backend_controls"),
               shiny::checkboxInput("fit_completion_beep", "Play a sound when fitting finishes", value = FALSE),
               shiny::checkboxInput("fit_async", "Fit in the background", value = TRUE),
+              shiny::checkboxInput(
+                "fit_generate_after",
+                "Generate samples from the fitted model when fitting finishes",
+                value = TRUE
+              ),
               shiny::actionButton("run_fit", "Fit model", class = "btn-primary"),
               shiny::actionButton("cancel_fit", "Stop fitting", class = "btn-warning", disabled = "disabled"),
               shiny::actionButton("store_fit", "Store fit for comparison"),
@@ -418,7 +425,8 @@ ui <- shiny::fluidPage(
           ),
           shiny::div(class = "equation-pane", shiny::uiOutput("fit_equation_blocks")),
           shiny::tags$details(
-            shiny::tags$summary("LaTeX source"),
+            class = "ctgui-disclosure",
+            shiny::tags$summary("Show LaTeX source"),
             shiny::verbatimTextOutput("fit_equation_source")
           )
         )
@@ -439,9 +447,14 @@ ui <- shiny::fluidPage(
               shiny::numericInput("fit_gen_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_gen_cores", "ctGenerateFromFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::checkboxInput("fit_gen_fullposterior", arg_label("fullposterior", "help_fit_gen_fullposterior", "ctGenerateFromFit argument: fullposterior"), value = FALSE),
               shiny::textAreaInput("fit_gen_extra_args", arg_label("Extra ctGenerateFromFit arguments", "help_ctGenerateFromFit", "Full ctGenerateFromFit help"), value = "", height = "70px"),
-              shiny::actionButton("generate_from_fit", "Generate from fit", class = "btn-primary")
-            )
+              shiny::actionButton("generate_from_fit", "Generate from fit", class = "btn-primary"),
+              shiny::actionButton("cancel_generate", "Stop generating", class = "btn-warning")
+            ),
+            ctgui_explanation_ui("generate_from_fit")
           ),
+          shiny::tags$h4("Progress"),
+          shiny::div(class = "fit-log", shiny::verbatimTextOutput("generate_log")),
+          shiny::tags$h4("Generated data"),
           shiny::verbatimTextOutput("generated_fit_summary")
         ),
         shiny::tabPanel(

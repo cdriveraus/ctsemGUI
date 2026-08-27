@@ -74,14 +74,17 @@ ctgui_uncertainty_merge_optimcontrol <- function(gui_control, supplied = NULL) {
 
 ctgui_optim_uncertainty_eligibility <- function(fit) {
   if (is.null(fit)) return(list(ok = FALSE, message = "No fit is available."))
-  if (!inherits(fit, "ctStanFit")) {
-    return(list(ok = FALSE, message = "Uncertainty recomputation requires an optimized ctStanFit object."))
+  # A Julia fit is not a ctStanFit and has none of Stan's components, but
+  # ctOptimUncertainty works on it. Requiring the Stan shape refused a feature
+  # that was available all along.
+  engine <- ctgui_ctsem_fit_engine(fit)
+  if (is.na(engine)) {
+    return(list(ok = FALSE, message = "Uncertainty recomputation requires a fit produced by ctFit."))
   }
   if (ctgui_ctsem_fit_is_sampled(fit)) {
     return(list(ok = FALSE, message = "This is a sampled fit. ctOptimUncertainty applies only to optimized fits."))
   }
-  required <- c("stanfit", "stanmodel", "standata")
-  missing <- ctgui_ctsem_fit_missing_components(fit, required)
+  missing <- ctgui_ctsem_fit_missing_components(fit)
   if (length(missing)) {
     return(list(ok = FALSE, message = paste("Fit is missing", paste(missing, collapse = ", "), "required for optimized uncertainty.")))
   }

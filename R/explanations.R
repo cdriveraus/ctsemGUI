@@ -13,6 +13,17 @@
 
 ctgui_explanation_catalog <- function() {
   list(
+    generate_from_fit = list(
+      brief = "Data simulated from the fitted model, which most diagnostics need.",
+      detail = paste(
+        "Posterior predictive checks and the covariance check both compare your",
+        "data against data the fitted model produces, so they cannot run until",
+        "this has. It happens automatically after a fit unless you turn that off",
+        "in Fit settings, and runs in the background on the same cores as the",
+        "fit. More samples give steadier diagnostics and take proportionally",
+        "longer."
+      )
+    ),
     fitting = list(
       brief = "Fitting runs in a separate process, so the interface stays usable and can be stopped.",
       detail = paste(
@@ -50,16 +61,19 @@ ctgui_explanation_catalog <- function() {
       )
     ),
     build = list(
-      brief = "Start from a standard model shape rather than an empty canvas.",
+      brief = "Start from a standard model shape, or add more processes to the model you have.",
       detail = paste(
-        "Each template creates its own latent processes, manifest variables and",
-        "every matrix cell together, so you do not have to set up the variables",
-        "first. What you get is a complete, valid model you can fit immediately",
-        "and then edit anywhere else in the application. Templates are starting",
-        "points, not recommendations: the right shape depends on your process,",
-        "your sampling rate and what you are trying to find out. Building the",
-        "same data under two shapes and comparing them is usually more",
-        "informative than agonising over which to pick first."
+        "Build a fresh model and the template creates its own latent processes,",
+        "manifest variables and every matrix cell together, so you do not have",
+        "to set up the variables first; anything already there is replaced. Add",
+        "processes instead and the template describes only the new ones: your",
+        "existing processes keep their shape and their parameters, and the",
+        "effects between old and new start fixed at zero so you decide which",
+        "connections to free. Either way you end up with a complete, valid model",
+        "you can fit immediately and then edit anywhere else. Templates are",
+        "starting points, not recommendations: building the same data under two",
+        "shapes and comparing them is usually more informative than agonising",
+        "over which to pick first."
       )
     ),
     spec_data = list(

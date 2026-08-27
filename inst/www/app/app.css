@@ -84,21 +84,53 @@ pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-
 
 /* Template choices are read as descriptions, not scanned as a list of names,
    so each option gets room for its summary rather than sitting on one line. */
-#build_structure .radio { margin: 0 0 4px; }
-#build_structure .radio label { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 10px 12px; border: 1px solid #d9dde3; border-radius: 6px; background: #ffffff; }
-#build_structure .radio label:hover { border-color: #9ca3af; }
-#build_structure input[type="radio"] { position: static; margin: 3px 0 0; flex: 0 0 auto; }
+/* Choice cards are read side by side, not scanned down a column. Shiny caps a
+   normal input container at 300px, which squeezed these into a narrow strip
+   down the left of an otherwise empty pane. */
+#build_structure, #example_id { width: 100%; max-width: none; }
+#build_structure .shiny-options-group,
+#example_id .shiny-options-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+#build_structure .radio, #example_id .radio { margin: 0; height: 100%; }
+#build_structure .radio label, #example_id .radio label {
+  display: flex; gap: 10px; align-items: flex-start; height: 100%; width: 100%;
+  padding: 12px 14px; border: 1px solid #d9dde3; border-radius: 6px;
+  background: #ffffff; font-weight: normal;
+}
+#build_structure .radio label:hover, #example_id .radio label:hover { border-color: #9ca3af; }
+#build_structure input[type="radio"], #example_id input[type="radio"] {
+  position: static; margin: 3px 0 0; flex: 0 0 auto;
+}
+/* The checked card is the one the panel below is describing, so it needs to be
+   findable at a glance among a dozen others. */
+#build_structure .radio label:has(input:checked),
+#example_id .radio label:has(input:checked) { border-color: #2563eb; box-shadow: inset 0 0 0 1px #2563eb; }
 .blueprint-choice-body { min-width: 0; }
-.blueprint-choice-body strong { display: block; margin-bottom: 3px; }
-.blueprint-choice-body .help-note { margin-bottom: 0; }
-.blueprint-choice-body .help-note + .help-note { margin-top: 6px; }
-#example_id .radio { margin: 0 0 4px; }
-#example_id .radio label { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 10px 12px; border: 1px solid #d9dde3; border-radius: 6px; background: #ffffff; }
-#example_id .radio label:hover { border-color: #9ca3af; }
-#example_id input[type="radio"] { position: static; margin: 3px 0 0; flex: 0 0 auto; }
+.blueprint-choice-body strong { display: block; margin-bottom: 4px; }
+.blueprint-choice-body .help-note { margin-bottom: 0; max-width: none; }
+.blueprint-choice-body .help-note + .help-note { margin-top: 8px; }
 .history-log { overflow-x: auto; }
 .history-log table { width: auto; }
 .history-log td:first-child { text-align: right; font-variant-numeric: tabular-nums; }
 /* The fit log grows to thousands of lines; a fixed viewport keeps the controls
    above it reachable instead of pushing them off the screen. */
 .fit-log pre { max-height: 320px; overflow-y: auto; font-size: 12px; line-height: 1.45; }
+
+/* A bare <summary> reads as a heading, not a control. These carry real content
+   the reader will want, so they have to look like something you can open. */
+.ctgui-disclosure > summary {
+  cursor: pointer; color: #1d4ed8; display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 0; list-style: none; width: fit-content;
+}
+.ctgui-disclosure > summary::-webkit-details-marker { display: none; }
+.ctgui-disclosure > summary::before { content: "\25B8"; font-size: 11px; transition: transform 120ms ease; }
+.ctgui-disclosure[open] > summary::before { transform: rotate(90deg); }
+.ctgui-disclosure > summary:hover { text-decoration: underline; }
+.ctgui-disclosure > summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .ctgui-disclosure > summary::before { transition: none; }
+}
