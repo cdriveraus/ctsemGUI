@@ -280,14 +280,26 @@ ctgui_apply_matrix_edits <- function(previous, matrices = list(),
   ctgui_commit_spec(previous, updated, reason = reason)
 }
 
+ctgui_is_ctsem_model <- function(object) {
+  is.list(object) && !is.null(object$pars) &&
+    !is.null(object$latentNames) && !is.null(object$manifestNames)
+}
+
 ctgui_project_spec <- function(object) {
+  # A fit is accepted wherever a model is: it contains the model it was fitted
+  # with, and reaching for that saves reconstructing the specification by hand.
+  fitted_model <- if (!inherits(object, "ctsemgui_spec") &&
+      !ctgui_is_ctsem_model(object) && ctgui_ctsem_is_fit(object)) {
+    ctgui_ctsem_fit_model(object)
+  }
   loaded <- if (inherits(object, "ctsemgui_spec")) {
     object
-  } else if (is.list(object) && !is.null(object$pars) &&
-      !is.null(object$latentNames) && !is.null(object$manifestNames)) {
+  } else if (ctgui_is_ctsem_model(fitted_model)) {
+    ctgui_spec_from_model(fitted_model)
+  } else if (ctgui_is_ctsem_model(object)) {
     ctgui_spec_from_model(object)
   } else {
-    stop("The RDS does not contain a ctsem model or ctsemGUI project", call. = FALSE)
+    stop("The object is not a ctsem model, ctsem fit, or ctsemGUI project", call. = FALSE)
   }
   ctgui_visual_ensure(loaded)
 }

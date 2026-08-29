@@ -58,7 +58,7 @@ ctgui_core_label <- function(argument, available = ctgui_available_cores()) {
   paste0(argument, " (of ", available, " CPU cores)")
 }
 
-ctgui_app_ui <- function(initial_spec, help_catalog, assets) {
+ctgui_app_ui <- function(initial_spec, help_catalog, assets, initial_tab = "Data") {
   spec <- initial_spec
   available_cores <- ctgui_available_cores()
   default_cores <- min(2L, available_cores)
@@ -107,7 +107,7 @@ ui <- shiny::fluidPage(
   ),
   shiny::tabsetPanel(
     id = "workflow",
-    selected = "Data",
+    selected = initial_tab,
     shiny::tabPanel(
       "Model",
       shiny::tabsetPanel(

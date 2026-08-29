@@ -1,18 +1,19 @@
 # Application server composition ---------------------------------------------
 
-ctgui_app_server <- function(initial_spec, help_catalog) {
+ctgui_app_server <- function(initial_spec, help_catalog, initial_state = NULL) {
+  if (is.null(initial_state)) initial_state <- ctgui_launch_state()
   function(input, output, session) {
   arg_label <- function(label, help_id, title = NULL) {
     ctgui_arg_label(help_catalog, label, help_id, title)
   }
   current_spec <- shiny::reactiveVal(initial_spec)
-current_data <- shiny::reactiveVal(NULL)
-current_data_name <- shiny::reactiveVal("No data selected")
-current_fit <- shiny::reactiveVal(NULL)
+current_data <- shiny::reactiveVal(initial_state$data)
+current_data_name <- shiny::reactiveVal(initial_state$data_name)
+current_fit <- shiny::reactiveVal(initial_state$fit)
 fit_busy <- shiny::reactiveVal(FALSE)
 fit_messages <- shiny::reactiveVal("No fit has been run.")
 fit_warnings <- shiny::reactiveVal("No warnings.")
-fit_status_value <- shiny::reactiveVal("No fit available.")
+fit_status_value <- shiny::reactiveVal(initial_state$fit_status)
 uncertainty_status_value <- shiny::reactiveVal("No uncertainty recomputation has been run.")
 uncertainty_messages <- shiny::reactiveVal("No uncertainty recomputation has been run.")
 uncertainty_warnings <- shiny::reactiveVal("No warnings.")
@@ -478,6 +479,12 @@ matrix_id_part <- ctgui_matrix_id_part
 matrix_cell_id <- ctgui_matrix_cell_id
 
 shiny::observe(update_data_choices())
+
+# Opening the app on existing work should say what was opened, so a mismatch
+# between the specification and the supplied data is visible before fitting.
+if (!is.null(initial_state$status)) {
+  shiny::showNotification(initial_state$status, type = "message", duration = 15)
+}
 
 output$data_spec_controls <- shiny::renderUI({
   ctgui_data_roles_ui(current_spec(), current_data())

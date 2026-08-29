@@ -23,7 +23,10 @@ ctgui_internal_names <- c(
   "ctgui_output_workflow_code",
   "ctgui_parse_names", "ctgui_spec_fields", "ctgui_spec_fields_changed",
   "ctgui_commit_spec_fields", "ctgui_apply_matrix_edits",
-  "ctgui_parse_pars_vector", "ctgui_project_spec",
+  "ctgui_parse_pars_vector", "ctgui_project_spec", "ctgui_is_ctsem_model",
+  "ctgui_launch_state", "ctgui_launch_spec", "ctgui_launch_fit",
+  "ctgui_launch_data", "ctgui_launch_data_name", "ctgui_launch_data_gaps",
+  "ctgui_launch_status", "ctgui_tipred_default_from_pars",
   "ctgui_data_role_selection", "ctgui_tipred_subject_data",
   "ctgui_data_preview", "ctgui_data_summary", "ctgui_missingness_summary",
   "ctgui_within_between_summary"

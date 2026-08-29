@@ -5,9 +5,16 @@
 \title{Create the ctsemGUI Shiny application.}
 \usage{
 ctgui_create_app(
-  initial_spec = ctgui_spec(latent_names = character(), manifest_names = character()),
-  help_catalog = ctgui_help_catalog()
+  initial_spec = NULL,
+  help_catalog = ctgui_help_catalog(),
+  initial_state = ctgui_launch_state()
 )
+}
+\arguments{
+\item{initial_spec}{Convenience override for \code{initial_state$spec}.}
+
+\item{initial_state}{Initial session state from \code{ctgui_launch_state()},
+holding the opened specification, data, and fit the app starts with.}
 }
 \value{
 A \code{shiny.appobj} ready to run or test.

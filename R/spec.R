@@ -379,26 +379,63 @@ ctgui_to_ctsem_model <- function(spec, silent = TRUE, tipredDefault = spec$tipre
 #' @param model A model created by `ctsem::ctModel()`.
 ctgui_spec_from_model <- function(model) {
   if (is.null(model$pars) || is.null(model$latentNames) || is.null(model$manifestNames)) {
-    stop("RDS does not contain a ctsem model created by ctModel()", call. = FALSE)
+    stop("The object is not a ctsem model created by ctModel()", call. = FALSE)
   }
   matrices <- ctgui_ctsem_matrices(model)
-  spec <- ctgui_spec(
+  tipred_names <- model$TIpredNames %||% character()
+  # ctModelMatrices() returns bare labels, so the model rebuilt here carries no
+  # TI-predictor effects yet and ctsem warns that none were specified.  That
+  # describes a transient object: the real effects are restored from the source
+  # model's pars below, and warning about them would be misleading.
+  spec <- ctgui_without_empty_tipred_warning(ctgui_spec(
     latent_names = model$latentNames,
     manifest_names = model$manifestNames,
     type = if (isTRUE(model$continuoustime)) "ct" else "dt",
     id = model$subjectIDname %||% "id",
     time = model$timeName %||% "time",
+    Tpoints = ctgui_model_tpoints(model),
     manifest_type = model$manifesttype %||% rep(0L, length(model$manifestNames)),
     tdpred_names = model$TDpredNames %||% character(),
-    tipred_names = model$TIpredNames %||% character(),
+    tipred_names = tipred_names,
     matrices = matrices,
-    tipredDefault = TRUE
-  )
+    tipredDefault = ctgui_tipred_default_from_pars(model$pars, tipred_names)
+  ))
   spec$model <- model
   spec$pars <- model$pars
   spec$parameter_metadata <- ctgui_parameter_metadata_from_pars(model$pars, spec$tipred_names, spec$matrices)
-  spec$source <- "ctsem-rds"
+  spec$source <- "ctsem-model"
   spec
+}
+
+# ctModel() does not record the tipredDefault it was called with, but the
+# per-parameter effect flags it produced do imply it: the default only reads as
+# TRUE when every free parameter is moderated by every TI predictor.  Anything
+# else is reconstructed exactly from the per-parameter flags, so inferring
+# FALSE never adds moderation the authored model did not have.
+ctgui_tipred_default_from_pars <- function(pars, tipred_names) {
+  if (!length(tipred_names)) return(TRUE)
+  if (is.null(pars) || !is.data.frame(pars) || !nrow(pars)) return(TRUE)
+  fields <- paste0(tipred_names, "_effect")
+  if (!all(fields %in% names(pars))) return(TRUE)
+  free <- !is.na(pars$param) & nzchar(as.character(pars$param))
+  if (!any(free)) return(TRUE)
+  all(vapply(fields, function(field) {
+    all(vapply(pars[[field]][free], isTRUE, logical(1L)))
+  }, logical(1L)))
+}
+
+ctgui_without_empty_tipred_warning <- function(expr) {
+  withCallingHandlers(expr, warning = function(condition) {
+    if (grepl("TI predictors included but no effects specified",
+        conditionMessage(condition), fixed = TRUE)) {
+      invokeRestart("muffleWarning")
+    }
+  })
+}
+
+ctgui_model_tpoints <- function(model) {
+  tpoints <- suppressWarnings(as.integer(model$Tpoints %||% NA_integer_))
+  if (length(tpoints) != 1L || is.na(tpoints) || tpoints < 1L) NULL else tpoints
 }
 
 #' @rdname ctgui_spec

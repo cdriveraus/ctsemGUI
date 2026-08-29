@@ -4,9 +4,26 @@
 \alias{ctgui_launch_app}
 \title{Launch ctsemGUI}
 \usage{
-ctgui_launch_app(launch.browser = interactive(), ...)
+ctgui_launch_app(
+  model = NULL,
+  data = NULL,
+  fit = NULL,
+  launch.browser = interactive(),
+  ...
+)
 }
 \arguments{
+\item{model}{A model created by \code{ctsem::ctModel()}, a specification
+previously saved by the GUI, a fitted ctsem model, or the path to an
+\code{.rds} file containing one of those. \code{NULL} starts an empty session.}
+
+\item{data}{Long-format data to open as the active data set: a
+\code{data.frame}, a matrix, or the path to a \code{.csv} or \code{.rds} file.}
+
+\item{fit}{A fitted ctsem model, as returned by \code{ctsem::ctFit()}, or the
+path to an \code{.rds} file containing one. When \code{model} is not given, the
+model the fit was fitted with is opened.}
+
 \item{launch.browser}{Passed to \code{shiny::runApp()}.}
 
 \item{...}{Additional arguments passed to \code{shiny::runApp()}.}
@@ -15,8 +32,32 @@ ctgui_launch_app(launch.browser = interactive(), ...)
 Launch the ctsemGUI Shiny application for specifying, fitting, diagnosing,
 and exporting continuous-time structural equation models with ctsem.
 }
+\details{
+Called with no arguments the app opens empty, ready to build a model from
+scratch. Supply \code{model}, \code{data}, or \code{fit} to open work that already exists
+in the R session: a model written with \code{ctsem::ctModel()} opens in the
+visual specification editor with its matrices, transforms, random effects,
+and TI-predictor effects intact, and a fit additionally makes the
+diagnostics and output tabs available immediately.
+
+Model matrices, parameter labels, transforms, random effects, and
+TI-predictor moderation are carried into the GUI. \code{ctModel()} settings the
+GUI does not itself edit, such as \code{tipredeffectscale} or the raw population
+standard deviation controls, are not represented in the specification and
+revert to their ctsem defaults if the model is rebuilt from the GUI.
+}
 \examples{
 \dontrun{
+# Build a model from scratch
 ctgui_launch_app()
+
+# Open a model that was specified in a script
+model <- ctsem::ctModel(type = "ct", n.latent = 2, n.manifest = 2,
+  latentNames = c("eta1", "eta2"), manifestNames = c("Y1", "Y2"),
+  LAMBDA = diag(2))
+ctgui_launch_app(model, data = mydata)
+
+# Open a fit for its diagrams, equations, and diagnostics
+ctgui_launch_app(fit = myfit)
 }
 }
