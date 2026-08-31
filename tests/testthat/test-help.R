@@ -18,6 +18,11 @@ test_that("every ctsem help dialog is sourced from readable Rd text", {
     expect_false(startsWith(text, "No argument help found"))
     expect_false(grepl("\\\\n", text))
     expect_false(grepl(rawToChar(as.raw(8)), text, fixed = TRUE))
-    expect_false(grepl("_[[:cntrl:]]", text))
+    # Rd2txt renders emphasis for a terminal as an underline: the character,
+    # a backspace, then an underscore. Left in, that reads as "_s_i_m_p_l_e".
+    # Matching any control character instead flagged an emphasised word that
+    # merely happened to end a line, which is fine as it stands.
+    expect_false(grepl(paste0("_", rawToChar(as.raw(8))), text, fixed = TRUE))
+    expect_false(grepl(paste0(rawToChar(as.raw(8)), "_"), text, fixed = TRUE))
   }
 })

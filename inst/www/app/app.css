@@ -141,3 +141,11 @@ pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-
 .reading-note { background: #ffffff; border: 1px solid #d9dde3; border-left: 3px solid #2563eb; border-radius: 4px; padding: 10px 14px; line-height: 1.55; }
 .reading-note .help-note { margin: 6px 0 0; }
 .reading-caution { border-left-color: #b45309; background: #fffbeb; }
+
+/* A type and the arguments it needs read as one decision, so they sit in one
+   card rather than scattered across a grid of unrelated inputs. */
+.measurement-item { background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px 14px; }
+.measurement-item .help-note { margin-bottom: 6px; max-width: none; }
+.measurement-extra { border-top: 1px solid #eef0f2; margin-top: 10px; padding-top: 10px; }
+.measurement-extra .form-group { margin-bottom: 8px; }
+.manifest-type-grid { align-items: start; }

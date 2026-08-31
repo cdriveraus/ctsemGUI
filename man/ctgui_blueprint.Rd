@@ -9,7 +9,11 @@ ctgui_blueprint(
   processes = c("process1", "process2"),
   indicators = 1L,
   free_noise_correlations = TRUE,
-  connect_existing = FALSE
+  connect_existing = FALSE,
+  indicator_type = 0L,
+  indicator_ncategories = 5L,
+  indicator_censormin = NA_real_,
+  indicator_censormax = NA_real_
 )
 }
 \arguments{

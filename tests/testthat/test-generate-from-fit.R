@@ -44,7 +44,11 @@ test_that("the fit panel offers an engine and the fit carries the choice", {
     collapse = "\n"
   )
 
-  expect_match(server_source, "backend = fit_backend()", fixed = TRUE)
+  # The engine sent to ctFit is resolved against the model's measurement types
+  # rather than taken straight from the selector, because Stan cannot fit some
+  # of them at all.
+  expect_match(server_source, "backend = engine$backend", fixed = TRUE)
+  expect_match(server_source, "fit_backend_for_model", fixed = TRUE)
   # The availability check starts Julia and costs seconds, so it runs in a
   # background process as the session loads rather than blocking anything.
   expect_match(server_source, "ctgui_julia_check_worker", fixed = TRUE)

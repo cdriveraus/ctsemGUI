@@ -106,7 +106,9 @@ ctgui_blueprint_structure <- function(structure) {
 #' @return A `ctsemgui_blueprint`.
 #' @keywords internal
 ctgui_blueprint <- function(structure = "coupled", processes = c("process1", "process2"),
-    indicators = 1L, free_noise_correlations = TRUE, connect_existing = FALSE) {
+    indicators = 1L, free_noise_correlations = TRUE, connect_existing = FALSE,
+    indicator_type = 0L, indicator_ncategories = 5L,
+    indicator_censormin = NA_real_, indicator_censormax = NA_real_) {
   ctgui_blueprint_structure(structure)
   processes <- ctgui_as_names(processes, "processes")
   if (!length(processes)) stop("Name at least one process.", call. = FALSE)
@@ -115,15 +117,40 @@ ctgui_blueprint <- function(structure = "coupled", processes = c("process1", "pr
   if (length(indicators) != 1L || is.na(indicators) || indicators < 1L) {
     stop("indicators must be a whole number of at least 1.", call. = FALSE)
   }
+  # A template creates every indicator alike, so the measurement model is one
+  # choice rather than one per variable. Anything more specific is an edit
+  # afterwards, in the Specification panel or the visual editor.
+  indicator_type <- suppressWarnings(as.integer(indicator_type))
+  if (is.na(indicator_type)) indicator_type <- 0L
+  ctgui_manifest_type_entry(indicator_type)
+
   structure(
     list(
       structure = structure,
       processes = processes,
       indicators = indicators,
       free_noise_correlations = isTRUE(free_noise_correlations),
-      connect_existing = isTRUE(connect_existing)
+      connect_existing = isTRUE(connect_existing),
+      indicator_type = indicator_type,
+      indicator_ncategories = suppressWarnings(as.integer(indicator_ncategories)),
+      indicator_censormin = suppressWarnings(as.numeric(indicator_censormin)),
+      indicator_censormax = suppressWarnings(as.numeric(indicator_censormax))
     ),
     class = "ctsemgui_blueprint"
+  )
+}
+
+# The measurement description the blueprint gives every manifest it creates.
+ctgui_blueprint_measurement <- function(blueprint, manifest_names) {
+  n <- length(manifest_names)
+  type <- blueprint$indicator_type %||% 0L
+  needs <- ctgui_manifest_type_needs(type)
+  ctgui_normalize_measurement(
+    manifest_names,
+    rep(type, n),
+    if (identical(needs, "ncategories")) rep(blueprint$indicator_ncategories %||% 0L, n) else NULL,
+    if (identical(needs, "censor")) rep(blueprint$indicator_censormin %||% -Inf, n) else NULL,
+    if (identical(needs, "censor")) rep(blueprint$indicator_censormax %||% Inf, n) else NULL
   )
 }
 
@@ -303,12 +330,31 @@ ctgui_blueprint_apply <- function(spec, blueprint, mode = c("replace", "extend")
     )
   }
 
+  # Manifests the template is creating take its measurement model; manifests
+  # that were already there keep their own, so extending a model of ordinal
+  # items with a continuous one does not rewrite the items.
+  new_measurement <- ctgui_blueprint_measurement(blueprint, new_manifests)
+  measurement_at <- function(name, field, default) {
+    made <- match(name, new_manifests)
+    if (!is.na(made)) return(new_measurement[[field]][made])
+    kept <- match(name, spec$manifest_names)
+    if (is.na(kept) || length(spec[[field]]) < kept) return(default)
+    spec[[field]][kept]
+  }
   rebuilt <- ctgui_respec_preserving(
     carrier, latent_names = latent_names, manifest_names = manifest_names,
     manifest_type = vapply(manifest_names, function(name) {
-      index <- match(name, spec$manifest_names)
-      if (is.na(index)) 0L else as.integer(spec$manifest_type[index])
-    }, integer(1L))
+      as.integer(measurement_at(name, "manifest_type", 0L))
+    }, integer(1L)),
+    ncategories = vapply(manifest_names, function(name) {
+      as.integer(measurement_at(name, "ncategories", 0L))
+    }, integer(1L)),
+    censormin = vapply(manifest_names, function(name) {
+      as.numeric(measurement_at(name, "censormin", -Inf))
+    }, numeric(1L)),
+    censormax = vapply(manifest_names, function(name) {
+      as.numeric(measurement_at(name, "censormax", Inf))
+    }, numeric(1L))
   )
 
   cells <- c(
@@ -365,6 +411,7 @@ ctgui_blueprint_summary <- function(spec, blueprint, mode = c("replace", "extend
   latents <- ctgui_blueprint_latent_names(blueprint)
   manifests <- ctgui_blueprint_manifest_names(blueprint)
 
+  measurement <- ctgui_blueprint_measurement(blueprint, manifests)
   lines <- c(
     paste0(definition$title, ": ", length(blueprint$processes), " process",
       if (length(blueprint$processes) == 1L) "" else "es", ", ",
@@ -373,6 +420,14 @@ ctgui_blueprint_summary <- function(spec, blueprint, mode = c("replace", "extend
     paste0("Latent processes: ", paste(latents, collapse = ", ")),
     paste0("Manifest variables: ", paste(manifests, collapse = ", "))
   )
+  if (length(manifests) && !ctgui_manifest_type_is_default(measurement$manifest_type[1L])) {
+    lines <- c(lines, paste0("Measured as: ", ctgui_measurement_summary(
+      manifests[1L], measurement$manifest_type[1L], measurement$ncategories[1L],
+      measurement$censormin[1L], measurement$censormax[1L]
+    )))
+    backend_note <- ctgui_measurement_backend_message(manifests, measurement$manifest_type)
+    if (nzchar(backend_note)) lines <- c(lines, backend_note)
+  }
 
   if (identical(mode, "replace")) {
     existing <- length(spec$latent_names) + length(spec$manifest_names)

@@ -106,6 +106,75 @@ ctgui_visual_server <- function(input, output, session, current_spec,
     edge
   })
 
+  # A manifest node carries the measurement model of the variable it draws, and
+  # that is a modelling decision as much as any path is. Selecting the node
+  # offers it here, so the graphical path can set an ordinal item's category
+  # count without leaving the editor.
+  selected_manifest <- shiny::reactive({
+    selected <- input$visual_spec_canvas_selection
+    if (!isTRUE(selected$manifest_node)) return(NULL)
+    name <- as.character(selected$name %||% "")
+    index <- match(name, current_spec()$manifest_names)
+    if (is.na(index)) return(NULL)
+    list(name = name, index = index)
+  })
+
+  output$visual_manifest_inspector <- shiny::renderUI({
+    chosen <- selected_manifest()
+    if (is.null(chosen)) return(NULL)
+    spec <- current_spec()
+    index <- chosen$index
+    shiny::div(
+      class = "matrix-cell-inspector visual-manifest-inspector",
+      shiny::tags$h5(paste("How", chosen$name, "was measured")),
+      ctgui_manifest_measurement_ui(
+        index = index, name = chosen$name,
+        type = spec$manifest_type[index] %||% 0L,
+        ncategories = spec$ncategories[index] %||% 0L,
+        censormin = spec$censormin[index] %||% -Inf,
+        censormax = spec$censormax[index] %||% Inf,
+        id_prefix = "visual_manifest"
+      ),
+      shiny::actionButton("visual_manifest_apply", "Apply", class = "btn-primary")
+    )
+  })
+
+  shiny::observeEvent(input$visual_manifest_apply, {
+    chosen <- selected_manifest()
+    if (is.null(chosen)) return()
+    spec <- current_spec()
+    index <- chosen$index
+    read <- function(suffix, fallback) {
+      value <- input[[paste0("visual_manifest_", suffix, "_", index)]]
+      if (is.null(value) || !length(value) || is.na(value[1L])) return(fallback)
+      suppressWarnings(as.numeric(value[1L]))
+    }
+    types <- spec$manifest_type
+    types[index] <- as.integer(read("type", types[index] %||% 0L))
+    categories <- spec$ncategories %||% rep(0L, length(types))
+    categories[index] <- as.integer(read("ncategories", categories[index] %||% 0L))
+    lower <- spec$censormin %||% rep(-Inf, length(types))
+    lower[index] <- read("censormin", -Inf)
+    upper <- spec$censormax %||% rep(Inf, length(types))
+    upper[index] <- read("censormax", Inf)
+
+    updated <- tryCatch(
+      ctgui_respec_preserving(
+        spec, latent_names = spec$latent_names, manifest_names = spec$manifest_names,
+        manifest_type = types, ncategories = categories,
+        censormin = lower, censormax = upper
+      ),
+      error = function(e) e
+    )
+    if (inherits(updated, "error")) {
+      shiny::showNotification(conditionMessage(updated), type = "error")
+      return()
+    }
+    commit_current_spec(updated, reason = "measurement")
+    status(paste("Set the measurement model of", chosen$name, "to",
+      ctgui_manifest_type_label(types[index])))
+  })
+
   output$visual_path_inspector <- shiny::renderUI({
     edge <- selected_edge()
     if (is.null(edge)) {

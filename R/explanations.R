@@ -13,6 +13,21 @@
 
 ctgui_explanation_catalog <- function() {
   list(
+    measurement = list(
+      brief = "How each observed variable relates to the process behind it.",
+      detail = paste(
+        "Treating an ordinal item or a count as continuous is one of the",
+        "easiest ways to get a dynamic model wrong: it puts the measurement",
+        "error on the wrong scale and lets the model predict values the",
+        "instrument could never produce. Two of these types need something the",
+        "data cannot supply. An ordinal variable needs its number of categories",
+        "before any data is seen, because the model has to know how many",
+        "thresholds to estimate. A censored variable needs the limits of the",
+        "instrument, which are known constants rather than parameters. Both are",
+        "asked for beside the type. Everything except continuous and binary is",
+        "fitted by the Julia engine only."
+      )
+    ),
     report = list(
       brief = "The whole analysis as a Quarto document you can run, edit and publish.",
       detail = paste(

@@ -281,7 +281,24 @@ ctgui_visual_graph <- function(spec, view = c("state_space", "initial_state", "t
     }
   } else if (identical(view, "state_space")) {
     for (i in seq_along(latent)) add_node(paste0("latent:", latent[i]), "latent", latent[i], i, 2)
-    for (i in seq_along(manifest)) add_node(paste0("manifest:", manifest[i]), "manifest", manifest[i], i, 3.6)
+    for (i in seq_along(manifest)) {
+      # A manifest's measurement model changes what the model means, so the
+      # node says so rather than leaving it to be discovered in another panel.
+      type <- spec$manifest_type[i] %||% 0L
+      label <- if (ctgui_manifest_type_is_default(type)) {
+        manifest[i]
+      } else {
+        paste0(manifest[i], "
+", ctgui_measurement_summary(
+          manifest[i], type,
+          spec$ncategories[i] %||% 0L,
+          spec$censormin[i] %||% -Inf,
+          spec$censormax[i] %||% Inf
+        ))
+      }
+      add_node(paste0("manifest:", manifest[i]), "manifest", manifest[i], i, 3.6, label)
+      nodes[[length(nodes)]]$manifest_type <- as.integer(type)
+    }
     for (i in seq_along(tdpred)) add_node(paste0("tdpred:", tdpred[i]), "tdpred", tdpred[i], i, 0.4)
     tipred_colours <- ctgui_visual_tipred_colours(spec$tipred_names)
     for (i in seq_along(spec$tipred_names)) {

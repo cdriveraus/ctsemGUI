@@ -212,6 +212,7 @@ ui <- shiny::fluidPage(
             )
           ),
           shiny::tags$div(id = "visual_spec_canvas", class = "ctgui-visual-spec"),
+          shiny::uiOutput("visual_manifest_inspector"),
           shiny::uiOutput("visual_path_inspector"),
           shiny::uiOutput("visual_pars_details")
         ),
@@ -329,6 +330,7 @@ ui <- shiny::fluidPage(
                 choices = c("Stan" = "stan"), selected = "stan"
               ),
               shiny::uiOutput("fit_backend_status"),
+              shiny::uiOutput("fit_measurement_note"),
               shiny::checkboxInput("fit_completion_beep", "Play a sound when fitting finishes", value = FALSE),
               shiny::checkboxInput("fit_async", "Fit in the background", value = TRUE),
               shiny::checkboxInput(

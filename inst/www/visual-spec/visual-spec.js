@@ -88,6 +88,9 @@
     if (element && element.isNode && element.isNode() && element.data("kind") === "parameter") {
       Shiny.setInputValue(editor.id + "_selection", Object.assign({ view: editor.view, parameter_node: true }, element.data()), { priority: "event" }); return;
     }
+    if (element && element.isNode && element.isNode() && element.data("kind") === "manifest") {
+      Shiny.setInputValue(editor.id + "_selection", Object.assign({ view: editor.view, manifest_node: true }, element.data()), { priority: "event" }); return;
+    }
     if (element && element.isNode && element.isNode() && element.data("kind") === "tipred") {
       Shiny.setInputValue(editor.id + "_selection", Object.assign({ view: editor.view, tipred_node: true }, element.data()), { priority: "event" }); return;
     }

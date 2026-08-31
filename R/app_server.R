@@ -87,11 +87,6 @@ parse_optional_integer <- function(x) {
   as.integer(x)
 }
 
-manifest_type_choices <- c(
-  "Continuous" = 0L,
-  "Binary" = 1L
-)
-
 explain_ui <- function(key) {
   ctgui_explanation_ui(key)
 }
@@ -300,9 +295,21 @@ current_blueprint <- shiny::reactive({
       processes = ctgui_parse_names(input$build_processes),
       indicators = input$build_indicators %||% 1L,
       free_noise_correlations = isTRUE(input$build_noise_correlations),
-      connect_existing = isTRUE(input$build_connect_existing)
+      connect_existing = isTRUE(input$build_connect_existing),
+      indicator_type = input$build_indicator_type %||% 0L,
+      indicator_ncategories = input$build_indicator_ncategories %||% 5L,
+      indicator_censormin = input$build_indicator_censormin %||% NA_real_,
+      indicator_censormax = input$build_indicator_censormax %||% NA_real_
     ),
     error = function(e) e
+  )
+})
+
+output$build_indicator_note <- shiny::renderUI({
+  entry <- ctgui_manifest_type_entry(input$build_indicator_type %||% 0L)
+  shiny::tagList(
+    shiny::tags$p(class = "help-note", entry$short),
+    shiny::tags$p(class = "help-note ctgui-explain-detail", entry$detail)
   )
 })
 
@@ -756,30 +763,51 @@ shiny::observeEvent(input$spec_add_variable, {
 output$manifest_type_controls <- shiny::renderUI({
   manifest_names <- parse_names(input$manifest_names)
   if (length(manifest_names) == 0L) return(NULL)
-  current <- current_spec()$manifest_type
-  if (length(current) != length(manifest_names)) current <- rep(0L, length(manifest_names))
+  spec <- current_spec()
+  # Read the live controls rather than the committed spec, so the extra
+  # arguments appear as soon as a type is chosen rather than after a commit.
+  measurement <- ctgui_measurement_input_values(manifest_names, input, spec)
+
   shiny::tagList(
-    shiny::tags$h4("Manifest variable types"),
-    shiny::tags$div(class = "help-note",
-      shiny::tags$p("Choose how each observed manifest variable is treated by ctsem."),
-      shiny::tags$ul(
-        shiny::tags$li(shiny::tags$b("Continuous:"), " numeric measurement with Gaussian residual error."),
-        shiny::tags$li(shiny::tags$b("Binary:"), " two-category 0/1 measurement using ctsem's binary manifest-variable handling.")
-      )
-    ),
+    shiny::tags$h4("How each variable was measured"),
+    ctgui_explanation_ui("measurement"),
+    shiny::uiOutput("measurement_backend_note"),
     shiny::div(
       class = "manifest-type-grid",
       lapply(seq_along(manifest_names), function(i) {
-        shiny::selectInput(
-          paste0("manifest_type_", i),
-          paste(manifest_names[i], "variable type"),
-          choices = manifest_type_choices,
-          selected = as.character(current[i])
+        ctgui_manifest_measurement_ui(
+          index = i, name = manifest_names[i],
+          type = measurement$manifest_type[i],
+          ncategories = measurement$ncategories[i],
+          censormin = measurement$censormin[i],
+          censormax = measurement$censormax[i]
         )
       })
     )
   )
 })
+
+# Which engine a model needs follows from its measurement types, so it is
+# reported where the types are chosen and again beside the engine selector. A
+# user who picks ordinal and then meets a Stan error about a backend they never
+# chose has been let down twice.
+measurement_backend_note <- function(spec = current_spec()) {
+  message <- ctgui_measurement_backend_message(spec$manifest_names, spec$manifest_type)
+  if (!nzchar(message)) return(NULL)
+  julia <- shiny::isolate(julia_status())
+  available <- isTRUE(julia$available)
+  shiny::div(
+    class = if (available) "help-note" else "warning-note",
+    message,
+    if (!available) {
+      paste(" Julia is not available here, so this model cannot be fitted as specified.",
+        "Run ctsem::ctJuliaInstall(), or choose continuous or binary types instead.")
+    }
+  )
+}
+
+output$measurement_backend_note <- shiny::renderUI(measurement_backend_note())
+output$fit_measurement_note <- shiny::renderUI(measurement_backend_note())
 
 output$matrix_builder_ui <- shiny::renderUI({
   spec <- current_spec()
@@ -1672,14 +1700,45 @@ fit_backend <- function() {
   selected
 }
 
+# A model whose measurement types Stan cannot fit is stopped here rather than
+# left to fail inside ctFit, where the message names a backend the user never
+# chose. If Julia is available the engine is simply switched, since the choice
+# was made for them by the model; if it is not, the fit cannot happen at all
+# and saying so now is better than failing later.
+fit_backend_for_model <- function(spec) {
+  requested <- fit_backend()
+  if (!ctgui_measurement_requires_julia(spec$manifest_type)) {
+    return(list(backend = requested, message = ""))
+  }
+  reason <- ctgui_measurement_backend_message(spec$manifest_names, spec$manifest_type)
+  if (isTRUE(shiny::isolate(julia_status())$available)) {
+    if (!identical(requested, "julia")) {
+      shiny::updateSelectInput(session, "fit_backend", selected = "julia")
+    }
+    return(list(
+      backend = "julia",
+      message = if (identical(requested, "julia")) "" else paste("Switched to the Julia engine:", reason)
+    ))
+  }
+  list(backend = NA_character_, message = paste(
+    reason,
+    "Julia is not available here, so this model cannot be fitted.",
+    "Run ctsem::ctJuliaInstall(), or change those variables to continuous or binary."
+  ))
+}
+
 fit_call_args <- function(data) {
+  spec <- current_spec()
+  engine <- fit_backend_for_model(spec)
+  if (is.na(engine$backend)) stop(engine$message, call. = FALSE)
+  if (nzchar(engine$message)) shiny::showNotification(engine$message, type = "warning")
   args <- list(
     datalong = data,
-    model = ctgui_to_ctsem_model(current_spec(), silent = TRUE),
+    model = ctgui_to_ctsem_model(spec, silent = TRUE),
     optimize = input$fit_optimize,
     priors = input$fit_priors,
     cores = input$fit_cores,
-    backend = fit_backend(),
+    backend = engine$backend,
     plot = FALSE
   )
   extra <- parse_extra_args(input$fit_extra_args)

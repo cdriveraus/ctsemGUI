@@ -654,9 +654,20 @@ ctgui_matrix_server <- function(
   output$matrix_dynamics_editor <- shiny::renderUI(
     matrix_section_tabs("Dynamics")
   )
-  output$matrix_measurement_editor <- shiny::renderUI(
-    matrix_section_tabs("Measurement")
-  )
+  output$matrix_measurement_editor <- shiny::renderUI({
+    # Measurement types change what these matrices mean, and some of their
+    # consequences -- thresholds, censoring limits -- are not matrices at all.
+    # Saying so here stops the matrix editor looking like the whole story.
+    notes <- ctgui_measurement_matrix_note(current_spec())
+    shiny::tagList(
+      if (length(notes)) shiny::div(
+        class = "control-band",
+        shiny::tags$h4("Measurement models in this model"),
+        lapply(notes, function(note) shiny::tags$p(class = "help-note", note))
+      ),
+      matrix_section_tabs("Measurement")
+    )
+  })
   output$matrix_initial_editor <- shiny::renderUI(
     matrix_section_tabs("Initial")
   )

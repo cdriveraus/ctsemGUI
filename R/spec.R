@@ -5,6 +5,13 @@ ctgui_required_matrices <- c(
 
 ctgui_optional_matrices <- c("TDPREDEFFECT", "TDPREDMEANS", "TDPREDVAR", "PARS")
 
+# ctModelMatrices() reports THRESHOLDS for ordinal variables, but ctModel() has
+# no such argument and the model object has no such field: the thresholds are
+# derived from the category count and estimated as ordinary free parameters.
+# Carrying it in the editable matrices would therefore break every rebuild, so
+# it is dropped on the way in and described separately where it matters.
+ctgui_derived_matrices <- c("THRESHOLDS")
+
 #' Create, edit, validate, and export ctsem GUI specifications
 #'
 #' @param latent_names Character vector of latent process names.
@@ -30,6 +37,9 @@ ctgui_spec <- function(latent_names = "eta1",
     time = "time",
     Tpoints = NULL,
     manifest_type = rep(0, length(manifest_names)),
+    ncategories = NULL,
+    censormin = NULL,
+    censormax = NULL,
     tdpred_names = character(),
     tipred_names = character(),
     matrices = NULL,
@@ -47,6 +57,12 @@ ctgui_spec <- function(latent_names = "eta1",
   if (length(manifest_type) != length(manifest_names)) {
     stop("manifest_type must have the same length as manifest_names", call. = FALSE)
   }
+  # The extra arguments only some types use are kept aligned with the manifest
+  # names here, so nothing downstream has to reason about their length.
+  measurement <- ctgui_normalize_measurement(
+    manifest_names, manifest_type, ncategories, censormin, censormax
+  )
+  manifest_type <- measurement$manifest_type
 
   base_matrices <- NULL
   model <- NULL
@@ -54,7 +70,17 @@ ctgui_spec <- function(latent_names = "eta1",
   parameter_metadata <- NULL
   source <- "fallback"
 
-  if (ctgui_has_ctsem() && length(latent_names) && length(manifest_names)) {
+  # A measurement type chosen before its argument has been typed is an ordinary
+  # in-progress state, not a failure. Building the ctsem model would throw and
+  # take the session with it, so construction is deferred and validation
+  # reports the problem where the choice was made.
+  measurement_incomplete <- length(ctgui_measurement_problems(
+    manifest_names, measurement$manifest_type, measurement$ncategories,
+    measurement$censormin, measurement$censormax
+  )) > 0L
+
+  if (ctgui_has_ctsem() && length(latent_names) && length(manifest_names) &&
+      !measurement_incomplete) {
     model <- ctgui_new_ctsem_model(
       latent_names = latent_names,
       manifest_names = manifest_names,
@@ -63,6 +89,9 @@ ctgui_spec <- function(latent_names = "eta1",
       time = time,
       Tpoints = Tpoints,
       manifest_type = manifest_type,
+      ncategories = measurement$ncategories,
+      censormin = measurement$censormin,
+      censormax = measurement$censormax,
       tdpred_names = tdpred_names,
       tipred_names = tipred_names,
       matrices = matrices,
@@ -90,7 +119,8 @@ ctgui_spec <- function(latent_names = "eta1",
       latent_names = latent_names,
       manifest_names = manifest_names,
       tdpred_names = tdpred_names)
-    if (ctgui_has_ctsem() && (!length(latent_names) || !length(manifest_names))) {
+    if (ctgui_has_ctsem() && (!length(latent_names) || !length(manifest_names) ||
+        measurement_incomplete)) {
       source <- "draft"
     }
   }
@@ -104,6 +134,9 @@ ctgui_spec <- function(latent_names = "eta1",
     latent_names = latent_names,
     manifest_names = manifest_names,
     manifest_type = manifest_type,
+    ncategories = measurement$ncategories,
+    censormin = measurement$censormin,
+    censormax = measurement$censormax,
     tdpred_names = tdpred_names,
     tipred_names = tipred_names,
     tipredDefault = tipredDefault,
@@ -204,6 +237,20 @@ ctgui_validate <- function(spec) {
     if (any(is.na(offdiag_numeric) | offdiag_numeric != 0)) {
       add_message("warning", "MANIFESTVAR", "MANIFESTVAR is usually diagonal for first-pass ctsem models")
     }
+  }
+
+  # A type that needs an argument it has not been given fails at ctModel(),
+  # well after the point where the user chose it. Reporting it here puts the
+  # problem beside the choice.
+  for (problem in ctgui_measurement_problems(
+      spec$manifest_names, spec$manifest_type, spec$ncategories,
+      spec$censormin, spec$censormax)) {
+    add_message(problem$severity %||% "error", problem$field, problem$message)
+  }
+  for (problem in ctgui_measurement_identification_problems(
+      spec$manifest_names, spec$manifest_type,
+      spec$matrices$MANIFESTMEANS, spec$matrices$CINT)) {
+    add_message(problem$severity %||% "warning", problem$field, problem$message)
   }
 
   lambda <- spec$matrices[["LAMBDA"]]
@@ -400,7 +447,8 @@ ctgui_latents_reaching_measurement <- function(spec) {
 # renamed variable carries its cells across only when the rename is known.
 ctgui_respec_preserving <- function(previous, latent_names, manifest_names,
     tdpred_names = previous$tdpred_names, tipred_names = previous$tipred_names,
-    manifest_type = NULL, rename = character()) {
+    manifest_type = NULL, ncategories = NULL, censormin = NULL, censormax = NULL,
+    rename = character()) {
   ctgui_check_spec(previous)
 
   inverse_name <- function(name) {
@@ -408,17 +456,35 @@ ctgui_respec_preserving <- function(previous, latent_names, manifest_names,
     if (length(found)) found[1L] else name
   }
 
-  if (is.null(manifest_type)) {
-    manifest_type <- vapply(manifest_names, function(name) {
-      index <- match(inverse_name(name), previous$manifest_names)
-      if (is.na(index)) 0L else as.integer(previous$manifest_type[index])
-    }, integer(1L))
+  # A manifest keeps its measurement model through a resize or a rename. Losing
+  # it would silently turn an ordinal item back into a continuous one, which
+  # changes the model without changing anything the user can see.
+  carried <- match(vapply(manifest_names, inverse_name, character(1L)), previous$manifest_names)
+  carry <- function(values, default) {
+    if (!length(manifest_names)) return(values[0L])
+    taken <- rep(default, length(manifest_names))
+    known <- !is.na(carried)
+    if (any(known) && length(values) >= max(carried[known], 0L)) {
+      taken[known] <- values[carried[known]]
+    }
+    taken
   }
+  if (is.null(manifest_type)) {
+    manifest_type <- as.integer(carry(previous$manifest_type %||% integer(), 0L))
+  }
+  measurement <- ctgui_normalize_measurement(
+    manifest_names, manifest_type,
+    ncategories %||% carry(previous$ncategories %||% integer(), 0L),
+    censormin %||% carry(previous$censormin %||% numeric(), -Inf),
+    censormax %||% carry(previous$censormax %||% numeric(), Inf)
+  )
 
   rebuilt <- ctgui_spec(
     latent_names = latent_names, manifest_names = manifest_names,
     type = previous$type, id = previous$id, time = previous$time,
-    Tpoints = previous$Tpoints, manifest_type = manifest_type,
+    Tpoints = previous$Tpoints, manifest_type = measurement$manifest_type,
+    ncategories = measurement$ncategories,
+    censormin = measurement$censormin, censormax = measurement$censormax,
     tdpred_names = tdpred_names, tipred_names = tipred_names,
     tipredDefault = previous$tipredDefault
   )
@@ -486,6 +552,9 @@ ctgui_to_ctsem_model <- function(spec, silent = TRUE, tipredDefault = spec$tipre
     time = spec$time,
     Tpoints = spec$Tpoints,
     manifest_type = spec$manifest_type,
+    ncategories = spec$ncategories,
+    censormin = spec$censormin,
+    censormax = spec$censormax,
     tdpred_names = spec$tdpred_names,
     tipred_names = spec$tipred_names,
     matrices = ctgui_matrices_with_metadata(spec),
@@ -509,6 +578,11 @@ ctgui_spec_from_model <- function(model) {
     id = model$subjectIDname %||% "id",
     time = model$timeName %||% "time",
     manifest_type = model$manifesttype %||% rep(0L, length(model$manifestNames)),
+    # A loaded model brings its measurement description with it; dropping these
+    # would turn an ordinal item back into a continuous one on load.
+    ncategories = model$ncategories,
+    censormin = model$censormin,
+    censormax = model$censormax,
     tdpred_names = model$TDpredNames %||% character(),
     tipred_names = model$TIpredNames %||% character(),
     matrices = matrices,
@@ -596,6 +670,9 @@ ctgui_generate_data <- function(spec, n.subjects = 100, Tpoints = spec$Tpoints %
     time = spec$time,
     Tpoints = Tpoints,
     manifest_type = spec$manifest_type,
+    ncategories = spec$ncategories,
+    censormin = spec$censormin,
+    censormax = spec$censormax,
     tdpred_names = spec$tdpred_names,
     tipred_names = spec$tipred_names,
     matrices = gen_matrices,
@@ -661,7 +738,7 @@ ctgui_generation_default <- function(matrix_name, row, col) {
 
 ctgui_new_ctsem_model <- function(latent_names, manifest_names, type, id, time,
     Tpoints, manifest_type, tdpred_names, tipred_names, matrices,
-    tipredDefault, silent) {
+    tipredDefault, silent, ncategories = NULL, censormin = NULL, censormax = NULL) {
   args <- ctgui_ctmodel_args_from_values(
     latent_names = latent_names,
     manifest_names = manifest_names,
@@ -670,6 +747,9 @@ ctgui_new_ctsem_model <- function(latent_names, manifest_names, type, id, time,
     time = time,
     Tpoints = Tpoints,
     manifest_type = manifest_type,
+    ncategories = ncategories,
+    censormin = censormin,
+    censormax = censormax,
     tdpred_names = tdpred_names,
     tipred_names = tipred_names,
     matrices = matrices,
@@ -688,6 +768,9 @@ ctgui_ctmodel_args <- function(spec, matrices = spec$matrices, silent = TRUE) {
     time = spec$time,
     Tpoints = spec$Tpoints,
     manifest_type = spec$manifest_type,
+    ncategories = spec$ncategories,
+    censormin = spec$censormin,
+    censormax = spec$censormax,
     tdpred_names = spec$tdpred_names,
     tipred_names = spec$tipred_names,
     matrices = matrices,
@@ -698,25 +781,30 @@ ctgui_ctmodel_args <- function(spec, matrices = spec$matrices, silent = TRUE) {
 
 ctgui_ctmodel_args_from_values <- function(latent_names, manifest_names, type, id, time,
     Tpoints, manifest_type, tdpred_names, tipred_names, matrices,
-    tipredDefault, silent) {
+    tipredDefault, silent, ncategories = NULL, censormin = NULL, censormax = NULL) {
   if (is.null(matrices)) {
     matrices <- list(LAMBDA = ctgui_default_lambda(manifest_names, latent_names))
   }
-  args <- list(
+  measurement <- ctgui_normalize_measurement(
+    manifest_names, manifest_type, ncategories, censormin, censormax
+  )
+  args <- c(list(
     type = type,
     latentNames = latent_names,
     manifestNames = manifest_names,
-    manifesttype = manifest_type,
     id = id,
     time = time,
     tipredDefault = tipredDefault,
     silent = silent
-  )
+  ), ctgui_measurement_model_args(measurement))
   if (!is.null(Tpoints)) args$Tpoints <- Tpoints
   if (length(tdpred_names) > 0L) args$TDpredNames <- tdpred_names
   if (length(tipred_names) > 0L) args$TIpredNames <- tipred_names
 
-  for (matrix_name in names(matrices)) {
+  # Derived matrices are reported by ctModelMatrices() but rejected by
+  # ctModel(). Filtering here rather than at each caller means no path into the
+  # model can leak one, including loading a model straight from an RDS.
+  for (matrix_name in setdiff(names(matrices), ctgui_derived_matrices)) {
     if (!is.null(matrices[[matrix_name]])) args[[matrix_name]] <- matrices[[matrix_name]]
   }
   if (is.null(args$LAMBDA)) args$LAMBDA <- ctgui_default_lambda(manifest_names, latent_names)
@@ -828,6 +916,7 @@ ctgui_expected_dims <- function(spec) {
 }
 
 ctgui_prepare_matrices <- function(matrices, latent_names, manifest_names, tdpred_names) {
+  matrices <- matrices[setdiff(names(matrices), ctgui_derived_matrices)]
   matrices <- ctgui_order_matrices(matrices)
   for (matrix_name in names(matrices)) {
     matrices[[matrix_name]] <- ctgui_apply_dimnames_to_one(
@@ -1135,7 +1224,9 @@ ctgui_sync_model_from_matrices <- function(spec, ctsem_default_keys = character(
         ctgui_new_ctsem_model(
           latent_names = spec$latent_names, manifest_names = spec$manifest_names,
           type = spec$type, id = spec$id, time = spec$time, Tpoints = spec$Tpoints,
-          manifest_type = spec$manifest_type, tdpred_names = spec$tdpred_names,
+          manifest_type = spec$manifest_type, ncategories = spec$ncategories,
+          censormin = spec$censormin, censormax = spec$censormax,
+          tdpred_names = spec$tdpred_names,
           tipred_names = spec$tipred_names, matrices = ctgui_matrices_with_metadata(spec),
           tipredDefault = spec$tipredDefault, silent = TRUE
         )

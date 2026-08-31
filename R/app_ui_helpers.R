@@ -162,6 +162,32 @@ ctgui_build_ui <- function() {
     ),
     shiny::div(
       class = "control-band",
+      shiny::tags$h4("How the indicators were measured"),
+      shiny::tags$p(
+        class = "help-note",
+        "Every indicator this template creates is measured the same way. Change individual variables afterwards under Model > Specification."
+      ),
+      shiny::div(
+        class = "control-grid",
+        shiny::selectInput(
+          "build_indicator_type", "Indicator type",
+          choices = ctgui_manifest_type_choices(), selected = "0"
+        ),
+        shiny::conditionalPanel(
+          "input.build_indicator_type == '2'",
+          shiny::numericInput("build_indicator_ncategories", "Number of categories",
+            value = 5, min = 3, step = 1)
+        ),
+        shiny::conditionalPanel(
+          "input.build_indicator_type == '4'",
+          shiny::numericInput("build_indicator_censormin", "Lower limit", value = NA),
+          shiny::numericInput("build_indicator_censormax", "Upper limit", value = NA)
+        )
+      ),
+      shiny::uiOutput("build_indicator_note")
+    ),
+    shiny::div(
+      class = "control-band",
       shiny::tags$h4("What this will do"),
       shiny::verbatimTextOutput("build_summary"),
       shiny::actionButton("build_apply", "Build model", class = "btn-primary")
@@ -205,5 +231,54 @@ ctgui_examples_ui <- function() {
         "Opening an example replaces the current data and model."
       )
     )
+  )
+}
+
+# The type of a manifest variable and the arguments that type needs, together.
+#
+# An ordinal variable without a category count and a censored variable without
+# a limit both fail at ctModel(), well after the point where the type was
+# chosen. Putting the extra arguments beside the choice, and only for the type
+# that uses them, is what stops that being a surprise.
+ctgui_manifest_measurement_ui <- function(index, name, type, ncategories = 0L,
+    censormin = -Inf, censormax = Inf, id_prefix = "manifest") {
+  type <- suppressWarnings(as.integer(type))
+  entry <- ctgui_manifest_type_entry(type)
+  field <- function(suffix) paste0(id_prefix, "_", suffix, "_", index)
+  finite_or_blank <- function(value) if (is.finite(value)) value else NA_real_
+
+  shiny::div(
+    class = "measurement-item",
+    shiny::selectInput(
+      field("type"), paste(name, "variable type"),
+      choices = ctgui_manifest_type_choices(),
+      selected = as.character(type)
+    ),
+    shiny::tags$p(class = "help-note", entry$short),
+    shiny::tags$p(class = "help-note ctgui-explain-detail", entry$detail),
+    if (identical(entry$needs, "ncategories")) {
+      shiny::div(
+        class = "measurement-extra",
+        shiny::numericInput(
+          field("ncategories"), "Number of categories",
+          value = if (ncategories >= 3L) ncategories else 5L, min = 3L, step = 1L
+        ),
+        shiny::tags$p(
+          class = "help-note",
+          "Code the data as consecutive integers from 1. One threshold fewer than this is estimated. Two categories is binary rather than ordinal."
+        )
+      )
+    },
+    if (identical(entry$needs, "censor")) {
+      shiny::div(
+        class = "measurement-extra",
+        shiny::numericInput(field("censormin"), "Lower limit", value = finite_or_blank(censormin)),
+        shiny::numericInput(field("censormax"), "Upper limit", value = finite_or_blank(censormax)),
+        shiny::tags$p(
+          class = "help-note",
+          "Leave a limit blank if the variable is censored on one side only. These are properties of the instrument, not parameters."
+        )
+      )
+    }
   )
 }

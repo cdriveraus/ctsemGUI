@@ -13,15 +13,53 @@ ctgui_parse_names <- function(x) {
 ctgui_manifest_type_values <- function(manifest_names, input_values,
     fallback = rep(0L, length(manifest_names))) {
   if (!length(manifest_names)) return(integer())
+  # Integer throughout: the specification stores these as integers, and a
+  # double here makes an unchanged field compare as changed.
   values <- vapply(seq_along(manifest_names), function(index) {
     value <- input_values[[paste0("manifest_type_", index)]]
     if (is.null(value)) {
-      as.numeric(fallback[pmin(index, length(fallback))] %||% 0)
+      as.integer(fallback[pmin(index, length(fallback))] %||% 0L)
     } else {
-      as.numeric(value)
+      as.integer(value)
     }
-  }, numeric(1L))
+  }, integer(1L))
   unname(values)
+}
+
+# The type of each manifest and the arguments that type needs, read back from
+# the controls. A blank limit means "not censored on that side", which is how a
+# one-sided censor is expressed, so a missing value becomes infinite rather
+# than being treated as an error.
+ctgui_measurement_input_values <- function(manifest_names, input_values, previous = NULL) {
+  n <- length(manifest_names)
+  if (!n) return(ctgui_measurement_defaults(0L))
+
+  pick <- function(suffix, index, fallback) {
+    value <- input_values[[paste0("manifest_", suffix, "_", index)]]
+    if (is.null(value) || !length(value) || is.na(value[1L])) return(fallback)
+    suppressWarnings(as.numeric(value[1L]))
+  }
+  previous_at <- function(field, index, default) {
+    values <- previous[[field]]
+    if (is.null(values) || index > length(values)) return(default)
+    values[index]
+  }
+
+  types <- ctgui_manifest_type_values(manifest_names, input_values,
+    previous$manifest_type %||% rep(0L, n))
+  categories <- vapply(seq_len(n), function(i) {
+    pick("ncategories", i, previous_at("ncategories", i, 0))
+  }, numeric(1L))
+  lower <- vapply(seq_len(n), function(i) {
+    pick("censormin", i, previous_at("censormin", i, -Inf))
+  }, numeric(1L))
+  upper <- vapply(seq_len(n), function(i) {
+    pick("censormax", i, previous_at("censormax", i, Inf))
+  }, numeric(1L))
+  lower[is.na(lower)] <- -Inf
+  upper[is.na(upper)] <- Inf
+
+  ctgui_normalize_measurement(manifest_names, types, categories, lower, upper)
 }
 
 ctgui_spec_fields <- function(values, previous) {
@@ -30,12 +68,14 @@ ctgui_spec_fields <- function(values, previous) {
   manifest_names <- ctgui_parse_names(values$manifest_names)
   tdpred_names <- ctgui_parse_names(values$tdpred_names)
   tipred_names <- ctgui_parse_names(values$tipred_names)
+  measurement <- ctgui_measurement_input_values(manifest_names, values, previous)
   list(
     latent_names = latent_names,
     manifest_names = manifest_names,
-    manifest_type = ctgui_manifest_type_values(
-      manifest_names, values, previous$manifest_type
-    ),
+    manifest_type = measurement$manifest_type,
+    ncategories = measurement$ncategories,
+    censormin = measurement$censormin,
+    censormax = measurement$censormax,
     tdpred_names = tdpred_names,
     tipred_names = tipred_names,
     type = values$type %||% previous$type,
@@ -50,7 +90,8 @@ ctgui_spec_fields <- function(values, previous) {
 ctgui_spec_fields_changed <- function(spec, fields) {
   ctgui_check_spec(spec)
   compared <- c(
-    "latent_names", "manifest_names", "manifest_type", "tdpred_names",
+    "latent_names", "manifest_names", "manifest_type",
+    "ncategories", "censormin", "censormax", "tdpred_names",
     "tipred_names", "type", "Tpoints", "tipredDefault", "id", "time"
   )
   any(vapply(compared, function(field) {
@@ -81,7 +122,10 @@ ctgui_commit_spec_fields <- function(previous, fields, reason = "specification")
     manifest_names = fields$manifest_names,
     tdpred_names = fields$tdpred_names,
     tipred_names = fields$tipred_names,
-    manifest_type = fields$manifest_type
+    manifest_type = fields$manifest_type,
+    ncategories = fields$ncategories,
+    censormin = fields$censormin,
+    censormax = fields$censormax
   )
   ctgui_commit_spec(previous, updated, reason = reason)
 }
@@ -149,6 +193,51 @@ ctgui_matrix_group_names <- function(spec, group = "Dynamics") {
     character()
   )
   intersect(desired, present)
+}
+
+# The matrix editor is one of the three ways a model gets specified, so it has
+# to account for measurement types too. Thresholds are the visible consequence
+# of an ordinal variable, and they are not an editable matrix: ctModel has no
+# THRESHOLDS argument and derives them from the category count.
+ctgui_measurement_matrix_note <- function(spec) {
+  types <- spec$manifest_type %||% integer()
+  if (!length(types)) return(NULL)
+  notes <- character()
+
+  ordinal <- spec$manifest_names[types == 2L]
+  if (length(ordinal)) {
+    counts <- spec$ncategories[types == 2L]
+    notes <- c(notes, paste0(
+      "Ordinal: ", paste(paste0(ordinal, " (", counts, " categories)"), collapse = ", "),
+      ". Their thresholds are estimated automatically, one fewer than there are ",
+      "categories, and are not edited here. Change the category count under ",
+      "Model > Specification."
+    ))
+  }
+  censored <- spec$manifest_names[types == 4L]
+  if (length(censored)) {
+    bounds <- vapply(which(types == 4L), function(i) {
+      ctgui_measurement_summary(spec$manifest_names[i], 4L, 0L,
+        spec$censormin[i] %||% -Inf, spec$censormax[i] %||% Inf)
+    }, character(1L))
+    notes <- c(notes, paste0(
+      "Censored: ", paste(paste0(censored, " ", tolower(sub("^Censored, ", "", bounds))),
+        collapse = ", "),
+      ". The limits are constants of the instrument, not parameters, so they are ",
+      "set with the variable rather than in a matrix."
+    ))
+  }
+  other <- spec$manifest_names[types %in% c(1L, 3L)]
+  if (length(other)) {
+    labels <- vapply(types[types %in% c(1L, 3L)], ctgui_manifest_type_label, character(1L))
+    notes <- c(notes, paste0(
+      paste(paste0(other, " (", tolower(labels), ")"), collapse = ", "),
+      " are not Gaussian, so MANIFESTVAR is not an error standard deviation on ",
+      "the observed scale for them."
+    ))
+  }
+  if (!length(notes)) return(NULL)
+  notes
 }
 
 ctgui_matrix_note <- function(matrix_name) {
