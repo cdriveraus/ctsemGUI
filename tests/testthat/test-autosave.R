@@ -1,5 +1,7 @@
 ctgui_autosave_write <- getFromNamespace("ctgui_autosave_write", "ctsemGUI")
 ctgui_autosave_read <- getFromNamespace("ctgui_autosave_read", "ctsemGUI")
+ctgui_autosave_dir <- getFromNamespace("ctgui_autosave_dir", "ctsemGUI")
+ctgui_autosave_path <- getFromNamespace("ctgui_autosave_path", "ctsemGUI")
 ctgui_autosave_clear <- getFromNamespace("ctgui_autosave_clear", "ctsemGUI")
 ctgui_autosave_describe <- getFromNamespace("ctgui_autosave_describe", "ctsemGUI")
 ctgui_autosave_worth_offering <- getFromNamespace("ctgui_autosave_worth_offering", "ctsemGUI")
@@ -159,10 +161,35 @@ test_that("an empty starting session does not overwrite a model left to recover"
   expect_match(source, "recoverable_state <- ctgui_autosave_read()", fixed = TRUE)
 })
 
+test_that("the tests do not use the cache directory a real session would", {
+  # Autosave lives at one per-user path. Without the redirection in
+  # setup-autosave-cache.R a test run clears a user's genuine recovered model,
+  # and two concurrent runs restore each other's specifications -- which shows
+  # up as a restored spec carrying the other run's model, not as anything that
+  # looks like an isolation problem.
+  expect_equal(
+    normalizePath(ctgui_autosave_dir(), winslash = "/", mustWork = FALSE),
+    normalizePath(
+      file.path(tempdir(), "ctsemGUI-test-cache", "R", "ctsemGUI"),
+      winslash = "/", mustWork = FALSE
+    )
+  )
+  expect_equal(
+    ctgui_autosave_path(),
+    file.path(ctgui_autosave_dir(), "autosave.rds")
+  )
+})
+
 test_that("a model survives a session ending and comes back in the next", {
   skip_if_not_installed("shiny")
   ctgui_blueprint_apply <- getFromNamespace("ctgui_blueprint_apply", "ctsemGUI")
 
+  # setup-autosave-cache.R has pointed the cache root at this session's own
+  # temporary directory, so the path the app server reaches for by default is
+  # this run's alone. Any autosave found there is still put back afterwards:
+  # the test above reports a missing redirection but cannot stop this one
+  # running, and without it this clear lands on a real user's only copy of a
+  # model they spent an hour on.
   path <- ctgui_autosave_path()
   original <- if (file.exists(path)) readRDS(path) else NULL
   on.exit({
