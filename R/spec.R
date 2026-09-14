@@ -267,6 +267,25 @@ ctgui_validate <- function(spec) {
     add_message(problem$severity %||% "warning", problem$field, problem$message)
   }
 
+  # A TI effect that is fixed to a value, or named so other parameters can
+  # share it, is kept when the model is loaded but cannot be written back: this
+  # GUI's label lists predictor names and nothing else. Saying so before the
+  # model is rebuilt is the difference between a limitation and a silent edit.
+  for (tipred in spec$tipred_names %||% character()) {
+    field <- paste0(tipred, "_effect")
+    column <- spec$pars[[field]]
+    if (is.null(column)) next
+    lossy <- !ctgui_tipred_effect_is_plain(column) & ctgui_tipred_effect_active(column)
+    if (!any(lossy)) next
+    add_message("warning", field, paste0(
+      "The ", tipred, " effect on ",
+      paste(unique(as.character(spec$pars$param)[lossy]), collapse = ", "),
+      " is written as ", paste(unique(trimws(as.character(column)[lossy])), collapse = ", "),
+      ", which this editor cannot express. Rebuilding the model keeps the ",
+      "effect but makes it an ordinary free one."
+    ))
+  }
+
   lambda <- spec$matrices[["LAMBDA"]]
   if (!is.null(lambda) && is.matrix(lambda)) {
     reaches <- ctgui_latents_reaching_measurement(spec)
@@ -1008,7 +1027,9 @@ ctgui_parameter_metadata_from_pars <- function(pars, tipred_names = character(),
   out$extra_pars <- ""
   for (tipred in tipred_names) {
     field <- paste0(tipred, "_effect")
-    out[[field]] <- if (field %in% names(pars)) as.logical(pars[[field]][match(out$param, as.character(pars$param))]) else FALSE
+    out[[field]] <- if (field %in% names(pars)) {
+      ctgui_tipred_effect_active(pars[[field]][match(out$param, as.character(pars$param))])
+    } else FALSE
   }
   rownames(out) <- NULL
   out

@@ -135,12 +135,57 @@ test_that("annotated TI parameter settings survive matrix round trips", {
   drift <- model$pars[model$pars$matrix == "DRIFT", , drop = FALSE]
   expect_equal(as.character(drift$param[1]), "auto_eta")
   expect_true(isTRUE(drift$indvarying[1]))
-  expect_true(isTRUE(drift$age_effect[1]))
-  expect_false(isTRUE(drift$group_effect[1]))
+  # Not isTRUE(): ctsem 3.11 holds a logical here, 3.12 a character spec that
+  # can also say "fixed at 4.3" or name the effect. isTRUE() reads every one
+  # of the latter as no effect, which is how this read as a failure rather
+  # than as the version difference it is.
+  expect_true(ctgui_tipred_effect_active(drift$age_effect[1]))
+  expect_false(ctgui_tipred_effect_active(drift$group_effect[1]))
 
   restored <- ctgui_spec_from_model(model)
   metadata <- restored$parameter_metadata[restored$parameter_metadata$matrix == "DRIFT", , drop = FALSE]
+  # The GUI's own metadata is a logical either way, because reading the
+  # column is where the four states are resolved.
   expect_true(isTRUE(metadata$age_effect[1]))
+  expect_false(isTRUE(metadata$group_effect[1]))
+})
+
+test_that("a named or fixed TI effect is neither dropped nor silently rewritten", {
+  skip_if_not_installed("ctsem")
+  # ctsem 3.12 lets an effect be fixed to a value, or named so that other
+  # parameters can be constrained to the same one. as.logical() read both as
+  # NA, and every caller downstream reads NA as "no effect", so loading such a
+  # model lost the effect without saying anything.
+  ctgui_tipred_effect_active <- getFromNamespace("ctgui_tipred_effect_active", "ctsemGUI")
+  ctgui_tipred_effect_is_plain <- getFromNamespace("ctgui_tipred_effect_is_plain", "ctsemGUI")
+
+  spec_column <- c("FALSE", "TRUE", "4.3", "myeffect", "0", "", NA)
+  expect_equal(ctgui_tipred_effect_active(spec_column),
+    c(FALSE, TRUE, TRUE, TRUE, FALSE, FALSE, FALSE))
+  expect_equal(ctgui_tipred_effect_is_plain(spec_column),
+    c(TRUE, TRUE, FALSE, FALSE, FALSE, TRUE, TRUE))
+
+  # ctsem 3.11 holds a logical, and it means exactly what it says.
+  expect_equal(ctgui_tipred_effect_active(c(TRUE, FALSE, NA)), c(TRUE, FALSE, FALSE))
+  expect_true(all(ctgui_tipred_effect_is_plain(c(TRUE, FALSE, NA))))
+
+  # And what it cannot write back, it says so about rather than doing quietly.
+  spec <- suppressWarnings(ctgui_spec(
+    latent_names = "eta", manifest_names = "Y",
+    tipred_names = "age", tipredDefault = FALSE
+  ))
+  spec <- ctgui_set_matrix_value(spec, "DRIFT", "eta", "eta",
+    label = "auto_eta||TRUE||age")
+  model <- suppressWarnings(suppressMessages(ctgui_to_ctsem_model(spec)))
+  restored <- ctgui_spec_from_model(model)
+  if (is.character(restored$pars$age_effect)) {
+    restored$pars$age_effect[restored$pars$matrix == "DRIFT"] <- "shared_age"
+    warnings <- suppressWarnings(ctgui_validate(restored))
+    warnings <- warnings[warnings$severity == "warning", , drop = FALSE]
+    expect_match(paste(warnings$message, collapse = " "), "shared_age", fixed = TRUE)
+    expect_match(paste(warnings$message, collapse = " "), "ordinary free one",
+      fixed = TRUE)
+  }
 })
 
 test_that("expression-valued matrix cells never serialize compact metadata", {

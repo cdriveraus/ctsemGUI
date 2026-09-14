@@ -38,6 +38,40 @@ ctgui_ctsem_version <- function() {
   tryCatch(utils::packageVersion("ctsem"), error = function(e) NULL)
 }
 
+# A `<TI>_effect` column of ctsem's `pars` says four different things, and
+# which of them it can say depends on the version. ctsem 3.11 held a logical.
+# ctsem 3.12 holds a character spec, because "free" and "fixed at 1" are
+# different statements and both have to be sayable:
+#
+#   FALSE / 'FALSE' / ''   no effect
+#   TRUE  / 'TRUE'         a free effect, named automatically
+#   '4.3'                  fixed at that value
+#   'myeffect'             a free effect with a name, so another parameter can
+#                          be constrained to the same one
+#
+# as.logical() reads the last two as NA, which every caller then treats as "no
+# effect" -- so a model using either would load into the GUI with the effect
+# quietly gone. Asking whether an effect is active covers both versions.
+ctgui_tipred_effect_active <- function(x) {
+  if (is.logical(x)) return(!is.na(x) & x)
+  spec <- trimws(as.character(unlist(x)))
+  spec[is.na(spec)] <- "FALSE"
+  active <- !spec %in% c("FALSE", "F", "", "NA", "0")
+  numeric <- suppressWarnings(as.numeric(spec))
+  active & !(is.finite(numeric) & numeric == 0)
+}
+
+# Whether the effect is one this GUI can write back unchanged. Its label
+# grammar lists predictor names and nothing else, so an effect that is fixed to
+# a value or carries a name survives loading but would be re-emitted as an
+# ordinary free one.
+ctgui_tipred_effect_is_plain <- function(x) {
+  if (is.logical(x)) return(rep(TRUE, length(x)))
+  spec <- trimws(as.character(unlist(x)))
+  spec[is.na(spec)] <- "FALSE"
+  toupper(spec) %in% c("TRUE", "FALSE", "F", "T", "", "NA")
+}
+
 # Whether a manifest intercept reaches the link for a non-Gaussian variable.
 # ctsem 3.12 forms the linear predictor as MANIFESTMEANS + LAMBDA * state and
 # hands that to the link, so MANIFESTMEANS sets the level directly and the
