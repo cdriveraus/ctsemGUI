@@ -63,17 +63,77 @@ ctgui_help_tooltip <- function(help) {
   help$tooltip %||% help$text %||% paste("Show help for", help$title %||% help$topic)
 }
 
+# The lias entries of one Rd page. A page documents every name it aliases,
+# and those names are not derivable from its filename.
+ctgui_rd_aliases <- function(rd) {
+  tags <- vapply(rd, function(part) attr(part, "Rd_tag") %||% "", character(1L))
+  aliases <- rd[tags == "\\alias"]
+  if (!length(aliases)) return(character())
+  trimws(vapply(aliases, function(a) paste(unlist(a), collapse = ""), character(1L)))
+}
+
+# Which Rd page documents a topic. Not always the one named after it: ctsem
+# documents several functions per page and keeps renamed ones as aliases, so
+# ctFitCovCheck lives in ctFitCheckCov.Rd. Matching the filename alone reported
+# "No ctsem help found" for a function that is perfectly well documented.
+ctgui_ctsem_rd_file <- function(rd_db, topic) {
+  named <- paste0(topic, ".Rd")
+  if (named %in% names(rd_db)) return(named)
+  for (file in names(rd_db)) {
+    if (topic %in% ctgui_rd_aliases(rd_db[[file]])) return(file)
+  }
+  NULL
+}
+
+# The plain text under an Rd node, with the markup dropped.
+ctgui_rd_node_text <- function(node) {
+  if (is.character(node)) return(paste(node, collapse = ""))
+  if (!is.list(node)) return("")
+  paste(vapply(node, ctgui_rd_node_text, character(1L)), collapse = "")
+}
+
+# One argument's description, read from the \arguments section of the parse
+# tree rather than from rendered text. Exact, and it still works on a page
+# Rd2txt will not render at all -- ctsem's own ctFit.Rd is one, which is how
+# this came up.
+ctgui_rd_argument_text <- function(rd, param) {
+  tags <- vapply(rd, function(part) attr(part, "Rd_tag") %||% "", character(1L))
+  for (section in rd[tags == "\\arguments"]) {
+    item_tags <- vapply(section, function(part) attr(part, "Rd_tag") %||% "",
+      character(1L))
+    for (item in section[item_tags == "\\item"]) {
+      if (length(item) < 2L) next
+      names_given <- trimws(strsplit(ctgui_rd_node_text(item[[1L]]), ",")[[1L]])
+      if (!param %in% names_given) next
+      body <- trimws(gsub("[[:space:]]+", " ", ctgui_rd_node_text(item[[2L]])))
+      if (nzchar(body)) return(paste0(param, ": ", body))
+    }
+  }
+  NULL
+}
+
 ctgui_ctsem_help_text <- function(topic, param = NULL) {
   rd_db <- tryCatch(tools::Rd_db("ctsem"), error = function(e) e)
   if (inherits(rd_db, "error")) return(paste("No ctsem help found for", topic))
-  topic_file <- paste0(topic, ".Rd")
-  if (!topic_file %in% names(rd_db)) return(paste("No ctsem help found for", topic))
-  text <- tryCatch(
+  topic_file <- ctgui_ctsem_rd_file(rd_db, topic)
+  if (is.null(topic_file)) return(paste("No ctsem help found for", topic))
+  if (!is.null(param)) {
+    from_tree <- ctgui_rd_argument_text(rd_db[[topic_file]], param)
+    if (!is.null(from_tree)) return(from_tree)
+  }
+  rendered <- tryCatch(
     utils::capture.output(tools::Rd2txt(
       rd_db[[topic_file]], options = list(underline_titles = FALSE)
     )),
-    error = function(e) paste("Could not load help:", conditionMessage(e))
+    error = function(e) e
   )
+  # A page that will not render is not the same as a page without this
+  # argument, and saying the latter sends the reader looking in the wrong place.
+  if (inherits(rendered, "error")) {
+    return(paste0("Could not render the ctsem help for ", topic, ": ",
+      conditionMessage(rendered)))
+  }
+  text <- rendered
   backspace <- rawToChar(as.raw(8))
   text <- gsub("\\033\\[[0-9;]*m", "", text, perl = TRUE)
   for (i in seq_len(4L)) text <- gsub(paste0(".?", backspace), "", text)
