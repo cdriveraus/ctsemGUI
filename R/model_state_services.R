@@ -209,9 +209,10 @@ ctgui_measurement_matrix_note <- function(spec) {
     counts <- spec$ncategories[types == 2L]
     notes <- c(notes, paste0(
       "Ordinal: ", paste(paste0(ordinal, " (", counts, " categories)"), collapse = ", "),
-      ". Their thresholds are estimated automatically, one fewer than there are ",
-      "categories, and are not edited here. Change the category count under ",
-      "Model > Specification."
+      ". Their thresholds follow from the category count and are not edited ",
+      "here: one fewer than there are categories, the first fixed at zero so ",
+      "the variable's level sits in MANIFESTMEANS. Change the category count ",
+      "under Model > Specification."
     ))
   }
   censored <- spec$manifest_names[types == 4L]

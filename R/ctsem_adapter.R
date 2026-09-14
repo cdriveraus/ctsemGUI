@@ -31,14 +31,22 @@ ctgui_ctmodel_formals <- function() {
     error = function(e) NULL)
 }
 
-# Ordinal, count and censored measurement arrived in ctsem 3.12 together with
-# the arguments they need. On an earlier ctsem the types cannot be expressed
-# at all, and passing the arguments anyway fails inside ctModel() with an
-# "unused argument" error that names none of the choices that caused it.
-ctgui_ctsem_extended_measurement <- function() {
-  args <- ctgui_ctmodel_formals()
-  if (is.null(args)) return(TRUE)
-  all(c("ncategories", "censormin", "censormax") %in% args)
+# The installed ctsem's version, for the measurement types whose availability
+# cannot be read off a signature. NULL when ctsem is not installed.
+ctgui_ctsem_version <- function() {
+  if (!requireNamespace("ctsem", quietly = TRUE)) return(NULL)
+  tryCatch(utils::packageVersion("ctsem"), error = function(e) NULL)
+}
+
+# Whether a manifest intercept reaches the link for a non-Gaussian variable.
+# ctsem 3.12 forms the linear predictor as MANIFESTMEANS + LAMBDA * state and
+# hands that to the link, so MANIFESTMEANS sets the level directly and the
+# warning about fixed CINT entries went with it. On 3.11 the link applies to
+# the latent alone and ctModel() still warns.
+ctgui_ctsem_manifest_means_in_link <- function() {
+  version <- ctgui_ctsem_version()
+  if (is.null(version)) return(TRUE)
+  version >= package_version("3.12.0")
 }
 
 ctgui_ctsem_call <- function(name, ..., .args = NULL) {

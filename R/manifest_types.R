@@ -20,7 +20,8 @@ ctgui_manifest_type_catalog <- function() {
         "The default. The observed value is the latent process plus normally",
         "distributed measurement error."
       ),
-      needs = "none", backends = c("julia", "stan")
+      needs = "none", backends = c("julia", "stan"),
+      since = NA_character_, requires_args = character()
     ),
     list(
       value = 1L, id = "binary", label = "Binary",
@@ -29,18 +30,20 @@ ctgui_manifest_type_catalog <- function() {
         "The latent process drives the probability of a 1. Coded 0/1 in the",
         "data; anything else is a category count, which is ordinal instead."
       ),
-      needs = "none", backends = c("julia", "stan")
+      needs = "none", backends = c("julia", "stan"),
+      since = NA_character_, requires_args = character()
     ),
     list(
       value = 2L, id = "ordinal", label = "Ordinal",
       short = "Ordered categories, coded 1, 2, 3, ... Needs a category count.",
       detail = paste(
         "Ordered categories with unknown spacing, such as a Likert item. The",
-        "thresholds between categories are estimated, so the model needs to",
-        "know how many there are before it sees any data. Code the data as",
-        "consecutive integers starting at 1."
+        "boundaries between categories are placed by the model, one fewer than",
+        "there are categories, so it needs to know how many before it sees any",
+        "data. Code the data as consecutive integers starting at 1."
       ),
-      needs = "ncategories", backends = "julia"
+      needs = "ncategories", backends = "julia",
+      since = "3.12.0", requires_args = "ncategories"
     ),
     list(
       value = 3L, id = "count", label = "Count",
@@ -50,7 +53,8 @@ ctgui_manifest_type_catalog <- function() {
         "process is the log rate. Use this rather than treating a count as",
         "continuous when the numbers are small and the floor at zero matters."
       ),
-      needs = "none", backends = "julia"
+      needs = "none", backends = "julia",
+      since = "3.12.0", requires_args = character()
     ),
     list(
       value = 4L, id = "censored", label = "Censored",
@@ -62,7 +66,8 @@ ctgui_manifest_type_catalog <- function() {
         "of being at or beyond it rather than a density. The limits are",
         "properties of the instrument, not parameters, so you supply them."
       ),
-      needs = "censor", backends = "julia"
+      needs = "censor", backends = "julia",
+      since = "3.12.0", requires_args = c("censormin", "censormax")
     )
   )
 }
@@ -74,14 +79,45 @@ ctgui_manifest_type_entry <- function(value) {
   if (length(match)) match[[1L]] else entries[[1L]]
 }
 
+# Whether the installed ctsem can actually fit this type. ctsem 3.11 knows
+# continuous and binary only: its ctModel() does not validate manifesttype, so
+# an ordinal or censored variable is accepted there and then fitted with no
+# measurement model for it, which is a wrong answer rather than an error. The
+# GUI therefore has to hold this itself.
+#
+# Two signals, because neither covers every type. `requires_args` can be
+# asked of the loaded ctModel(), which is exact and survives a version number
+# that says nothing; a count needs no argument, so only `since` can place it.
+# A type answers unavailable if either says so.
+ctgui_manifest_type_available <- function(value) {
+  entry <- ctgui_manifest_type_entry(value)
+  if (is.na(entry$since %||% NA_character_) && !length(entry$requires_args)) return(TRUE)
+
+  args <- ctgui_ctmodel_formals()
+  if (length(entry$requires_args) && !is.null(args) &&
+      !all(entry$requires_args %in% args)) {
+    return(FALSE)
+  }
+  version <- ctgui_ctsem_version()
+  # ctsem absent or unreadable: not this function's question to answer, and
+  # nothing can be built anyway.
+  if (is.null(version) || is.na(entry$since %||% NA_character_)) return(TRUE)
+  version >= package_version(entry$since)
+}
+
+# The version a type needs, for a message that says what to do about it.
+ctgui_manifest_type_since <- function(value) {
+  ctgui_manifest_type_entry(value)$since %||% NA_character_
+}
+
 # `available_only` drops the types the installed ctsem cannot fit, so the
 # controls do not offer a choice that validation would then refuse. The
 # catalog itself stays whole: a spec loaded from elsewhere still needs its
 # label for a type this session cannot build.
 ctgui_manifest_type_choices <- function(available_only = FALSE) {
   entries <- ctgui_manifest_type_catalog()
-  if (available_only && !ctgui_ctsem_extended_measurement()) {
-    entries <- Filter(function(entry) entry$value %in% c(0L, 1L), entries)
+  if (available_only) {
+    entries <- Filter(function(entry) ctgui_manifest_type_available(entry$value), entries)
   }
   stats::setNames(
     vapply(entries, function(entry) entry$value, integer(1L)),
@@ -203,25 +239,28 @@ ctgui_measurement_problems <- function(manifest_names, manifest_type = NULL,
     )
   }
 
-  # A type the installed ctsem cannot express is a problem with the choice,
-  # not with the model, so it is reported here beside the choice. Left to
-  # ctModel() it surfaces as an unused-argument error naming ncategories, on a
-  # call the user never wrote.
-  if (!ctgui_ctsem_extended_measurement()) {
-    unsupported <- manifest_names[measurement$manifest_type %in% c(2L, 3L, 4L)]
-    if (length(unsupported)) {
-      labels <- vapply(
-        measurement$manifest_type[measurement$manifest_type %in% c(2L, 3L, 4L)],
-        ctgui_manifest_type_label, character(1L)
-      )
-      add("manifesttype", paste0(
-        paste(paste0(unsupported, " (", tolower(labels), ")"), collapse = ", "),
-        if (length(unsupported) == 1L) " needs " else " need ",
-        "ctsem 3.12 or later; this session has ",
-        ctgui_ctsem_capabilities()$version %||% "an older version",
-        ". Choose continuous or binary, or upgrade ctsem."
-      ))
-    }
+  # A type the installed ctsem cannot fit is a problem with the choice, not
+  # with the model, so it is reported here beside the choice. Left to ctsem,
+  # 3.12 gives an unused-argument error naming an argument the user never
+  # wrote, and 3.11 gives no error at all -- it does not validate
+  # manifesttype, so it would fit the model with no measurement model for
+  # that variable.
+  unavailable <- which(!vapply(measurement$manifest_type,
+    ctgui_manifest_type_available, logical(1L)))
+  if (length(unavailable)) {
+    types <- measurement$manifest_type[unavailable]
+    labels <- vapply(types, ctgui_manifest_type_label, character(1L))
+    since <- unique(stats::na.omit(vapply(types, ctgui_manifest_type_since,
+      character(1L))))
+    add("manifesttype", paste0(
+      paste(paste0(manifest_names[unavailable], " (", tolower(labels), ")"),
+        collapse = ", "),
+      if (length(unavailable) == 1L) " needs " else " need ",
+      if (length(since)) paste("ctsem", paste(since, collapse = " or ")) else "a newer ctsem",
+      " or later; this session has ",
+      format(ctgui_ctsem_version() %||% "an older version"),
+      ". Choose continuous or binary, or upgrade ctsem."
+    ))
   }
 
   for (index in seq_along(manifest_names)) {
@@ -232,8 +271,8 @@ ctgui_measurement_problems <- function(manifest_names, manifest_type = NULL,
     if (identical(needs, "ncategories") && measurement$ncategories[index] < 3L) {
       add("manifesttype", paste0(
         name, " is ordinal, so it needs a category count of at least 3. ",
-        "The model estimates one threshold fewer than there are categories, ",
-        "and has to know how many before it sees any data. A two-category ",
+        "The model places one threshold fewer than there are categories, and ",
+        "has to know how many before it sees any data. A two-category ",
         "variable is binary rather than ordinal."
       ))
     }
@@ -261,8 +300,7 @@ ctgui_measurement_problems <- function(manifest_names, manifest_type = NULL,
 # Identification traps that ctsem warns about at model construction, raised
 # here instead so they appear beside the choice that caused them and name the
 # cell to change.
-ctgui_measurement_identification_problems <- function(manifest_names, manifest_type,
-    manifest_means = NULL, latent_intercepts = NULL) {
+ctgui_measurement_identification_problems <- function(manifest_type, latent_intercepts = NULL) {
   problems <- list()
   add <- function(message) {
     problems[[length(problems) + 1L]] <<- list(
@@ -277,23 +315,23 @@ ctgui_measurement_identification_problems <- function(manifest_names, manifest_t
     nzchar(text) && is.na(suppressWarnings(as.numeric(strsplit(text, "|", fixed = TRUE)[[1L]][1L])))
   }
 
-  ordinal <- which(types == 2L)
-  if (length(ordinal) && !is.null(manifest_means)) {
-    offenders <- manifest_names[ordinal][vapply(ordinal, function(i) {
-      i <= length(manifest_means) && free(manifest_means[i])
-    }, logical(1L))]
-    if (length(offenders)) {
-      add(paste0(
-        "The thresholds of ", paste(offenders, collapse = ", "),
-        " and their MANIFESTMEANS both describe where the categories sit, so ",
-        "they are not separately identified. Fix MANIFESTMEANS to 0 for these ",
-        "variables and let the thresholds carry the location."
-      ))
-    }
-  }
+  # There was a warning here that an ordinal variable's thresholds and its
+  # MANIFESTMEANS both set the location, so they are not separately
+  # identified, advising that MANIFESTMEANS be fixed to 0. Neither half holds
+  # any more: ctsem fixes the first threshold at zero instead, so the
+  # ambiguous model cannot be built, and MANIFESTMEANS is now where the
+  # location is meant to live. It is also the only one of the two that can
+  # vary by person, so following the old advice would have cost the user the
+  # random effect that shifts an indicator's categories together.
 
+  # The level of a non-Gaussian variable. ctsem 3.12 forms the linear
+  # predictor as MANIFESTMEANS + LAMBDA * state and hands that to the link, so
+  # a manifest intercept sets the level directly and a fixed CINT is no
+  # concern. On 3.11 the link applies to the latent alone and ctsem warns at
+  # ctModel(); this mirrors that warning beside the choice, and only there.
   non_gaussian <- which(types > 0L)
   if (length(non_gaussian) && !is.null(latent_intercepts) &&
+      !ctgui_ctsem_manifest_means_in_link() &&
       !any(vapply(latent_intercepts, free, logical(1L)))) {
     add(paste0(
       "This model has non-continuous variables and every CINT entry is fixed. ",

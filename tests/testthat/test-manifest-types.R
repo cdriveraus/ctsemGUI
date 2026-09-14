@@ -12,13 +12,45 @@ ctgui_measurement_summary <- getFromNamespace("ctgui_measurement_summary", "ctse
 ctgui_measurement_input_values <- getFromNamespace("ctgui_measurement_input_values", "ctsemGUI")
 ctgui_respec_preserving <- getFromNamespace("ctgui_respec_preserving", "ctsemGUI")
 ctgui_measurement_matrix_note <- getFromNamespace("ctgui_measurement_matrix_note", "ctsemGUI")
-ctgui_ctsem_extended_measurement <- getFromNamespace("ctgui_ctsem_extended_measurement", "ctsemGUI")
+ctgui_manifest_type_available <- getFromNamespace("ctgui_manifest_type_available", "ctsemGUI")
+
+# ctModel()'s argument names in ctsem 3.11.1, verbatim, so what the tests
+# simulate is the real signature rather than a guess at it. The three the
+# 3.12 measurement models need -- ncategories, censormin, censormax -- are the
+# ones absent here.
+ctmodel_formals_3_11_1 <- c(
+  "LAMBDA", "type", "n.manifest", "n.latent", "Tpoints", "manifestNames",
+  "manifesttype", "latentNames", "id", "time", "silent", "T0VAR", "T0MEANS",
+  "MANIFESTMEANS", "MANIFESTVAR", "DRIFT", "CINT", "DIFFUSION", "n.TDpred",
+  "TDpredNames", "TDPREDEFFECT", "TDPREDMEANS", "TDPREDVAR", "n.TIpred",
+  "TIpredNames", "tipredDefault", "PARS"
+)
+
+# Mocks the environment rather than the answer, so the availability rule is
+# what gets tested rather than stubbed out.
+local_ctsem_3_11 <- function(env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    ctgui_ctmodel_formals = function() ctmodel_formals_3_11_1,
+    ctgui_ctsem_version = function() package_version("3.11.1"),
+    .package = "ctsemGUI", .env = env
+  )
+}
+
+local_ctsem_3_12 <- function(env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    ctgui_ctmodel_formals = function() {
+      c(ctmodel_formals_3_11_1, "ncategories", "censormin", "censormax")
+    },
+    ctgui_ctsem_version = function() package_version("3.12.0"),
+    .package = "ctsemGUI", .env = env
+  )
+}
 
 # Ordinal, count and censored measurement need ctsem 3.12. On 3.11 the types
 # cannot be built at all, so these cases have nothing to assert; the refusal
 # that replaces them is covered by its own test below.
 skip_without_extended_measurement <- function() {
-  testthat::skip_if_not(ctgui_ctsem_extended_measurement(),
+  testthat::skip_if_not(ctgui_manifest_type_available(2L),
     "installed ctsem has no ordinal, count or censored measurement")
 }
 
@@ -84,10 +116,7 @@ test_that("a type missing its argument is caught before ctsem sees it", {
   # These are the rules about which type needs which argument, so they hold
   # whatever ctsem is installed. Pinned, or on a ctsem that cannot fit these
   # types every case would also carry the version problem and count twice.
-  testthat::local_mocked_bindings(
-    ctgui_ctsem_extended_measurement = function() TRUE,
-    .package = "ctsemGUI"
-  )
+  local_ctsem_3_12()
   problems <- function(...) ctgui_measurement_problems(c("a", "b"), ...)
 
   # ctsem needs at least three categories; two is binary, not ordinal.
@@ -185,24 +214,30 @@ test_that("an incomplete choice is a draft rather than a crash", {
   expect_match(errors$message[1L], "at least 3", fixed = TRUE)
 })
 
-test_that("identification traps ctsem warns about are raised as warnings", {
+test_that("an ordinal variable keeps its free manifest mean", {
   skip_without_extended_measurement()
   skip_if_not_installed("ctsem")
-  # An ordinal variable's thresholds and its manifest intercept both describe
-  # where the categories sit, so they are not separately identified. ctsem
-  # warns at model construction; saying so here puts it beside the choice.
+  # ctsem used to leave the first threshold free and warn that it and
+  # MANIFESTMEANS both set the location. It now fixes the first threshold at
+  # zero, so the ambiguity cannot be built and MANIFESTMEANS is where the
+  # location belongs -- and, being the only one of the two that can vary by
+  # person, it is what lets a random effect shift an indicator's categories
+  # together. Warning about it here would talk the user out of that.
   spec <- quiet_types(ctgui_spec(
     latent_names = "eta1", manifest_names = "item",
     manifest_type = 2L, ncategories = 5L
   ))
   validation <- quiet_types(ctgui_validate(spec))
-  warnings <- validation[validation$severity == "warning", , drop = FALSE]
+  combined <- paste(validation$message, collapse = " ")
+  expect_false(grepl("not separately identified", combined, fixed = TRUE))
+  expect_equal(nrow(validation[validation$severity == "error", , drop = FALSE]), 0L)
 
-  expect_gte(nrow(warnings), 1L)
-  combined <- paste(warnings$message, collapse = " ")
-  expect_match(combined, "not separately identified", fixed = TRUE)
-  # A warning that does not name the cell to change leaves the reader stuck.
-  expect_match(combined, "MANIFESTMEANS", fixed = TRUE)
+  # And ctsem really does fix the first one, which is what makes that safe.
+  model <- quiet_types(ctgui_to_ctsem_model(spec))
+  thresholds <- ctsem::ctModelMatrices(model)$THRESHOLDS
+  expect_equal(ncol(thresholds), 4L)          # one fewer than 5 categories
+  expect_equal(unname(thresholds[1L, 1L]), "0")
+  expect_equal(sum(thresholds[1L, ] == "0"), 1L)
 
   # None of this applies to an ordinary continuous model.
   plain <- quiet_types(ctgui_spec(latent_names = "eta1", manifest_names = "y1"))
@@ -286,8 +321,12 @@ test_that("the matrix editor explains what is not a matrix", {
   combined <- paste(notes, collapse = " ")
 
   # Thresholds and censoring limits are consequences of a type, not cells.
-  expect_match(combined, "thresholds are estimated automatically", fixed = TRUE)
+  expect_match(combined, "not edited here", fixed = TRUE)
   expect_match(combined, "not parameters", fixed = TRUE)
+  # And the note says where the level actually is, because a reader who
+  # cannot edit the thresholds needs to know what to edit instead.
+  expect_match(combined, "first fixed at zero", fixed = TRUE)
+  expect_match(combined, "MANIFESTMEANS", fixed = TRUE)
 
   plain <- quiet_types(ctgui_spec(latent_names = "eta1", manifest_names = "y1"))
   expect_null(ctgui_measurement_matrix_note(plain))
@@ -337,17 +376,21 @@ test_that("a type the installed ctsem cannot fit is refused where it was chosen"
   # Simulates a ctsem 3.11 session, where ctModel() has no ncategories
   # argument. Without this the choice fails much later, inside ctModel(), with
   # an unused-argument error naming an argument the user never wrote.
-  testthat::local_mocked_bindings(
-    ctgui_ctsem_extended_measurement = function() FALSE,
-    .package = "ctsemGUI"
-  )
+  local_ctsem_3_11()
+
+  # 3.11 knows continuous and binary. It does not validate manifesttype, so
+  # the other three are not refused there -- they are accepted and then fitted
+  # with no measurement model -- which is why the GUI has to hold this itself.
+  expect_true(ctgui_manifest_type_available(0L))
+  expect_true(ctgui_manifest_type_available(1L))
+  for (value in c(2L, 3L, 4L)) expect_false(ctgui_manifest_type_available(value))
 
   problems <- ctgui_measurement_problems(
     c("mood", "score"), manifest_type = c(2L, 0L), ncategories = c(5L, 0L)
   )
   messages <- vapply(problems, function(p) p$message, character(1L))
   expect_true(any(grepl("mood (ordinal)", messages, fixed = TRUE)))
-  expect_true(any(grepl("ctsem 3.12 or later", messages, fixed = TRUE)))
+  expect_true(any(grepl("ctsem 3.12.0 or later", messages, fixed = TRUE)))
   expect_true(all(vapply(problems, function(p) p$severity, character(1L)) == "error"))
 
   # Continuous and binary are unaffected.
@@ -357,4 +400,25 @@ test_that("a type the installed ctsem cannot fit is refused where it was chosen"
   # keeps every label so a spec loaded from elsewhere still reads correctly.
   expect_equal(unname(ctgui_manifest_type_choices(available_only = TRUE)), 0:1)
   expect_equal(unname(ctgui_manifest_type_choices()), 0:4)
+})
+
+test_that("a count is placed by version, having no argument to look for", {
+  skip_if_not_installed("ctsem")
+  # Ordinal and censored can be settled by asking ctModel() for their
+  # arguments. A count needs none, so the version is the only thing that
+  # places it, and a signature check alone would have let it through.
+  expect_equal(ctgui_manifest_type_entry(3L)$requires_args, character())
+  expect_equal(ctgui_manifest_type_entry(3L)$since, "3.12.0")
+
+  local_ctsem_3_11()
+  expect_false(ctgui_manifest_type_available(3L))
+})
+
+test_that("every type is available on the ctsem that introduced it", {
+  skip_if_not_installed("ctsem")
+  local_ctsem_3_12()
+  for (entry in ctgui_manifest_type_catalog()) {
+    expect_true(ctgui_manifest_type_available(entry$value))
+  }
+  expect_equal(unname(ctgui_manifest_type_choices(available_only = TRUE)), 0:4)
 })

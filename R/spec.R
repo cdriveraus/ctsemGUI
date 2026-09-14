@@ -263,8 +263,7 @@ ctgui_validate <- function(spec) {
     add_message(problem$severity %||% "error", problem$field, problem$message)
   }
   for (problem in ctgui_measurement_identification_problems(
-      spec$manifest_names, spec$manifest_type,
-      spec$matrices$MANIFESTMEANS, spec$matrices$CINT)) {
+      spec$manifest_type, spec$matrices$CINT)) {
     add_message(problem$severity %||% "warning", problem$field, problem$message)
   }
 
