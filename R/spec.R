@@ -10,7 +10,22 @@ ctgui_optional_matrices <- c("TDPREDEFFECT", "TDPREDMEANS", "TDPREDVAR", "PARS")
 # derived from the category count and estimated as ordinary free parameters.
 # Carrying it in the editable matrices would therefore break every rebuild, so
 # it is dropped on the way in and described separately where it matters.
+# Fallback for when the installed ctModel() cannot be inspected. The live
+# answer comes from ctgui_matrices_ctmodel_rejects().
 ctgui_derived_matrices <- c("THRESHOLDS")
+
+# ctModelMatrices() reports more matrices than ctModel() will take back, and
+# which ones depends on the ctsem version: THRESHOLDS is derived from the
+# measurement model, and 3.12 added RAWPOPVAR, the population spread. Handing
+# one back is an "unused argument" error, so the GUI drops any matrix the
+# loaded ctModel() has no argument for. Asking rather than listing is the
+# point: a matrix this GUI never touches should not break it on a ctsem
+# version it was not written against.
+ctgui_matrices_ctmodel_rejects <- function(matrix_names) {
+  accepted <- ctgui_ctmodel_formals()
+  if (is.null(accepted)) return(intersect(matrix_names, ctgui_derived_matrices))
+  setdiff(matrix_names, accepted)
+}
 
 #' Create, edit, validate, and export ctsem GUI specifications
 #'
@@ -801,10 +816,10 @@ ctgui_ctmodel_args_from_values <- function(latent_names, manifest_names, type, i
   if (length(tdpred_names) > 0L) args$TDpredNames <- tdpred_names
   if (length(tipred_names) > 0L) args$TIpredNames <- tipred_names
 
-  # Derived matrices are reported by ctModelMatrices() but rejected by
-  # ctModel(). Filtering here rather than at each caller means no path into the
-  # model can leak one, including loading a model straight from an RDS.
-  for (matrix_name in setdiff(names(matrices), ctgui_derived_matrices)) {
+  # Filtering here rather than at each caller means no path into the model can
+  # leak a matrix ctModel() will reject, including loading one straight from
+  # an RDS written by a different ctsem version.
+  for (matrix_name in setdiff(names(matrices), ctgui_matrices_ctmodel_rejects(names(matrices)))) {
     if (!is.null(matrices[[matrix_name]])) args[[matrix_name]] <- matrices[[matrix_name]]
   }
   if (is.null(args$LAMBDA)) args$LAMBDA <- ctgui_default_lambda(manifest_names, latent_names)
@@ -916,7 +931,7 @@ ctgui_expected_dims <- function(spec) {
 }
 
 ctgui_prepare_matrices <- function(matrices, latent_names, manifest_names, tdpred_names) {
-  matrices <- matrices[setdiff(names(matrices), ctgui_derived_matrices)]
+  matrices <- matrices[setdiff(names(matrices), ctgui_matrices_ctmodel_rejects(names(matrices)))]
   matrices <- ctgui_order_matrices(matrices)
   for (matrix_name in names(matrices)) {
     matrices[[matrix_name]] <- ctgui_apply_dimnames_to_one(

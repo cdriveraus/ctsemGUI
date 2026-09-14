@@ -137,7 +137,8 @@ test_that("the check worker needs only ctsem", {
   # It runs in a child started with package = FALSE.
   worker <- getFromNamespace("ctgui_julia_check_worker", "ctsemGUI")
   body_text <- paste(deparse(body(worker)), collapse = " ")
-  expect_match(body_text, "ctsem::ctJuliaStatus", fixed = TRUE)
+  expect_match(body_text, "ctsem", fixed = TRUE)
+  expect_match(body_text, "ctJuliaStatus", fixed = TRUE)
   expect_false(grepl("ctgui_", body_text, fixed = TRUE))
 })
 

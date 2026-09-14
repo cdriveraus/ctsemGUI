@@ -193,3 +193,35 @@ test_that("parameter metadata retains all selected-cell settings", {
   expect_true(isTRUE(metadata$age_effect[1]))
   expect_false(isTRUE(metadata$group_effect[1]))
 })
+
+test_that("a matrix the installed ctModel does not take is dropped, not passed", {
+  skip_if_not_installed("ctsem")
+  # ctModelMatrices() reports more matrices than ctModel() accepts back, and
+  # which ones depends on the version: THRESHOLDS is derived, and ctsem 3.12
+  # added RAWPOPVAR. A matrix the GUI never touches must not become an
+  # "unused argument" error on a ctsem this GUI was not written against, so the
+  # rule is asked of the loaded ctModel() rather than listed in the package.
+  ctgui_ctmodel_args <- getFromNamespace("ctgui_ctmodel_args", "ctsemGUI")
+  spec <- ctgui_spec(latent_names = "eta1", manifest_names = "y1")
+
+  accepted <- names(formals(ctsem::ctModel))
+  expect_true(all(names(ctgui_ctmodel_args(spec)) %in% accepted))
+
+  # A matrix from a newer ctsem, reaching the spec through a loaded model.
+  spec$matrices$NOTANARGUMENT <- matrix(0, 1L, 1L)
+  args <- ctgui_ctmodel_args(spec)
+  expect_false("NOTANARGUMENT" %in% names(args))
+  expect_true(all(names(args) %in% accepted))
+  expect_no_error(suppressWarnings(suppressMessages(ctgui_to_ctsem_model(spec))))
+})
+
+test_that("an editable matrix set never shows one ctModel cannot take back", {
+  skip_if_not_installed("ctsem")
+  ctgui_prepare_matrices <- getFromNamespace("ctgui_prepare_matrices", "ctsemGUI")
+  prepared <- ctgui_prepare_matrices(
+    list(LAMBDA = matrix(1, 1L, 1L), NOTANARGUMENT = matrix(0, 1L, 1L)),
+    latent_names = "eta1", manifest_names = "y1", tdpred_names = character()
+  )
+  expect_false("NOTANARGUMENT" %in% names(prepared))
+  expect_true("LAMBDA" %in% names(prepared))
+})

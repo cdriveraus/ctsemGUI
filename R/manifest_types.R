@@ -74,8 +74,15 @@ ctgui_manifest_type_entry <- function(value) {
   if (length(match)) match[[1L]] else entries[[1L]]
 }
 
-ctgui_manifest_type_choices <- function() {
+# `available_only` drops the types the installed ctsem cannot fit, so the
+# controls do not offer a choice that validation would then refuse. The
+# catalog itself stays whole: a spec loaded from elsewhere still needs its
+# label for a type this session cannot build.
+ctgui_manifest_type_choices <- function(available_only = FALSE) {
   entries <- ctgui_manifest_type_catalog()
+  if (available_only && !ctgui_ctsem_extended_measurement()) {
+    entries <- Filter(function(entry) entry$value %in% c(0L, 1L), entries)
+  }
   stats::setNames(
     vapply(entries, function(entry) entry$value, integer(1L)),
     vapply(entries, function(entry) entry$label, character(1L))
@@ -194,6 +201,27 @@ ctgui_measurement_problems <- function(manifest_names, manifest_type = NULL,
     problems[[length(problems) + 1L]] <<- list(
       field = field, message = message, severity = severity
     )
+  }
+
+  # A type the installed ctsem cannot express is a problem with the choice,
+  # not with the model, so it is reported here beside the choice. Left to
+  # ctModel() it surfaces as an unused-argument error naming ncategories, on a
+  # call the user never wrote.
+  if (!ctgui_ctsem_extended_measurement()) {
+    unsupported <- manifest_names[measurement$manifest_type %in% c(2L, 3L, 4L)]
+    if (length(unsupported)) {
+      labels <- vapply(
+        measurement$manifest_type[measurement$manifest_type %in% c(2L, 3L, 4L)],
+        ctgui_manifest_type_label, character(1L)
+      )
+      add("manifesttype", paste0(
+        paste(paste0(unsupported, " (", tolower(labels), ")"), collapse = ", "),
+        if (length(unsupported) == 1L) " needs " else " need ",
+        "ctsem 3.12 or later; this session has ",
+        ctgui_ctsem_capabilities()$version %||% "an older version",
+        ". Choose continuous or binary, or upgrade ctsem."
+      ))
+    }
   }
 
   for (index in seq_along(manifest_names)) {

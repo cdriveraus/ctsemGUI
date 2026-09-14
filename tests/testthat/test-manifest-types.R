@@ -12,6 +12,15 @@ ctgui_measurement_summary <- getFromNamespace("ctgui_measurement_summary", "ctse
 ctgui_measurement_input_values <- getFromNamespace("ctgui_measurement_input_values", "ctsemGUI")
 ctgui_respec_preserving <- getFromNamespace("ctgui_respec_preserving", "ctsemGUI")
 ctgui_measurement_matrix_note <- getFromNamespace("ctgui_measurement_matrix_note", "ctsemGUI")
+ctgui_ctsem_extended_measurement <- getFromNamespace("ctgui_ctsem_extended_measurement", "ctsemGUI")
+
+# Ordinal, count and censored measurement need ctsem 3.12. On 3.11 the types
+# cannot be built at all, so these cases have nothing to assert; the refusal
+# that replaces them is covered by its own test below.
+skip_without_extended_measurement <- function() {
+  testthat::skip_if_not(ctgui_ctsem_extended_measurement(),
+    "installed ctsem has no ordinal, count or censored measurement")
+}
 
 quiet_types <- function(code) suppressWarnings(suppressMessages(force(code)))
 
@@ -72,6 +81,13 @@ test_that("normalising keeps the vectors aligned and clears what is unused", {
 })
 
 test_that("a type missing its argument is caught before ctsem sees it", {
+  # These are the rules about which type needs which argument, so they hold
+  # whatever ctsem is installed. Pinned, or on a ctsem that cannot fit these
+  # types every case would also carry the version problem and count twice.
+  testthat::local_mocked_bindings(
+    ctgui_ctsem_extended_measurement = function() TRUE,
+    .package = "ctsemGUI"
+  )
   problems <- function(...) ctgui_measurement_problems(c("a", "b"), ...)
 
   # ctsem needs at least three categories; two is binary, not ordinal.
@@ -126,6 +142,7 @@ test_that("ctModel is given the extra arguments only when a type uses them", {
 })
 
 test_that("a specification carries its measurement model into ctsem", {
+  skip_without_extended_measurement()
   skip_if_not_installed("ctsem")
   spec <- ordinal_spec()
 
@@ -140,6 +157,7 @@ test_that("a specification carries its measurement model into ctsem", {
 })
 
 test_that("THRESHOLDS is not carried as an editable matrix", {
+  skip_without_extended_measurement()
   skip_if_not_installed("ctsem")
   # ctModelMatrices() reports it, but ctModel() has no such argument and the
   # thresholds are derived from the category count. Carrying it would break
@@ -150,6 +168,7 @@ test_that("THRESHOLDS is not carried as an editable matrix", {
 })
 
 test_that("an incomplete choice is a draft rather than a crash", {
+  skip_without_extended_measurement()
   skip_if_not_installed("ctsem")
   # Choosing Ordinal before typing a category count is an ordinary in-progress
   # state. Building the ctsem model would throw and take the session with it.
@@ -167,6 +186,7 @@ test_that("an incomplete choice is a draft rather than a crash", {
 })
 
 test_that("identification traps ctsem warns about are raised as warnings", {
+  skip_without_extended_measurement()
   skip_if_not_installed("ctsem")
   # An ordinal variable's thresholds and its manifest intercept both describe
   # where the categories sit, so they are not separately identified. ctsem
@@ -191,6 +211,7 @@ test_that("identification traps ctsem warns about are raised as warnings", {
 })
 
 test_that("a measurement model survives resizing and renaming", {
+  skip_without_extended_measurement()
   skip_if_not_installed("ctsem")
   spec <- ordinal_spec()
 
@@ -211,6 +232,7 @@ test_that("a measurement model survives resizing and renaming", {
 })
 
 test_that("a loaded model brings its measurement model with it", {
+  skip_without_extended_measurement()
   skip_if_not_installed("ctsem")
   model <- quiet_types(ctgui_to_ctsem_model(ordinal_spec()))
   loaded <- quiet_types(ctgui_spec_from_model(model))
@@ -221,6 +243,7 @@ test_that("a loaded model brings its measurement model with it", {
 })
 
 test_that("exported code reproduces the measurement model", {
+  skip_without_extended_measurement()
   skip_if_not_installed("ctsem")
   code <- ctgui_export_code(ordinal_spec())
 
@@ -257,6 +280,7 @@ test_that("a summary describes a variable in the terms of its type", {
 })
 
 test_that("the matrix editor explains what is not a matrix", {
+  skip_without_extended_measurement()
   skip_if_not_installed("ctsem")
   notes <- ctgui_measurement_matrix_note(ordinal_spec())
   combined <- paste(notes, collapse = " ")
@@ -270,6 +294,7 @@ test_that("the matrix editor explains what is not a matrix", {
 })
 
 test_that("the engine sent to ctFit is resolved against the measurement types", {
+  skip_without_extended_measurement()
   skip_if_not_installed("shiny")
   ctgui_blueprint_apply <- getFromNamespace("ctgui_blueprint_apply", "ctsemGUI")
   empty <- quiet_types(ctgui_spec(latent_names = character(), manifest_names = character()))
@@ -305,4 +330,31 @@ test_that("the engine sent to ctFit is resolved against the measurement types", 
     expect_true(is.na(refused$backend))
     expect_match(refused$message, "cannot be fitted", fixed = TRUE)
   }))
+})
+
+test_that("a type the installed ctsem cannot fit is refused where it was chosen", {
+  skip_if_not_installed("ctsem")
+  # Simulates a ctsem 3.11 session, where ctModel() has no ncategories
+  # argument. Without this the choice fails much later, inside ctModel(), with
+  # an unused-argument error naming an argument the user never wrote.
+  testthat::local_mocked_bindings(
+    ctgui_ctsem_extended_measurement = function() FALSE,
+    .package = "ctsemGUI"
+  )
+
+  problems <- ctgui_measurement_problems(
+    c("mood", "score"), manifest_type = c(2L, 0L), ncategories = c(5L, 0L)
+  )
+  messages <- vapply(problems, function(p) p$message, character(1L))
+  expect_true(any(grepl("mood (ordinal)", messages, fixed = TRUE)))
+  expect_true(any(grepl("ctsem 3.12 or later", messages, fixed = TRUE)))
+  expect_true(all(vapply(problems, function(p) p$severity, character(1L)) == "error"))
+
+  # Continuous and binary are unaffected.
+  expect_length(ctgui_measurement_problems(c("a", "b"), manifest_type = c(0L, 1L)), 0L)
+
+  # And the controls stop offering what cannot be built, while the catalog
+  # keeps every label so a spec loaded from elsewhere still reads correctly.
+  expect_equal(unname(ctgui_manifest_type_choices(available_only = TRUE)), 0:1)
+  expect_equal(unname(ctgui_manifest_type_choices()), 0:4)
 })

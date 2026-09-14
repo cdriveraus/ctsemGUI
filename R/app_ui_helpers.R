@@ -171,7 +171,7 @@ ctgui_build_ui <- function() {
         class = "control-grid",
         shiny::selectInput(
           "build_indicator_type", "Indicator type",
-          choices = ctgui_manifest_type_choices(), selected = "0"
+          choices = ctgui_manifest_type_choices(available_only = TRUE), selected = "0"
         ),
         shiny::conditionalPanel(
           "input.build_indicator_type == '2'",
@@ -251,7 +251,7 @@ ctgui_manifest_measurement_ui <- function(index, name, type, ncategories = 0L,
     class = "measurement-item",
     shiny::selectInput(
       field("type"), paste(name, "variable type"),
-      choices = ctgui_manifest_type_choices(),
+      choices = ctgui_manifest_type_choices(available_only = TRUE),
       selected = as.character(type)
     ),
     shiny::tags$p(class = "help-note", entry$short),

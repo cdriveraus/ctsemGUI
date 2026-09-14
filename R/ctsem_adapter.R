@@ -19,6 +19,28 @@ ctgui_has_ctsem <- function() {
   isTRUE(caps$installed) && all(caps$required)
 }
 
+# What the loaded ctModel() actually takes. Asked of the installed ctsem
+# rather than listed here, because the signature differs across the versions
+# this GUI supports and both directions have bitten: ctsem 3.12 reports a
+# RAWPOPVAR matrix that 3.11 has no argument for, and 3.11 has no argument
+# for the ordinal and censored measurement 3.12 added. NULL when ctsem is not
+# installed, which callers read as "unknown" rather than "none".
+ctgui_ctmodel_formals <- function() {
+  if (!ctgui_has_ctsem()) return(NULL)
+  tryCatch(names(formals(getExportedValue("ctsem", "ctModel"))),
+    error = function(e) NULL)
+}
+
+# Ordinal, count and censored measurement arrived in ctsem 3.12 together with
+# the arguments they need. On an earlier ctsem the types cannot be expressed
+# at all, and passing the arguments anyway fails inside ctModel() with an
+# "unused argument" error that names none of the choices that caused it.
+ctgui_ctsem_extended_measurement <- function() {
+  args <- ctgui_ctmodel_formals()
+  if (is.null(args)) return(TRUE)
+  all(c("ncategories", "censormin", "censormax") %in% args)
+}
+
 ctgui_ctsem_call <- function(name, ..., .args = NULL) {
   caps <- ctgui_ctsem_capabilities()
   available <- isTRUE(caps$installed) && name %in% getNamespaceExports("ctsem")
@@ -270,7 +292,10 @@ ctgui_julia_is_pending <- function(status) {
 ctgui_julia_check_worker <- function(args) {
   if (!requireNamespace("ctsem", quietly = TRUE)) return(NULL)
   if (!"ctJuliaStatus" %in% getNamespaceExports("ctsem")) return(NULL)
-  tryCatch(ctsem::ctJuliaStatus(), error = function(e) NULL)
+  # Looked up rather than called as ctsem::ctJuliaStatus, because a ctsem
+  # without the Julia backend is a supported configuration and R CMD check
+  # reads a :: call as a hard requirement on the installed version.
+  tryCatch(getExportedValue("ctsem", "ctJuliaStatus")(), error = function(e) NULL)
 }
 
 # Turn whatever the child reported into the shape the panel expects. A child
