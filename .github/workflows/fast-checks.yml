@@ -18,9 +18,29 @@ jobs:
         with:
           node-version: 22
       - name: Check generated documentation is current
+        shell: bash
         run: |
-          Rscript -e 'roxygen2::roxygenise(".")'
-          git diff --exit-code -- NAMESPACE man
+          # Says what differs rather than exiting 1 and leaving the reader to
+          # reproduce it. The log of a failed run needs write access to read;
+          # an ::error:: annotation does not, so the reason belongs in one.
+          set +e
+          Rscript -e 'roxygen2::roxygenise(".")' > "$RUNNER_TEMP/roxygen.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/roxygen.log"
+          if [ $status -ne 0 ]; then
+            echo "::error::roxygenise() failed: $(tail -c 700 "$RUNNER_TEMP/roxygen.log" | paste -sd' ' -)"
+            exit 1
+          fi
+          # status, not diff: a generated file that is new rather than changed
+          # is just as stale, and diff alone does not see it.
+          changed=$(git status --porcelain -- NAMESPACE man)
+          if [ -n "$changed" ]; then
+            version=$(Rscript -e 'cat(as.character(packageVersion("roxygen2")))')
+            echo "::error::NAMESPACE or man/ is not what roxygen2 $version generates; regenerate and commit. Differs: $(echo "$changed" | paste -sd' ' -)"
+            git diff --stat -- NAMESPACE man
+            git diff -- NAMESPACE man | head -120
+            exit 1
+          fi
       - name: Check dependency and asset hygiene
         run: Rscript tools/check-package-hygiene.R
       - name: Check JavaScript syntax
