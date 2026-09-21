@@ -37,6 +37,11 @@ ctgui_matrices_ctmodel_rejects <- function(matrix_names) {
 #' @param time Time column name.
 #' @param Tpoints Optional number of time points.
 #' @param manifest_type Manifest variable type vector passed to ctsem.
+#' @param ncategories Category counts for ordinal manifest variables, passed
+#'   to `ctsem::ctModel()` and ignored for the other types.
+#' @param censormin,censormax Lower and upper censoring limits for censored
+#'   manifest variables, passed to `ctsem::ctModel()` and ignored for the
+#'   other types.
 #' @param tdpred_names Optional time-dependent predictor names.
 #' @param tipred_names Optional time-independent predictor names.
 #' @param matrices Optional named list of matrix overrides.

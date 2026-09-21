@@ -81,6 +81,13 @@ ctgui_generate_data(
 
 \item{manifest_type}{Manifest variable type vector passed to ctsem.}
 
+\item{ncategories}{Category counts for ordinal manifest variables, passed
+to \code{ctsem::ctModel()} and ignored for the other types.}
+
+\item{censormin, censormax}{Lower and upper censoring limits for censored
+manifest variables, passed to \code{ctsem::ctModel()} and ignored for the
+other types.}
+
 \item{tdpred_names}{Optional time-dependent predictor names.}
 
 \item{tipred_names}{Optional time-independent predictor names.}

@@ -14,6 +14,9 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           dependencies: '"all"'
-          extra-packages: any::roxygen2
+          # check-r-package runs rcmdcheck::rcmdcheck(); nothing else installs
+          # it, and without it the step dies on "there is no package called
+          # 'rcmdcheck'" before R CMD check starts.
+          extra-packages: any::roxygen2, any::rcmdcheck
       - name: Run R CMD check
         uses: r-lib/actions/check-r-package@v2
