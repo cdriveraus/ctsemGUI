@@ -59,21 +59,21 @@ ctgui_report_readings <- function(notes) {
   )
 }
 
-ctgui_report_warnings <- function(warnings, guidance = ctgui_warning_guidance(warnings)) {
+# ctsem's warnings are reported as ctsem wrote them. The GUI used to add its
+# own reading of the common ones, which had become more reassuring than ctsem
+# itself: ctsem now grades a Hessian repair, and what still reaches a warning
+# is the case it does not consider rounding.
+ctgui_report_warnings <- function(warnings) {
   if (!length(warnings) || identical(trimws(paste(warnings, collapse = "")), "") ||
       identical(trimws(paste(warnings, collapse = "")), "No warnings.")) {
     return(character())
   }
-  lines <- c(
+  c(
     ctgui_report_heading("Warnings from the fit"),
     "```",
     ctgui_report_code_lines(warnings),
     "```"
   )
-  for (entry in guidance) {
-    lines <- c(lines, ctgui_report_prose(paste0("**", entry$title, ".** ", entry$text)))
-  }
-  lines
 }
 
 #' Build a reproducible Quarto report of the current analysis

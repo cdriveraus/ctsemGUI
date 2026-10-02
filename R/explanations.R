@@ -16,16 +16,15 @@ ctgui_explanation_catalog <- function() {
     measurement = list(
       brief = "How each observed variable relates to the process behind it.",
       detail = paste(
-        "Treating an ordinal item or a count as continuous is one of the",
-        "easiest ways to get a dynamic model wrong: it puts the measurement",
-        "error on the wrong scale and lets the model predict values the",
-        "instrument could never produce. Two of these types need something the",
-        "data cannot supply. An ordinal variable needs its number of categories",
-        "before any data is seen, because the model has to know how many",
-        "thresholds to estimate. A censored variable needs the limits of the",
-        "instrument, which are known constants rather than parameters. Both are",
-        "asked for beside the type. Everything except continuous and binary is",
-        "fitted by the Julia engine only."
+        "Treating an ordinal item or a count as continuous can mislead a dynamic",
+        "model: it puts the measurement error on the wrong scale and lets the",
+        "model predict values the instrument could never produce. Two of these",
+        "types need something the data cannot supply. An ordinal variable needs",
+        "its number of categories before any data is seen, because the model has",
+        "to know how many thresholds to estimate. A censored variable needs the",
+        "limits of the instrument, which are known constants rather than",
+        "parameters. Both are asked for beside the type. Everything except",
+        "continuous and binary is fitted by the Julia engine only."
       )
     ),
     report = list(
@@ -60,22 +59,23 @@ ctgui_explanation_catalog <- function() {
         "Posterior predictive checks and the covariance check both compare your",
         "data against data the fitted model produces, so they cannot run until",
         "this has. It happens automatically after a fit unless you turn that off",
-        "in Fit settings, and runs in the background on the same cores as the",
-        "fit. More samples give steadier diagnostics and take proportionally",
-        "longer."
+        "in Fit settings, and runs in the same background process as the fit,",
+        "which already has the model compiled. More samples give steadier",
+        "diagnostics and take longer."
       )
     ),
     fitting = list(
       brief = "Fitting runs in a separate process, so the interface stays usable and can be stopped.",
       detail = paste(
-        "The messages below are the fit's own console output, streamed live",
-        "while it runs. Watch the objective value settle: a value still moving",
-        "when the optimiser stops, or one that jumps around, is worth more",
-        "attention than the fit statistics afterwards. Because the fit is in its",
-        "own process you can keep reading the model, the data or the equations",
-        "while it runs, and Stop ends it without losing anything else. Turning",
-        "background fitting off runs it in this session instead, which freezes",
-        "the interface until it finishes and cannot be stopped."
+        "The messages below are the fit's own output, shown live while it runs,",
+        "and ctsem reports there when it has doubts about the optimum or the",
+        "uncertainty around it. Those reports are worth reading before the",
+        "estimates. Because the fit runs in its own process you can keep reading",
+        "the model, the data or the equations while it runs. Stop ends that",
+        "process, so the next fit starts a fresh one and compiles its model",
+        "again; nothing else in this session is lost. Turning background fitting",
+        "off runs it in this session instead, which freezes the interface until",
+        "it finishes and cannot be stopped."
       )
     ),
     history = list(
@@ -97,8 +97,8 @@ ctgui_explanation_catalog <- function() {
         "the example tells you, so fitting becomes a check on whether the model",
         "recovers what produced the data rather than a demonstration you have to",
         "take on trust. Two of them hand you a model that disagrees with the",
-        "truth on purpose, because knowing what a misspecified fit looks like is",
-        "worth more than another well-behaved one."
+        "truth on purpose, because seeing what a misspecified fit can look like",
+        "is often more instructive than another well-behaved one."
       )
     ),
     build = list(
@@ -110,11 +110,12 @@ ctgui_explanation_catalog <- function() {
         "processes instead and the template describes only the new ones: your",
         "existing processes keep their shape and their parameters, and the",
         "effects between old and new start fixed at zero so you decide which",
-        "connections to free. Either way you end up with a complete, valid model",
-        "you can fit immediately and then edit anywhere else. Templates are",
-        "starting points, not recommendations: building the same data under two",
-        "shapes and comparing them is usually more informative than agonising",
-        "over which to pick first."
+        "connections to free. Either way you end up with a complete model that",
+        "ctsem will accept and that you can edit anywhere else; whether your data",
+        "can identify it is a separate question that the fit answers. Templates",
+        "are starting points, not recommendations: fitting the same data under",
+        "two shapes and comparing them is often more informative than deciding",
+        "in advance which to pick."
       )
     ),
     spec_data = list(
@@ -145,12 +146,12 @@ ctgui_explanation_catalog <- function() {
     raw_visuals = list(
       brief = "Look at trajectories, relationships, time gaps and missingness before fitting.",
       detail = paste(
-        "Most fitting problems are visible here first. Check that trajectories look",
+        "Many fitting problems show up here first. Check that trajectories look",
         "like the process you think you are modelling, that the time gaps are what",
         "you expect, and that missingness is not concentrated in particular people",
         "or occasions. A variable measured on a very different scale from the rest",
-        "makes optimisation harder, and a process observed only a few times per",
-        "subject will not support subject-level variation in its dynamics."
+        "can make optimisation harder, and a process observed only a few times per",
+        "subject is unlikely to support subject-level variation in its dynamics."
       )
     ),
     model_visuals = list(
@@ -167,9 +168,10 @@ ctgui_explanation_catalog <- function() {
       detail = paste(
         "Each stored fit keeps the specification that produced it, so the comparison",
         "table can show what actually differs between candidates rather than only",
-        "their names and fit statistics. Comparing models fitted to different data,",
-        "or with different variables, tells you very little; comparing nested",
-        "specifications on the same data is the case these numbers are for."
+        "their names and fit statistics. Likelihoods and information criteria are",
+        "comparable only between models fitted to the same data and variables;",
+        "nested specifications are the clearest case, and even there a difference",
+        "is evidence about these data rather than a verdict on the process."
       )
     ),
     kalman = list(
@@ -177,29 +179,34 @@ ctgui_explanation_catalog <- function() {
       detail = paste(
         "Predicted values use only information up to each time point, so they show",
         "how well the model forecasts. Smoothed states use the whole series and show",
-        "the model's best account of what the latent process was doing. Systematic",
-        "gaps between observed and predicted in particular people or stretches of",
-        "time point at structure the model is missing."
+        "the model's account of what the latent process was doing, which is only as",
+        "good as the model. Gaps between observed and predicted that persist in",
+        "particular people or stretches of time may point to structure the model",
+        "is missing; gaps that come and go are what measurement error looks like."
       )
     ),
     postpred = list(
       brief = "Compare patterns in your data against data generated from the fitted model.",
       detail = paste(
-        "If the fitted model were true, data generated from it should look like the",
-        "data you collected. Where the observed pattern falls outside the generated",
-        "range, the model cannot reproduce something real about your data. This",
-        "catches misspecification that likelihood comparisons between two similar",
-        "models will not."
+        "If the fitted model were a good description, data generated from it",
+        "would look broadly like the data you collected. Where the observed",
+        "pattern falls well outside the generated range, the model may not be",
+        "reproducing something about your data -- though with many patterns",
+        "checked, an occasional one will fall outside by chance. This can catch",
+        "misspecification that a likelihood comparison between two similar",
+        "models would miss."
       )
     ),
     acf = list(
       brief = "Residual autocorrelation shows predictable structure the model has not explained.",
       detail = paste(
-        "A correctly specified model leaves residuals with no remaining time",
-        "dependence. Autocorrelation that survives usually means the model order is",
-        "too low for the process, or that a trend or cyclical component is missing.",
-        "In continuous time the autocorrelation is computed over actual elapsed",
-        "time rather than over observation index."
+        "If the model captured the time dependence in the data, little of it",
+        "would remain in the residuals. Autocorrelation that remains could",
+        "reflect dynamics the model leaves out -- another process, a trend, a",
+        "cycle -- or individual differences it does not allow for, and it can",
+        "also arise from a few unusual subjects or by chance, so treat it as a",
+        "prompt to look further rather than a diagnosis. The autocorrelation is",
+        "computed over elapsed time rather than over observation index."
       )
     ),
     dynamics = list(
@@ -207,33 +214,36 @@ ctgui_explanation_catalog <- function() {
       detail = paste(
         "A continuous-time model implies a different set of regression coefficients",
         "at every time interval, and these plots show that whole curve rather than",
-        "one arbitrary lag. Read the auto-effect curve as persistence: how long a",
-        "disturbance takes to fade. Read a cross-effect curve as transmission: how",
-        "long one process takes to move another, and when that influence peaks.",
-        "Compare the interval range shown here against the intervals you actually",
-        "observed, because the curve outside that range is extrapolation."
+        "one arbitrary lag. The auto-effect curve describes persistence in the",
+        "fitted model: how long a disturbance takes to fade. A cross-effect curve",
+        "describes transmission: how a change in one process is followed by",
+        "changes in another, and when that is largest. These are the model's",
+        "implications, so they are only as good as its specification, and the",
+        "curve outside the intervals you actually observed is extrapolation."
       )
     ),
     generation = list(
       brief = "Generate data from the current model to see what it implies.",
       detail = paste(
-        "Generating from a specification is the quickest way to find out whether it",
+        "Generating from a specification is a quick way to see whether it",
         "describes the process you have in mind, and it needs no real data. It is",
-        "also how you check that a model can be recovered at all: fit the generated",
-        "data and see whether the estimates return the values you generated from.",
-        "TDPREDMEANS and TDPREDVAR describe the predictors being generated here and",
-        "are not fitted parameters."
+        "also a way to check whether a model could be recovered from data like",
+        "yours: fit the generated data and see whether the estimates come back",
+        "near the values you generated from. TDPREDMEANS and TDPREDVAR describe",
+        "the predictors being generated here and are not fitted parameters."
       )
     ),
     uncertainty = list(
       brief = "How the interval around each estimate is worked out.",
       detail = paste(
         "The Hessian method reads curvature at the optimum and is fast, but it",
-        "assumes the likelihood is well approximated by a quadratic there, which",
-        "gets worse for parameters near a boundary. Importance sampling and full",
-        "bootstrap relax that assumption at substantially greater cost. If the",
-        "methods disagree markedly, trust the more expensive one and treat the",
-        "disagreement as a sign the likelihood is awkwardly shaped."
+        "assumes the likelihood is close to quadratic there, which can fail for",
+        "parameters near a boundary or weakly identified by the data. Importance",
+        "sampling and the bootstrap methods make fewer of those assumptions at",
+        "greater cost, and have limits of their own: importance sampling can end",
+        "with few effective draws, and a bootstrap needs enough subjects to",
+        "resample. If the methods disagree markedly, treat that as a sign the",
+        "likelihood is awkwardly shaped and the intervals deserve caution."
       )
     ),
     validation = list(

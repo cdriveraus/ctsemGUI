@@ -3,7 +3,7 @@ ctgui_help_catalog <- function() {
     help_gui_time_model = list(title = "Time model", text = "Choose continuous time for irregular intervals or dynamics between observations; choose discrete time when the observation step is the time unit."),
     help_gui_logdtsd = list(title = "Generated logdtsd", text = "The standard deviation of log time intervals in generated data. Use 0 for equal intervals."),
     help_gui_generation_defaults = list(title = "Generation preview values", text = "Replaces free labels with simple numeric values so ctGenerate can preview data shape. These values are not for inference."),
-    help_fit_optimize = list(topic = "ctFit", param = "optimize", tooltip = "Whether to optimize or use full Bayesian sampling via Stan (generally very slow!)."),
+    help_fit_optimize = list(topic = "ctFit", param = "optimize", tooltip = "Whether to optimize, or to sample the full posterior (much slower)."),
     help_fit_priors = list(topic = "ctFit", param = "priors", tooltip = "Whether ctFit should use its prior distributions during fitting."),
     help_fit_cores = list(topic = "ctFit", param = "cores", tooltip = "Number of processor cores ctFit may use; the detected host total is shown beside this control."),
     help_ctFit = list(topic = "ctFit", tooltip = "Fit a continuous-time structural equation model."),

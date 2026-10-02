@@ -139,26 +139,38 @@ ctgui_interpret_persistence <- function(drift, intervals = NULL, free = NULL) {
     # A fixed zero on the diagonal is a modelling choice -- a growth curve's
     # level, an oscillator's position -- not a process failing to decay.
     if (!ctgui_cell_is_free(free, name, name)) return(NULL)
+    # Read alone, an auto-effect describes one process. With other processes
+    # feeding back into it, neither its sign nor its half-life settles how the
+    # system behaves, so the reading says which it is describing.
+    coupled <- nrow(drift) > 1L
     if (rate >= 0) {
       return(ctgui_interpretation_note(paste0(
         "The auto-effect on ", name, " is ", ctgui_round(rate), ", which is not negative. ",
-        "A non-negative auto-effect means disturbances do not die away, so this process ",
-        "is not stationary as estimated. Treat anything downstream of it with suspicion."
+        "On its own that would mean a disturbance to ", name, " does not die away",
+        if (coupled) {
+          paste0("; whether the system as a whole settles also depends on the effects ",
+            "between processes, which Diagnostics > Dynamics shows")
+        },
+        ". Check the interval around this estimate before reading much into it."
       ), kind = "caution"))
     }
     half <- ctgui_half_life(rate)
     text <- paste0(
-      "A disturbance to ", name, " falls to half its size in about ",
-      ctgui_round(half), " time units (auto-effect ", ctgui_round(rate), ")."
+      if (coupled) "On its auto-effect alone (" else "With an auto-effect of ",
+      ctgui_round(rate), if (coupled) "), " else ", ",
+      "a disturbance to ", name, " falls to half its size in about ",
+      ctgui_round(half), " time units",
+      if (coupled) "; feedback through the other processes can lengthen or shorten that" else "",
+      "."
     )
     if (!is.null(intervals) && is.finite(intervals$median)) {
       text <- paste0(text, " Your median observation interval is ",
         ctgui_round(intervals$median), ".")
       if (half < intervals$median / 2) {
         text <- paste0(text,
-          " That is well under half an interval, so most of this process's ",
-          "movement happens between observations and the estimate leans heavily ",
-          "on the model rather than on what you measured.")
+          " That is well under half an interval, so much of this process's ",
+          "movement may happen between observations, and the estimate then rests ",
+          "more on the model than on what was measured.")
       }
     }
     ctgui_interpretation_note(text)
@@ -181,7 +193,8 @@ ctgui_interpret_cross_effects <- function(drift, intervals = NULL) {
     # Lead with the effect at the interval the user actually observed, because
     # that is the number their data speak to. The peak describes the shape of
     # the curve and comes second.
-    text <- paste0("A change in ", names_[source], " ", direction, " ", names_[target])
+    text <- paste0("In the fitted model, a unit change in ", names_[source], " ",
+      direction, " ", names_[target])
     if (!is.null(intervals) && is.finite(intervals$median)) {
       at_median <- ctgui_discrete_drift(drift, intervals$median)
       if (!is.null(at_median)) {
@@ -196,8 +209,8 @@ ctgui_interpret_cross_effects <- function(drift, intervals = NULL) {
 
     text <- if (isTRUE(peak$at_edge)) {
       paste0(text, " The effect is still growing at the longest interval examined (",
-        ctgui_round(peak$time), "), so it peaks somewhere beyond that, which usually ",
-        "means one of the processes barely decays.")
+        ctgui_round(peak$time), "), so it peaks somewhere beyond that, which can ",
+        "happen when one of the processes barely decays.")
     } else {
       paste0(text, " It is largest at an interval of about ", ctgui_round(peak$time),
         ", where it reaches ", ctgui_round(peak$value), ".")
@@ -207,7 +220,7 @@ ctgui_interpret_cross_effects <- function(drift, intervals = NULL) {
     # of every effect, as it was, it stops carrying information.
     if (!is.null(intervals) && is.finite(intervals$max) && peak$time > intervals$max * 1.5) {
       text <- paste0(text, " Your longest observed interval is ",
-        ctgui_round(intervals$max), ", so that peak is extrapolation.")
+        ctgui_round(intervals$max), ", so that peak is an extrapolation.")
     }
     notes[[length(notes) + 1L]] <- ctgui_interpretation_note(text)
   }
@@ -232,10 +245,11 @@ ctgui_interpret_timescale <- function(drift, intervals, free = NULL) {
   fastest <- ctgui_half_life(min(autos))
   if (is.finite(fastest) && fastest < intervals$median / 2) {
     notes[[length(notes) + 1L]] <- ctgui_interpretation_note(paste0(
-      "The fastest process has a half-life of about ", ctgui_round(fastest),
-      ", shorter than half your median interval. Sampling this much slower than ",
-      "the process moves makes the dynamics hard to identify: consider whether ",
-      "a simpler model would be more honest about what the data support."
+      "On its auto-effect alone, the fastest process has a half-life of about ",
+      ctgui_round(fastest), ", shorter than half your median interval. Sampling ",
+      "much slower than a process moves can make its dynamics hard to identify: ",
+      "check the intervals around these effects, and whether a simpler model ",
+      "describes the data about as well."
     ), kind = "caution")
   }
   notes
@@ -263,73 +277,4 @@ ctgui_interpret_fit <- function(fit, data = NULL, id = "id", time = "time") {
     ctgui_interpret_timescale(drift, intervals, free)
   )
   Filter(Negate(is.null), notes)
-}
-
-# Guidance for warnings a user will actually meet ------------------------------
-
-# The Hessian repair warning appears on three of the six worked examples,
-# including one that recovers every parameter it was generated from. It is
-# usually a numerical artefact at an ordinary optimum, and its text describes
-# the repair mechanics rather than what the reader should do. Without a word
-# of context a user cannot tell a benign one from a real problem, so they learn
-# to ignore all of them.
-#
-# These are readings, not verdicts. Each says what the warning means and what
-# would distinguish the harmless case from the serious one.
-ctgui_warning_guidance_catalog <- function() {
-  list(
-    list(
-      pattern = "Hessian|hessian",
-      title = "Hessian required numerical repair",
-      text = paste(
-        "The curvature at the optimum was not quite usable as it stood, so it",
-        "was repaired before the standard errors were computed. This is common",
-        "and usually harmless: it fires on ordinary, well-recovered models when",
-        "an eigenvalue lands a hair below zero through rounding. It matters when",
-        "the repair was large. Check whether any interval in the summary is",
-        "implausibly wide or collapsed to nothing, and whether refitting from",
-        "different starting values gives the same estimates. If both look fine,",
-        "this warning is noise."
-      )
-    ),
-    list(
-      pattern = "T0VAR .*indvarying T0MEANS|fixing T0VAR",
-      title = "T0VAR fixed because T0MEANS varies by subject",
-      text = paste(
-        "Individual differences in the starting state are being expressed",
-        "through subject-varying T0MEANS, so ctsem has fixed the T0VAR entries",
-        "rather than estimate the same thing twice. Nothing is wrong, but the",
-        "T0VAR values in your specification are not what was fitted. If you",
-        "meant to estimate initial-state covariance directly, turn off",
-        "RandomEffects on T0MEANS instead."
-      )
-    ),
-    list(
-      pattern = "not positive definite|nearPD",
-      title = "A covariance matrix needed adjusting",
-      text = paste(
-        "An estimated covariance came back very slightly non-positive-definite",
-        "and was nudged to the nearest valid one. At rounding scale this is",
-        "harmless. If it recurs with visibly odd variance estimates, a parameter",
-        "is probably at a boundary: look for a variance estimated at effectively",
-        "zero, and consider fixing it there deliberately."
-      )
-    )
-  )
-}
-
-#' Explain the warnings a fit produced
-#'
-#' @param warnings Character vector of warning text.
-#' @return A list of guidance entries with `title` and `text`, one per distinct
-#'   warning recognised. Unrecognised warnings yield nothing.
-#' @keywords internal
-ctgui_warning_guidance <- function(warnings) {
-  if (!length(warnings)) return(list())
-  text <- paste(warnings, collapse = "\n")
-  if (!nzchar(trimws(text))) return(list())
-  matched <- Filter(function(entry) grepl(entry$pattern, text), ctgui_warning_guidance_catalog())
-  # One warning can match several patterns; the most specific reading is the
-  # first that matched, and repeating overlapping advice helps nobody.
-  unique(lapply(matched, function(entry) entry[c("title", "text")]))
 }

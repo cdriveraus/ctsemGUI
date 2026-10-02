@@ -101,12 +101,14 @@ test_that("equations reach the report as math, not as an image", {
   expect_false(any(grepl("<img", doc, fixed = TRUE)))
 })
 
-test_that("warnings are reported with their guidance, and silence is not", {
+test_that("warnings are reported as ctsem wrote them, and silence is not", {
   hessian <- "Hessian covariance from Hessian required numerical repair: nearPD applied"
   lines <- ctgui_report_warnings(hessian)
 
   expect_match(paste(lines, collapse = "\n"), "Warnings from the fit", fixed = TRUE)
-  expect_match(paste(lines, collapse = "\n"), "usually harmless", fixed = TRUE)
+  expect_true(hessian %in% lines)
+  # ctsem grades its own warnings now; the report adds no reading of them.
+  expect_equal(utils::tail(lines, 1L), "```")
 
   # A fit that warned about nothing gets no section rather than an empty one.
   expect_equal(ctgui_report_warnings("No warnings."), character())

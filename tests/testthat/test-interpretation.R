@@ -7,7 +7,6 @@ ctgui_interpret_cross_effects <- getFromNamespace("ctgui_interpret_cross_effects
 ctgui_interpret_timescale <- getFromNamespace("ctgui_interpret_timescale", "ctsemGUI")
 ctgui_interpret_fit <- getFromNamespace("ctgui_interpret_fit", "ctsemGUI")
 ctgui_cell_is_free <- getFromNamespace("ctgui_cell_is_free", "ctsemGUI")
-ctgui_warning_guidance <- getFromNamespace("ctgui_warning_guidance", "ctsemGUI")
 
 coupled_drift <- function() {
   matrix(c(-0.4, 0.1, -0.35, -0.25), 2, 2,
@@ -147,30 +146,4 @@ test_that("sampling far slower than the process is flagged once", {
 test_that("nothing is claimed when there is nothing to read", {
   expect_length(ctgui_interpret_fit(NULL), 0L)
   expect_true(ctgui_cell_is_free(NULL, "a", "b"))
-})
-
-test_that("warnings a user will actually meet are explained", {
-  # This one fires on three of the six worked examples, including one that
-  # recovers every parameter it was generated from. Without a word of context
-  # a user cannot tell a benign one from a real problem.
-  hessian <- ctgui_warning_guidance(paste(
-    "Hessian covariance from Hessian required numerical repair:",
-    "solve(-hessian) failed; information eigenvalues were floored at ridge=1e-08",
-    "(minimum original eigenvalue=-7.027e-11)"
-  ))
-  expect_gte(length(hessian), 1L)
-  titles <- vapply(hessian, function(entry) entry$title, character(1L))
-  expect_true(any(grepl("Hessian", titles, fixed = TRUE)))
-  # Guidance has to say what would distinguish the harmless case.
-  expect_match(paste(vapply(hessian, function(e) e$text, character(1L)), collapse = " "),
-    "refitting from", fixed = TRUE)
-
-  t0var <- ctgui_warning_guidance(
-    "Free T0VAR parameters as well as indvarying T0MEANS -- fixing T0VAR pars to diag matrix of 1e-6"
-  )
-  expect_gte(length(t0var), 1L)
-
-  expect_length(ctgui_warning_guidance(character()), 0L)
-  expect_length(ctgui_warning_guidance("No warnings."), 0L)
-  expect_length(ctgui_warning_guidance("something entirely unrelated"), 0L)
 })
