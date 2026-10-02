@@ -11,16 +11,17 @@ current_data <- shiny::reactiveVal(NULL)
 current_data_name <- shiny::reactiveVal("No data selected")
 current_fit <- shiny::reactiveVal(NULL)
 fit_busy <- shiny::reactiveVal(FALSE)
+# One background R process for everything that works on a fit, so its Julia
+# and the model shapes compiled in it last as long as this session.
+worker <- ctgui_worker()
 fit_process <- shiny::reactiveVal(NULL)
 fit_log_path <- shiny::reactiveVal(NULL)
 fit_log_offset <- shiny::reactiveVal(0)
 fit_log_state <- shiny::reactiveVal(ctgui_fit_log_state())
-fit_cancelled <- shiny::reactiveVal(FALSE)
 gen_process <- shiny::reactiveVal(NULL)
 gen_log_path <- shiny::reactiveVal(NULL)
 gen_log_offset <- shiny::reactiveVal(0)
 gen_log_state <- shiny::reactiveVal(ctgui_fit_log_state())
-gen_cancelled <- shiny::reactiveVal(FALSE)
 gen_messages <- shiny::reactiveVal("Nothing has been generated from a fit yet.")
 fit_messages <- shiny::reactiveVal("No fit has been run.")
 fit_warnings <- shiny::reactiveVal("No warnings.")
@@ -475,50 +476,25 @@ append_extra_args <- function(args, extra_text, protected = names(args)) {
   c(args, extra)
 }
 
-progress_like_message <- function(text) {
-  text <- trimws(text)
-  if (!nzchar(text)) return(FALSE)
-  grepl("\r", text, fixed = TRUE) ||
-  grepl("(?i)(hessian|iter|iteration|elapsed|optim|optimization|chain|warmup|sampling|draws|gradient|stepsize|objective|progress|bootstrap|boot|\\d+\\s*/\\s*\\d+)", text, perl = TRUE)
-}
-
-compact_condition_messages <- function(messages, progress = character()) {
-  messages <- trimws(messages)
-  messages <- messages[nzchar(messages)]
-  progress <- trimws(progress)
-  progress <- progress[nzchar(progress)]
-  c(messages, if (length(progress)) progress[length(progress)] else character())
-}
-
+# Every in-session call renders its messages as the fit log does, carriage
+# returns applied (see ctgui_run_result). This used to sort messages by keyword
+# instead, keeping only the last that looked like progress: a counter without
+# one of the keywords flooded the box, and ctsem's own messages that happened
+# to contain one -- "Hessian", "draws" -- were dropped.
 capture_conditions <- function(expr, progress_callback = NULL) {
-  messages <- character()
-  progress <- character()
-  warnings <- character()
-  append_message <- function(text) {
-    pieces <- unlist(strsplit(conditionMessage(text), "\r", fixed = TRUE), use.names = FALSE)
-    pieces <- trimws(pieces)
-    pieces <- pieces[nzchar(pieces)]
-    for (piece in pieces) {
-      if (progress_like_message(piece)) {
-        progress <<- c(progress, piece)
-        if (is.function(progress_callback)) progress_callback(compact_condition_messages(messages, progress))
-      } else {
-        messages <<- c(messages, piece)
-      }
-    }
+  ctgui_run_result(function() expr, progress_callback)
+}
+
+# A ctsem call on a fit, made in the background process when it is free, where
+# the model's shape is compiled already (see ctgui_worker_run). The arguments
+# are built first, so a mistake in them is reported the same way as a failure
+# of the call.
+run_on_fit <- function(name, build_args) {
+  args <- tryCatch(build_args(), error = function(e) e)
+  if (inherits(args, "error")) {
+    return(list(value = args, messages = character(), warnings = character()))
   }
-  value <- withCallingHandlers(
-    tryCatch(expr, error = function(e) e),
-    message = function(m) {
-      append_message(m)
-      invokeRestart("muffleMessage")
-    },
-    warning = function(w) {
-      warnings <<- c(warnings, conditionMessage(w))
-      invokeRestart("muffleWarning")
-    }
-  )
-  list(value = value, messages = compact_condition_messages(messages, progress), warnings = warnings)
+  ctgui_worker_run(worker, name, args)
 }
 
 r_data_names <- function() {
@@ -1616,10 +1592,10 @@ output$raw_plot <- shiny::renderPlot({
 })
 
 # Answering starts Julia, which costs seconds and may build the engine. The
-# question is asked in a background process as soon as the session loads and
+# question is asked in the background process as soon as the session loads and
 # the application carries on without the answer: by the time anyone reaches
-# the Fit panel it has arrived, and asking early also warms the engine cache
-# before the first fit needs it.
+# the Fit panel it has arrived, and the Julia it started is the one the first
+# fit will use.
 julia_status <- shiny::reactiveVal(ctgui_julia_known() %||% ctgui_julia_pending())
 julia_check <- shiny::reactiveVal(NULL)
 
@@ -1629,7 +1605,7 @@ if (ctgui_julia_is_pending(shiny::isolate(julia_status()))) {
   if (requireNamespace("callr", quietly = TRUE)) {
     check_log <- ctgui_fit_log_path()
     started <- tryCatch(
-      ctgui_background_start(ctgui_julia_check_worker, list(), check_log),
+      ctgui_background_start(worker, ctgui_julia_check_worker, list(), check_log),
       error = function(e) NULL
     )
     julia_check_log(check_log)
@@ -1652,9 +1628,9 @@ shiny::observe({
   process <- julia_check()
   if (is.null(process)) return()
   shiny::invalidateLater(500)
-  if (ctgui_fit_process_alive(process)) return()
+  if (ctgui_job_running(process)) return()
 
-  outcome <- ctgui_fit_process_collect(process)
+  outcome <- ctgui_job_collect(process)
   julia_check(NULL)
   unlink(shiny::isolate(julia_check_log()))
   julia_check_log(NULL)
@@ -1687,7 +1663,7 @@ output$fit_backend_status <- shiny::renderUI({
     ),
     shiny::tags$p(
       class = "help-note ctgui-explain-detail",
-      "Both engines fit the same model and report the same likelihood. Julia is generally faster; Stan is the long-standing default and is what to fall back to if a fit behaves oddly."
+      "Both engines fit the same model specification. Julia is the engine being developed, covers more measurement types and is usually faster; Stan remains available for continuous and binary data, and comparing the two can help when a fit behaves oddly."
     )
   )
 })
@@ -1769,7 +1745,7 @@ fit_succeeded <- function(fit) {
 # uses the same background process and the same live log.
 start_generate_from_fit <- function(fit) {
   if (is.null(fit)) return(invisible(FALSE))
-  if (ctgui_fit_process_alive(shiny::isolate(gen_process()))) return(invisible(FALSE))
+  if (ctgui_job_running(shiny::isolate(gen_process()))) return(invisible(FALSE))
   if (!requireNamespace("callr", quietly = TRUE)) return(invisible(FALSE))
 
   args <- tryCatch(
@@ -1790,11 +1766,14 @@ start_generate_from_fit <- function(fit) {
   }
 
   log_path <- ctgui_fit_log_path()
-  process <- tryCatch(ctgui_generate_process_start(args, log_path), error = function(e) e)
+  process <- tryCatch(ctgui_generate_process_start(worker, args, log_path), error = function(e) e)
   if (inherits(process, "error")) {
     diagnostics_status(conditionMessage(process))
     return(invisible(FALSE))
   }
+  # Jobs queue for the one background process, so a fit started meanwhile can
+  # finish first; what comes back belongs only to the fit it was made from.
+  process$source <- fit
   gen_log_path(log_path)
   gen_log_offset(0)
   gen_log_state(ctgui_fit_log_state("Generating samples from the fitted model..."))
@@ -1820,10 +1799,10 @@ shiny::observe({
   if (is.null(process)) return()
   shiny::invalidateLater(500)
   drain_gen_log()
-  if (ctgui_fit_process_alive(process)) return()
+  if (ctgui_job_running(process)) return()
   drain_gen_log()
 
-  outcome <- ctgui_fit_process_collect(process, cancelled = isTRUE(shiny::isolate(gen_cancelled())))
+  outcome <- ctgui_job_collect(process)
   gen_process(NULL)
   unlink(shiny::isolate(gen_log_path()))
   gen_log_path(NULL)
@@ -1837,6 +1816,8 @@ shiny::observe({
       paste0("\n", conditionMessage(outcome$error), "\n")
     ))
     gen_messages(ctgui_fit_log_text(shiny::isolate(gen_log_state())))
+  } else if (!identical(shiny::isolate(active_fit()), process$source)) {
+    diagnostics_status("Generated data discarded: the fit it came from is no longer the active one.")
   } else {
     replace_active_fit(outcome$value)
     generated_fit(ctgui_ctsem_fit_generated(outcome$value))
@@ -1847,13 +1828,12 @@ shiny::observe({
 
 shiny::observeEvent(input$cancel_generate, {
   process <- gen_process()
-  if (!ctgui_fit_process_alive(process)) {
+  if (!ctgui_job_running(process)) {
     shiny::showNotification("No generation is running.", type = "warning")
     return()
   }
-  gen_cancelled(TRUE)
   diagnostics_status("Stopping generation...")
-  invisible(tryCatch(process$kill(), error = function(e) NULL))
+  ctgui_job_cancel(process)
 })
 
 output$generate_log <- shiny::renderText(gen_messages())
@@ -1885,21 +1865,6 @@ output$fit_reading <- shiny::renderUI({
       shiny::div(
         class = if (identical(note$kind, "caution")) "reading-note reading-caution" else "reading-note",
         note$text
-      )
-    })
-  )
-})
-
-output$fit_warning_guidance <- shiny::renderUI({
-  guidance <- ctgui_warning_guidance(fit_warnings())
-  if (!length(guidance)) return(NULL)
-  shiny::div(
-    class = "reading-list",
-    lapply(guidance, function(entry) {
-      shiny::div(
-        class = "reading-note",
-        shiny::tags$strong(entry$title),
-        shiny::tags$p(class = "help-note", entry$text)
       )
     })
   )
@@ -1953,7 +1918,6 @@ shiny::observeEvent(input$run_fit, {
   current_fit(NULL)
   clear_uncertainty_state()
   fit_busy(TRUE)
-  fit_cancelled(FALSE)
   fit_status_value("Fitting...")
   fit_warnings("No warnings.")
 
@@ -1995,7 +1959,8 @@ shiny::observeEvent(input$run_fit, {
   }
 
   log_path <- ctgui_fit_log_path()
-  process <- tryCatch(ctgui_fit_process_start(args, log_path), error = function(e) e)
+  waiting <- !is.null(worker$job)
+  process <- tryCatch(ctgui_fit_process_start(worker, args, log_path), error = function(e) e)
   if (inherits(process, "error")) {
     fit_status_value("Fit failed.")
     fit_messages(conditionMessage(process))
@@ -2014,10 +1979,14 @@ shiny::observeEvent(input$run_fit, {
       "Starting a background fit with the Julia engine.",
       "The first fit after a ctsem or Julia update also precompiles the engine,",
       "which can take several minutes and prints little while it runs.",
-      "Later fits reuse it and start immediately."
+      "Each new model shape is also compiled once, the first time this session",
+      "fits it; generating from the fit, and later fits of the same shape, reuse it."
     )
   } else {
     "Starting a background fit..."
+  }
+  if (waiting) {
+    opening <- c(opening, "Waiting for the background process to finish its current job.")
   }
   fit_log_state(ctgui_fit_log_state(opening))
   publish_fit_log()
@@ -2026,17 +1995,9 @@ shiny::observeEvent(input$run_fit, {
 
 # supervise = TRUE covers the session dying unexpectedly. Closing a browser tab
 # is not that, so a fit nobody is waiting for is stopped here rather than left
-# to finish into a session that no longer exists.
+# to finish into a session that no longer exists, and the process goes with it.
 session$onSessionEnded(function() {
-  for (handle in list(
-    shiny::isolate(fit_process()),
-    shiny::isolate(gen_process()),
-    shiny::isolate(julia_check())
-  )) {
-    if (ctgui_fit_process_alive(handle)) {
-      invisible(tryCatch(handle$kill(), error = function(e) NULL))
-    }
-  }
+  ctgui_worker_close(worker)
   unlink(c(
     shiny::isolate(fit_log_path()),
     shiny::isolate(gen_log_path()),
@@ -2053,14 +2014,13 @@ shiny::observe({
 
   drain_fit_log()
 
-  if (ctgui_fit_process_alive(process)) return()
+  if (ctgui_job_running(process)) return()
 
-  # The process has exited. Read whatever it wrote between the last poll and
-  # exiting before reporting, so the reason for a failure is not lost.
+  # The job has finished. Read whatever it wrote between the last poll and
+  # finishing before reporting, so the reason for a failure is not lost.
   drain_fit_log()
 
-  cancelled <- isTRUE(shiny::isolate(fit_cancelled()))
-  outcome <- ctgui_fit_process_collect(process, cancelled = cancelled)
+  outcome <- ctgui_job_collect(process)
   fit_process(NULL)
   unlink(shiny::isolate(fit_log_path()))
   fit_log_path(NULL)
@@ -2079,18 +2039,19 @@ shiny::observe({
   } else {
     fit_succeeded(outcome$value)
   }
+  # The conditions themselves, rather than what the log reading picked out.
+  if (length(outcome$warnings)) fit_warnings(paste(outcome$warnings, collapse = "\n"))
   fit_finished()
 })
 
 shiny::observeEvent(input$cancel_fit, {
   process <- fit_process()
-  if (!ctgui_fit_process_alive(process)) {
+  if (!ctgui_job_running(process)) {
     shiny::showNotification("No fit is running.", type = "warning")
     return()
   }
-  fit_cancelled(TRUE)
   fit_status_value("Stopping the fit...")
-  invisible(tryCatch(process$kill(), error = function(e) NULL))
+  ctgui_job_cancel(process)
 })
 
 shiny::observeEvent(input$store_fit, {
@@ -2166,18 +2127,14 @@ run_uncertainty_update <- function() {
   uncertainty_warnings("No warnings.")
   result <- NULL
   shiny::withProgress(message = "Recomputing optimized-fit uncertainty", value = .1, {
-    result <- capture_conditions({
-      ctgui_ctsem_call("ctOptimUncertainty", .args = list(
-        fit = fit,
-        uncertainty = input$fit_uncertainty_method,
-        draws = ctgui_uncertainty_default_draws(input$fit_uncertainty_method),
-        finishsamples = input$fit_uncertainty_samples,
-        cores = input$fit_cores,
-        control = uncertainty_control()
-      ))
-    }, progress_callback = function(lines) {
-      uncertainty_messages(paste(lines, collapse = "\n"))
-    })
+    result <- run_on_fit("ctOptimUncertainty", function() list(
+      fit = fit,
+      uncertainty = input$fit_uncertainty_method,
+      draws = ctgui_uncertainty_default_draws(input$fit_uncertainty_method),
+      finishsamples = input$fit_uncertainty_samples,
+      cores = input$fit_cores,
+      control = uncertainty_control()
+    ))
     shiny::incProgress(.9, detail = "Uncertainty call returned")
   })
   if (inherits(result$value, "error")) {
@@ -2233,6 +2190,16 @@ shiny::observeEvent(input$generate_from_fit, {
     shiny::showNotification("Fit the model before generating from fit", type = "error")
     return()
   }
+  if (ctgui_job_running(gen_process())) {
+    shiny::showNotification("Generation is already running.", type = "warning")
+    return()
+  }
+  # In the background, with a live log, like generation after a fit; in this
+  # session only where there is no background process to be had.
+  if (requireNamespace("callr", quietly = TRUE)) {
+    start_generate_from_fit(fit)
+    return()
+  }
   diagnostics_status("Generating data from fit...")
   out <- NULL
   shiny::withProgress(message = "Generating from fit", value = 0.2, {
@@ -2274,7 +2241,7 @@ shiny::observeEvent(input$run_cov_check, {
   cov_check_log("Running ctFitCovCheck...")
   out <- NULL
   shiny::withProgress(message = "Running ctFitCovCheck", value = 0.2, {
-    out <- capture_conditions({
+    out <- run_on_fit("ctFitCovCheck", function() {
       args <- list(
         fit = fit,
         cor = input$cov_cor,
@@ -2282,8 +2249,7 @@ shiny::observeEvent(input$run_cov_check, {
         cores = 1
       )
       if (!is.null(lags)) args$lags <- lags
-      args <- append_extra_args(args, input$cov_extra_args)
-      ctgui_ctsem_call("ctFitCovCheck", .args = args)
+      append_extra_args(args, input$cov_extra_args)
     })
     shiny::incProgress(0.8, detail = "Covariance check returned")
   })
@@ -2310,14 +2276,13 @@ shiny::observeEvent(input$run_kalman, {
   diagnostics_status("Running prediction plots with ctPredict...")
   out <- NULL
   shiny::withProgress(message = "Running ctPredict", value = 0.2, {
-    out <- capture_conditions({
+    out <- run_on_fit("ctPredict", function() {
       args <- list(fit = fit, plot = FALSE)
       if (!is_omitted_arg(subjects)) args$subjects <- subjects
       if (!is_omitted_arg(timerange)) args$timerange <- timerange
       if (!is_omitted_arg(timestep)) args$timestep <- timestep
       if (!is_omitted_arg(remove_obs)) args$removeObs <- remove_obs
-      args <- append_extra_args(args, input$kalman_extra_args)
-      ctgui_ctsem_call("ctPredict", .args = args)
+      append_extra_args(args, input$kalman_extra_args)
     })
     shiny::incProgress(0.8, detail = "ctPredict returned")
   })
@@ -2339,9 +2304,7 @@ shiny::observeEvent(input$run_postpred, {
   postpred_log("Running ctPostPredPlots...")
   out <- NULL
   shiny::withProgress(message = "Running ctPostPredPlots", value = 0.2, {
-    out <- capture_conditions({
-      ctgui_ctsem_call("ctPostPredPlots", fit)
-    })
+    out <- run_on_fit("ctPostPredPlots", function() list(fit))
     shiny::incProgress(0.8, detail = "Posterior predictive plots returned")
   })
   if (inherits(out$value, "error")) {
@@ -2364,12 +2327,9 @@ shiny::observeEvent(input$run_residual_acf, {
   residual_acf_log("Running ctACFresiduals...")
   out <- NULL
   shiny::withProgress(message = "Running residual ACF", value = 0.2, {
-    out <- capture_conditions({
+    out <- run_on_fit("ctACFresiduals", function() {
       args <- list(fit = fit, varnames = vars, nboot = input$acf_boot, plot = FALSE)
-      args <- append_extra_args(args, input$acf_extra_args)
-      ctgui_ctsem_call("ctACFresiduals", .args = args)
-    }, progress_callback = function(lines) {
-      residual_acf_log(paste(lines, collapse = "\n"))
+      append_extra_args(args, input$acf_extra_args)
     })
     shiny::incProgress(0.8, detail = "Residual ACF returned")
   })
@@ -2395,13 +2355,12 @@ shiny::observeEvent(input$run_dynamics, {
   dynamics_log("Running ctDiscretePars...")
   out <- NULL
   shiny::withProgress(message = "Plotting dynamics", value = 0.2, {
-    out <- capture_conditions({
+    out <- run_on_fit("ctDiscretePars", function() {
       args <- list(fit = fit, observational = input$dynamic_observational, plot = TRUE, cores = 1)
       if (!is_omitted_arg(subjects)) args$subjects <- subjects
       if (!is_omitted_arg(times)) args$times <- times
       if (!is_omitted_arg(nsamples)) args$nsamples <- nsamples
-      args <- append_extra_args(args, input$dynamic_extra_args)
-      ctgui_ctsem_call("ctDiscretePars", .args = args)
+      append_extra_args(args, input$dynamic_extra_args)
     })
     shiny::incProgress(0.8, detail = "Dynamics plot returned")
   })
@@ -2432,13 +2391,13 @@ shiny::observeEvent(input$run_tipred_effects, {
   tipred_effects_log("Running ctPredictTIP...")
   out <- NULL
   shiny::withProgress(message = "Running ctPredictTIP", value = 0.2, {
-    out <- capture_conditions({
+    out <- run_on_fit("ctPredictTIP", function() {
       args <- list(sf = fit)
       if (!is_omitted_arg(tipreds)) args$tipreds <- tipreds
       if (!is_omitted_arg(subject)) args$subject <- subject
       if (!is_omitted_arg(timestep)) args$timestep <- timestep
       if (!is_omitted_arg(tipvalues)) args$TIPvalues <- tipvalues
-      ctgui_ctsem_call("ctPredictTIP", .args = args)
+      args
     })
     shiny::incProgress(0.8, detail = "ctPredictTIP returned")
   })

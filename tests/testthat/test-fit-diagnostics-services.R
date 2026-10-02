@@ -12,6 +12,20 @@ test_that("condition runner captures messages, warnings, and failures", {
   expect_match(ctgui_result_text(failure, "Complete"), "no fit")
 })
 
+test_that("a counter rewritten with carriage returns is one line, as on a console", {
+  # ctACFresiduals reports its bootstrap this way, once per percent.
+  seen <- NULL
+  result <- ctgui_run_result(function() {
+    message("Timestep used: 0.5")
+    for (percent in 1:100) message(sprintf("\r Y1 Y2 %3d%%", percent), appendLF = FALSE)
+    message("")
+    message("Estimating Hessian")
+    1
+  }, progress_callback = function(lines) seen <<- lines)
+  expect_equal(result$messages, c("Timestep used: 0.5", " Y1 Y2 100%", "Estimating Hessian"))
+  expect_equal(seen, result$messages)
+})
+
 test_that("plot collections normalize supported return shapes", {
   plot <- ggplot2::ggplot(data.frame(x = 1, y = 1), ggplot2::aes(x, y)) + ggplot2::geom_point()
   single <- ctgui_plot_collection(plot)

@@ -319,7 +319,7 @@ ui <- shiny::fluidPage(
             shiny::uiOutput("fit_expression_warning"),
             shiny::div(
               class = "control-grid",
-              shiny::checkboxInput("fit_optimize", arg_label("optimize", "help_fit_optimize", "Whether to optimize or use full Bayesian sampling via Stan (generally very slow!)"), value = TRUE),
+              shiny::checkboxInput("fit_optimize", arg_label("optimize", "help_fit_optimize", "Whether to optimize, or to sample the full posterior (much slower)"), value = TRUE),
               shiny::checkboxInput("fit_priors", arg_label("priors", "help_fit_priors", "ctFit argument: priors"), value = FALSE),
               shiny::numericInput("fit_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_cores", "ctFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::textAreaInput("fit_extra_args", arg_label("Extra ctFit arguments", "help_ctFit", "Full ctFit help"), value = "", height = "70px"),
@@ -359,8 +359,7 @@ ui <- shiny::fluidPage(
             shiny::tags$h4("Messages"),
             shiny::div(class = "fit-log", shiny::verbatimTextOutput("fit_log_inline")),
             shiny::tags$h4("Warnings"),
-            shiny::verbatimTextOutput("fit_warnings_inline"),
-            shiny::uiOutput("fit_warning_guidance")
+            shiny::verbatimTextOutput("fit_warnings_inline")
           ),
           shiny::div(
             class = "control-band",

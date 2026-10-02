@@ -2,23 +2,30 @@
 
 # Keep condition capture independent of Shiny so actions can be characterized
 # without starting an application.  Callers may pass a function or an
-# expression; the latter preserves the historical `capture_conditions()` API.
+# expression.
+#
+# Messages are rendered the way the background fit's log is, by
+# `ctgui_fit_log_append()`. ctsem reports progress by rewriting one line with a
+# carriage return and no newline -- ctACFresiduals sends "\r Y1 Y2  45%" once
+# per percent -- so taking each message as a line of its own turned one
+# progress counter into a hundred lines.
 ctgui_run_result <- function(action, progress_callback = NULL) {
   if (!is.function(action)) {
     expression <- substitute(action)
-    action <- function() eval(expression, parent.frame())
+    caller <- parent.frame()
+    action <- function() eval(expression, caller)
   }
-  messages <- character()
+  log <- ctgui_fit_log_state()
   warnings <- character()
-  append_message <- function(condition) {
-    line <- trimws(conditionMessage(condition))
-    messages <<- c(messages, line)
-    if (!is.null(progress_callback)) progress_callback(messages)
+  shown <- function() {
+    lines <- ctgui_fit_log_lines(log)
+    lines[nzchar(trimws(lines))]
   }
   value <- withCallingHandlers(
     tryCatch(action(), error = function(error) error),
     message = function(message) {
-      append_message(message)
+      log <<- ctgui_fit_log_append(log, conditionMessage(message))
+      if (!is.null(progress_callback)) progress_callback(shown())
       invokeRestart("muffleMessage")
     },
     warning = function(warning) {
@@ -26,7 +33,7 @@ ctgui_run_result <- function(action, progress_callback = NULL) {
       invokeRestart("muffleWarning")
     }
   )
-  list(value = value, messages = unique(messages), warnings = unique(warnings))
+  list(value = value, messages = shown(), warnings = unique(warnings))
 }
 
 ctgui_ctsem_run <- function(name, args = list(), progress_callback = NULL) {

@@ -8,9 +8,14 @@ ctgui_fit_log_read <- getFromNamespace("ctgui_fit_log_read", "ctsemGUI")
 ctgui_fit_log_clean <- getFromNamespace("ctgui_fit_log_clean", "ctsemGUI")
 ctgui_fit_log_tail <- getFromNamespace("ctgui_fit_log_tail", "ctsemGUI")
 ctgui_fit_log_path <- getFromNamespace("ctgui_fit_log_path", "ctsemGUI")
-ctgui_fit_process_alive <- getFromNamespace("ctgui_fit_process_alive", "ctsemGUI")
-ctgui_fit_process_collect <- getFromNamespace("ctgui_fit_process_collect", "ctsemGUI")
-ctgui_fit_process_start <- getFromNamespace("ctgui_fit_process_start", "ctsemGUI")
+ctgui_worker <- getFromNamespace("ctgui_worker", "ctsemGUI")
+ctgui_worker_close <- getFromNamespace("ctgui_worker_close", "ctsemGUI")
+ctgui_worker_run <- getFromNamespace("ctgui_worker_run", "ctsemGUI")
+ctgui_background_start <- getFromNamespace("ctgui_background_start", "ctsemGUI")
+ctgui_job_running <- getFromNamespace("ctgui_job_running", "ctsemGUI")
+ctgui_job_collect <- getFromNamespace("ctgui_job_collect", "ctsemGUI")
+ctgui_job_cancel <- getFromNamespace("ctgui_job_cancel", "ctsemGUI")
+ctgui_fit_log_lines <- getFromNamespace("ctgui_fit_log_lines", "ctsemGUI")
 
 test_that("the log is read forward from an offset rather than re-read whole", {
   # A long fit writes thousands of lines. Re-reading the file on every poll
@@ -111,41 +116,92 @@ test_that("log paths do not collide between fits", {
   expect_false(identical(ctgui_fit_log_path(), ctgui_fit_log_path()))
 })
 
-test_that("a dead or absent process is reported without erroring", {
-  expect_false(ctgui_fit_process_alive(NULL))
-  expect_equal(ctgui_fit_process_collect(NULL)$status, "error")
+test_that("a dead or absent job is reported without erroring", {
+  expect_false(ctgui_job_running(NULL))
+  expect_equal(ctgui_job_collect(NULL)$status, "error")
 })
 
-test_that("a stopped fit is not reported as a failure", {
+wait_for <- function(job) {
+  deadline <- Sys.time() + 60
+  while (ctgui_job_running(job) && Sys.time() < deadline) Sys.sleep(0.05)
+  ctgui_job_collect(job)
+}
+
+test_that("jobs share one process, so its Julia and compiled shapes survive", {
   skip_if_not_installed("callr")
 
-  path <- ctgui_fit_log_path()
-  on.exit(unlink(path), add = TRUE)
-  process <- callr::r_bg(function() Sys.sleep(30), stdout = path, stderr = "2>&1", supervise = TRUE)
-  on.exit(try(process$kill(), silent = TRUE), add = TRUE)
+  # Each job used to start a process of its own, and the fit's process ended
+  # when the fit returned, taking every model shape compiled in it along. A
+  # generation straight afterwards compiled the same shape again.
+  worker <- ctgui_worker()
+  on.exit(ctgui_worker_close(worker), add = TRUE)
+  first <- ctgui_background_start(worker, function(args) Sys.getpid(), list(), ctgui_fit_log_path())
+  # Queued behind the first rather than started beside it.
+  second <- ctgui_background_start(worker, function(args) Sys.getpid(), list(), ctgui_fit_log_path())
+  expect_equal(second$state, "queued")
 
-  expect_true(ctgui_fit_process_alive(process))
-  process$kill()
-  Sys.sleep(0.5)
-
-  # A failing fit and a cancelled one both exit non-zero, so the exit status
-  # cannot tell them apart. Reporting a real failure as a cancellation would
-  # hide the reason from the person who needs it.
-  expect_equal(ctgui_fit_process_collect(process, cancelled = TRUE)$status, "cancelled")
+  expect_equal(wait_for(first)$status, "value")
+  expect_equal(wait_for(second)$value, first$result$value)
+  expect_false(identical(first$result$value, Sys.getpid()))
 })
 
-test_that("a failure inside the fit comes back as an error, not a crash", {
+test_that("a job's output, progress and warnings reach its log as they happen", {
   skip_if_not_installed("callr")
 
+  worker <- ctgui_worker()
+  on.exit(ctgui_worker_close(worker), add = TRUE)
   path <- ctgui_fit_log_path()
   on.exit(unlink(path), add = TRUE)
-  process <- callr::r_bg(
-    function() stop("something went wrong in the fit"),
-    stdout = path, stderr = "2>&1", supervise = TRUE
-  )
-  while (ctgui_fit_process_alive(process)) Sys.sleep(0.1)
+  job <- ctgui_background_start(worker, function(args) {
+    cat("printed\n")
+    for (percent in 1:3) message("\r", percent, "%", appendLF = FALSE)
+    message("")
+    warning("careful")
+    "done"
+  }, list(), path)
+  outcome <- wait_for(job)
 
-  outcome <- ctgui_fit_process_collect(process, cancelled = FALSE)
+  expect_equal(outcome$value, "done")
+  expect_equal(outcome$warnings, "careful")
+  lines <- strsplit(ctgui_fit_log_text(
+    ctgui_fit_log_append(ctgui_fit_log_state(), ctgui_fit_log_read(path)$text)
+  ), "\n", fixed = TRUE)[[1L]]
+  expect_equal(lines, c("printed", "3%", "Warning: careful"))
+  expect_equal(ctgui_fit_log_warnings(lines), "Warning: careful")
+})
+
+test_that("a stopped job is not reported as a failure, and the next starts afresh", {
+  skip_if_not_installed("callr")
+
+  worker <- ctgui_worker()
+  on.exit(ctgui_worker_close(worker), add = TRUE)
+  job <- ctgui_background_start(worker, function(args) Sys.sleep(30), list(), ctgui_fit_log_path())
+  deadline <- Sys.time() + 30
+  while (!identical(job$state, "running") && Sys.time() < deadline) {
+    ctgui_job_running(job)
+    Sys.sleep(0.05)
+  }
+  stopped_pid <- job$session$get_pid()
+
+  # A failing fit and a cancelled one both end without a value, so only the
+  # caller can tell them apart. Reporting a real failure as a cancellation
+  # would hide the reason from the person who needs it.
+  ctgui_job_cancel(job)
+  expect_equal(ctgui_job_collect(job)$status, "cancelled")
+
+  after <- wait_for(ctgui_background_start(worker, function(args) Sys.getpid(), list(), ctgui_fit_log_path()))
+  expect_equal(after$status, "value")
+  expect_false(identical(after$value, stopped_pid))
+})
+
+test_that("a failure inside the job comes back as an error, not a crash", {
+  skip_if_not_installed("callr")
+
+  worker <- ctgui_worker()
+  on.exit(ctgui_worker_close(worker), add = TRUE)
+  outcome <- wait_for(ctgui_background_start(
+    worker, function(args) stop("something went wrong in the fit"), list(), ctgui_fit_log_path()
+  ))
   expect_equal(outcome$status, "error")
   expect_match(conditionMessage(outcome$error), "something went wrong in the fit", fixed = TRUE)
 })
@@ -153,29 +209,47 @@ test_that("a failure inside the fit comes back as an error, not a crash", {
 test_that("a value from the worker comes back intact", {
   skip_if_not_installed("callr")
 
-  path <- ctgui_fit_log_path()
-  on.exit(unlink(path), add = TRUE)
-  process <- callr::r_bg(
-    function() list(estimate = 42, label = "recovered"),
-    stdout = path, stderr = "2>&1", supervise = TRUE
-  )
-  while (ctgui_fit_process_alive(process)) Sys.sleep(0.1)
-
-  outcome <- ctgui_fit_process_collect(process)
+  worker <- ctgui_worker()
+  on.exit(ctgui_worker_close(worker), add = TRUE)
+  outcome <- wait_for(ctgui_background_start(
+    worker, function(args) list(estimate = args$x * 21, label = "recovered"), list(x = 2),
+    ctgui_fit_log_path()
+  ))
   expect_equal(outcome$status, "value")
   expect_equal(outcome$value$estimate, 42)
 })
 
-test_that("the worker needs only ctsem, not ctsemGUI", {
-  # The child process is started with package = FALSE, so anything the worker
+test_that("a call on a fit runs in the worker when free, and here when not", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("ctsem")
+
+  worker <- ctgui_worker()
+  on.exit(ctgui_worker_close(worker), add = TRUE)
+  args <- list(type = "ct", LAMBDA = diag(1), Tpoints = 3)
+  there <- ctgui_worker_run(worker, "ctModel", args)
+  expect_s3_class(there$value, "ctStanModel")
+  expect_false(is.null(worker$session))
+
+  # While a job has the process the call does not wait for it.
+  busy <- ctgui_background_start(worker, function(args) Sys.sleep(30), list(), ctgui_fit_log_path())
+  started <- Sys.time()
+  here <- ctgui_worker_run(worker, "ctModel", args)
+  expect_lt(as.numeric(difftime(Sys.time(), started, units = "secs")), 20)
+  expect_s3_class(here$value, "ctStanModel")
+  ctgui_job_cancel(busy)
+})
+
+test_that("the workers need only ctsem, not ctsemGUI", {
+  # The child process cannot be assumed to have ctsemGUI, so anything a worker
   # reaches for has to be named explicitly. A reference to a ctsemGUI helper
   # would fail only at fit time, in a separate process, which is the worst
   # place to discover it.
-  worker <- getFromNamespace("ctgui_fit_worker", "ctsemGUI")
-  body_text <- paste(deparse(body(worker)), collapse = "\n")
-
-  expect_match(body_text, "ctsem::ctFit", fixed = TRUE)
-  expect_false(grepl("ctgui_", body_text, fixed = TRUE))
+  fit_worker <- getFromNamespace("ctgui_fit_worker", "ctsemGUI")
+  expect_match(paste(deparse(body(fit_worker)), collapse = "\n"), "ctsem::ctFit", fixed = TRUE)
+  for (name in c("ctgui_fit_worker", "ctgui_generate_worker", "ctgui_ctsem_worker", "ctgui_worker_job")) {
+    body_text <- paste(deparse(body(getFromNamespace(name, "ctsemGUI"))), collapse = "\n")
+    expect_false(grepl("ctgui_", body_text, fixed = TRUE), info = name)
+  }
 })
 
 test_that("the fit form stays usable while a background fit runs", {

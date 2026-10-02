@@ -2,14 +2,21 @@
 
 # Fitting used to run on the main R thread, which froze the whole interface for
 # as long as it took and left no way to stop it.  Running it in a separate
-# process fixes both, and gives something the in-process version could not: a
-# real message window.  ctsem and Stan write their progress to the console at a
-# level R cannot capture from inside its own process, but a child process can
-# have its output redirected to a file, which the application tails.
+# process fixes both, and gives a real message window: the job writes its
+# output to a file, which the application tails.
 #
 # The separate process is also the safe option.  A fit that crashes takes its
 # own process down and nothing else, so the session, the model and any fits
 # already stored survive it.
+#
+# One process serves the whole session.  Each job used to start an R process of
+# its own, and with it a Julia of its own; a fit's process ended when the fit
+# returned, taking the engine and every model shape it had compiled with it, so
+# generating from that fit a moment later started Julia again and compiled the
+# same shape again.  Jobs now run one after another in a process that lives as
+# long as the session.  Stopping a job still ends the process -- R cannot
+# interrupt a call running in another process on Windows -- and the next job
+# starts a fresh one.
 
 ctgui_fit_worker <- function(args) {
   # Runs in the child. Only ctsem is needed here, so the worker does not
@@ -21,14 +28,115 @@ ctgui_generate_worker <- function(args) {
   do.call(ctsem::ctGenerateFromFit, args)
 }
 
-#' Start a long ctsem call in a background process
+# Any other ctsem function, by name, for the calls the session makes on a fit.
+ctgui_ctsem_worker <- function(args) {
+  do.call(getExportedValue("ctsem", args$name), args$args)
+}
+
+# Runs in the child around every job. Messages and warnings are written to the
+# job's log as they happen, so the application can show them live; ctsem's
+# progress lines keep their carriage returns, which the log renderer applies.
+# Warnings are also returned, so the panel for them is filled from the
+# conditions themselves rather than from a reading of the log. Self-contained,
+# like the workers: the child has ctsem, not ctsemGUI.
+ctgui_worker_job <- function(func, args, log_path) {
+  connection <- file(log_path, open = "a")
+  sink(connection)
+  on.exit({
+    sink()
+    close(connection)
+  }, add = TRUE)
+  write <- function(...) {
+    cat(..., sep = "", file = connection)
+    flush(connection)
+  }
+  # A fit asking for more cores than the session's Julia was started with
+  # restarts it at the wider count, which is what a process per fit gave.
+  options(ctsem.julia.restart = TRUE)
+  warnings <- character()
+  value <- withCallingHandlers(
+    tryCatch(func(args), error = function(error) error),
+    message = function(condition) {
+      write(conditionMessage(condition))
+      invokeRestart("muffleMessage")
+    },
+    warning = function(condition) {
+      warnings <<- c(warnings, conditionMessage(condition))
+      write("Warning: ", conditionMessage(condition), "\n")
+      invokeRestart("muffleWarning")
+    }
+  )
+  list(value = value, warnings = unique(warnings))
+}
+
+#' The session's background R process
 #'
+#' A holder for the process, created on first use and replaced when it has
+#' gone, so a job can find the current one.
+#'
+#' @return An environment.
+#' @keywords internal
+ctgui_worker <- function() {
+  worker <- new.env(parent = emptyenv())
+  worker$session <- NULL
+  worker$job <- NULL
+  worker
+}
+
+ctgui_worker_session <- function(worker) {
+  session <- worker$session
+  if (is.null(session) || !isTRUE(tryCatch(session$is_alive(), error = function(e) FALSE))) {
+    if (!requireNamespace("callr", quietly = TRUE)) {
+      stop(
+        "Background work needs the callr package. Install it, or turn off ",
+        "'Fit in the background' to run in this session instead.",
+        call. = FALSE
+      )
+    }
+    # Supervised: without it the process outlives a session that dies, and
+    # keeps a core busy with results nobody can collect.
+    session <- callr::r_session$new(
+      options = callr::r_session_options(supervise = TRUE),
+      wait = FALSE
+    )
+    worker$session <- session
+    worker$job <- NULL
+  }
+  session
+}
+
+# Whether the process can take a job now. It starts asynchronously, and its
+# start-up message has to be read before the first call.
+ctgui_worker_idle <- function(worker) {
+  if (!is.null(worker$job)) return(FALSE)
+  session <- ctgui_worker_session(worker)
+  if (identical(session$get_state(), "starting") &&
+      identical(session$poll_process(0), "ready")) {
+    session$read()
+  }
+  identical(session$get_state(), "idle")
+}
+
+ctgui_worker_close <- function(worker) {
+  session <- worker$session
+  worker$session <- NULL
+  worker$job <- NULL
+  if (!is.null(session)) invisible(tryCatch(session$kill_tree(), error = function(e) NULL))
+  invisible(NULL)
+}
+
+#' Queue a long ctsem call on the session's background process
+#'
+#' The job starts as soon as the process is free, which is at once unless
+#' another job is running; `ctgui_job_running()` starts it.
+#'
+#' @param worker From `ctgui_worker()`.
 #' @param func The worker function to run in the child.
 #' @param args Arguments passed to the worker.
-#' @param log_path File that receives the child's console output.
-#' @return A `callr` process handle.
+#' @param log_path File that receives the job's output.
+#' @return A job: an environment that `ctgui_job_running()` advances.
 #' @keywords internal
-ctgui_background_start <- function(func, args, log_path) {
+ctgui_background_start <- function(worker, func, args, log_path) {
   if (!requireNamespace("callr", quietly = TRUE)) {
     stop(
       "Background work needs the callr package. Install it, or turn off ",
@@ -37,28 +145,142 @@ ctgui_background_start <- function(func, args, log_path) {
     )
   }
   file.create(log_path)
-  callr::r_bg(
-    func = func,
-    args = list(args = args),
-    stdout = log_path,
-    stderr = "2>&1",
-    # Without this the child outlives the session that started it and keeps a
-    # core busy with results nobody can collect.
-    supervise = TRUE,
-    package = FALSE
+  # The function travels to the child without its namespace, which the child
+  # may not be able to load; the workers name everything they use.
+  environment(func) <- globalenv()
+  job <- new.env(parent = emptyenv())
+  job$worker <- worker
+  job$func <- func
+  job$args <- args
+  job$log_path <- log_path
+  job$state <- "queued"
+  job$result <- NULL
+  ctgui_job_running(job)
+  job
+}
+
+ctgui_fit_process_start <- function(worker, args, log_path) {
+  ctgui_background_start(worker, ctgui_fit_worker, args, log_path)
+}
+
+ctgui_generate_process_start <- function(worker, args, log_path) {
+  ctgui_background_start(worker, ctgui_generate_worker, args, log_path)
+}
+
+ctgui_job_finish <- function(job, result) {
+  job$state <- "done"
+  job$result <- result
+  if (identical(job$worker$job, job)) job$worker$job <- NULL
+  FALSE
+}
+
+#' Advance a background job
+#'
+#' Starts a queued job once the process is free, and collects a running one
+#' once it has finished.
+#'
+#' @param job From `ctgui_background_start()`.
+#' @return `TRUE` while the job is queued or running.
+#' @keywords internal
+ctgui_job_running <- function(job) {
+  if (is.null(job) || identical(job$state, "done")) return(FALSE)
+  worker <- job$worker
+
+  if (identical(job$state, "queued")) {
+    if (!ctgui_worker_idle(worker)) return(TRUE)
+    worker$session$call(ctgui_worker_job,
+      list(func = job$func, args = job$args, log_path = job$log_path))
+    worker$job <- job
+    job$session <- worker$session
+    job$state <- "running"
+    return(TRUE)
+  }
+
+  session <- job$session
+  if (!isTRUE(tryCatch(session$is_alive(), error = function(e) FALSE))) {
+    return(ctgui_job_finish(job, list(status = "error",
+      error = simpleError("The background R process ended before the job finished."))))
+  }
+  if (!identical(session$poll_process(0), "ready")) return(TRUE)
+  reply <- session$read()
+  if (!is.null(reply$error)) {
+    return(ctgui_job_finish(job, list(status = "error", error = reply$error)))
+  }
+  value <- reply$result$value
+  warnings <- reply$result$warnings %||% character()
+  if (inherits(value, "error")) {
+    return(ctgui_job_finish(job, list(status = "error", error = value, warnings = warnings)))
+  }
+  ctgui_job_finish(job, list(status = "value", value = value, warnings = warnings))
+}
+
+# Stopping a running job ends the process, since there is no other way to stop
+# it here, and takes its Julia with it.
+ctgui_job_cancel <- function(job) {
+  if (is.null(job) || identical(job$state, "done")) return(invisible(FALSE))
+  if (identical(job$state, "running")) ctgui_worker_close(job$worker)
+  ctgui_job_finish(job, list(status = "cancelled"))
+  invisible(TRUE)
+}
+
+#' Collect the outcome of a background job
+#'
+#' @param job From `ctgui_background_start()`.
+#' @return A list with `status` (`"value"`, `"error"` or `"cancelled"`), the
+#'   returned object or the condition that ended the job, and its warnings.
+#' @keywords internal
+ctgui_job_collect <- function(job) {
+  if (is.null(job)) {
+    return(list(status = "error", error = simpleError("No job was running.")))
+  }
+  ctgui_job_running(job)
+  if (!identical(job$state, "done")) {
+    return(list(status = "error", error = simpleError("The job has not finished.")))
+  }
+  job$result
+}
+
+#' Run a ctsem function on a fit, in the background process when it is free
+#'
+#' Blocks until it returns, like a call in this session, but uses the process
+#' that fitted the model: its Julia has the model's shape compiled already,
+#' where this session's would compile it again. While a job has the process,
+#' the call runs here instead rather than wait for the job.
+#'
+#' @param worker From `ctgui_worker()`, or `NULL` to run here.
+#' @param name A ctsem export.
+#' @param args Its arguments.
+#' @return A list with `value` (or the error), `messages` and `warnings`, as
+#'   from `ctgui_run_result()`.
+#' @keywords internal
+ctgui_worker_run <- function(worker, name, args) {
+  here <- function() ctgui_run_result(function() ctgui_ctsem_call(name, .args = args))
+  if (is.null(worker) || !requireNamespace("callr", quietly = TRUE)) return(here())
+  idle <- tryCatch(ctgui_worker_idle(worker), error = function(e) FALSE)
+  if (!idle && is.null(worker$job) && !is.null(worker$session)) {
+    # A process still starting is ready within a second or two.
+    worker$session$poll_process(5000)
+    idle <- tryCatch(ctgui_worker_idle(worker), error = function(e) FALSE)
+  }
+  if (!idle) return(here())
+
+  log_path <- ctgui_fit_log_path()
+  on.exit(unlink(log_path), add = TRUE)
+  job <- ctgui_background_start(worker, ctgui_ctsem_worker,
+    list(name = name, args = args), log_path)
+  while (ctgui_job_running(job)) {
+    if (is.null(job$session)) Sys.sleep(0.05) else job$session$poll_process(200)
+  }
+  outcome <- job$result
+  log <- ctgui_fit_log_append(ctgui_fit_log_state(), ctgui_fit_log_read(log_path)$text)
+  lines <- ctgui_fit_log_lines(log)
+  # Warnings come back as conditions; their copies in the log are for watching.
+  lines <- lines[nzchar(trimws(lines)) & !grepl("^Warning: ", lines)]
+  list(
+    value = if (identical(outcome$status, "value")) outcome$value else outcome$error,
+    messages = lines,
+    warnings = outcome$warnings %||% character()
   )
-}
-
-ctgui_fit_process_start <- function(args, log_path) {
-  ctgui_background_start(ctgui_fit_worker, args, log_path)
-}
-
-ctgui_generate_process_start <- function(args, log_path) {
-  ctgui_background_start(ctgui_generate_worker, args, log_path)
-}
-
-ctgui_fit_process_alive <- function(process) {
-  !is.null(process) && isTRUE(tryCatch(process$is_alive(), error = function(e) FALSE))
 }
 
 # The log is tailed by byte offset rather than re-read whole, so a long fit does
@@ -137,9 +359,12 @@ ctgui_fit_log_append <- function(state, text, limit = ctgui_fit_log_limit) {
   ctgui_fit_log_state(lines, pending)
 }
 
+ctgui_fit_log_lines <- function(state) {
+  c(state$lines, if (nzchar(state$pending)) ctgui_fit_log_overwrite(state$pending))
+}
+
 ctgui_fit_log_text <- function(state) {
-  paste(c(state$lines, if (nzchar(state$pending)) ctgui_fit_log_overwrite(state$pending)),
-    collapse = "\n")
+  paste(ctgui_fit_log_lines(state), collapse = "\n")
 }
 
 # Warnings arrive interleaved with everything else on the child's output, so
@@ -180,31 +405,6 @@ ctgui_fit_log_tail <- function(text, limit = ctgui_fit_log_limit) {
     paste0("... ", length(lines) - limit, " earlier lines omitted ..."),
     utils::tail(lines, limit)
   ), collapse = "\n")
-}
-
-#' Collect the outcome of a background fit
-#'
-#' @param process A handle from `ctgui_fit_process_start()`.
-#' @param cancelled Whether the caller stopped the process deliberately.
-#' @return A list with `status` (`"value"`, `"error"` or `"cancelled"`) and
-#'   either the fitted object or the condition that ended it.
-#' @keywords internal
-ctgui_fit_process_collect <- function(process, cancelled = FALSE) {
-  if (is.null(process)) {
-    return(list(status = "error", error = simpleError("No fit was running.")))
-  }
-  # A failing fit and a cancelled one both exit non-zero, so the exit status
-  # cannot tell them apart. Only the caller knows whether it pressed stop, and
-  # reporting a real failure as a cancellation would hide the reason from the
-  # person who needs it.
-  if (isTRUE(cancelled)) {
-    return(list(status = "cancelled", exit_status = tryCatch(
-      as.integer(process$get_exit_status()), error = function(e) NA_integer_
-    )))
-  }
-  result <- tryCatch(process$get_result(), error = function(e) e)
-  if (inherits(result, "condition")) return(list(status = "error", error = result))
-  list(status = "value", value = result)
 }
 
 ctgui_fit_log_path <- function(directory = tempdir()) {

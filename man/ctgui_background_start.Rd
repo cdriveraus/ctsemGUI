@@ -2,21 +2,24 @@
 % Please edit documentation in R/fit_process.R
 \name{ctgui_background_start}
 \alias{ctgui_background_start}
-\title{Start a long ctsem call in a background process}
+\title{Queue a long ctsem call on the session's background process}
 \usage{
-ctgui_background_start(func, args, log_path)
+ctgui_background_start(worker, func, args, log_path)
 }
 \arguments{
+\item{worker}{From \code{ctgui_worker()}.}
+
 \item{func}{The worker function to run in the child.}
 
 \item{args}{Arguments passed to the worker.}
 
-\item{log_path}{File that receives the child's console output.}
+\item{log_path}{File that receives the job's output.}
 }
 \value{
-A \code{callr} process handle.
+A job: an environment that \code{ctgui_job_running()} advances.
 }
 \description{
-Start a long ctsem call in a background process
+The job starts as soon as the process is free, which is at once unless
+another job is running; \code{ctgui_job_running()} starts it.
 }
 \keyword{internal}

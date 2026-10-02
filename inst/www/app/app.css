@@ -57,7 +57,11 @@ table { background: #ffffff; }
 .disabled-panel { opacity: 0.68; pointer-events: none; }
 .fit-inline-output { margin-top: 12px; }
 .fit-capture-note { color: #4b5563; margin-top: 6px; }
-pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-space: pre; word-break: normal; word-wrap: normal; overflow-x: auto; max-width: 100%; }
+/* Console output wraps at the box edge: messages and warnings are read, and a
+   line running off the side hides the end of what it says. */
+pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-space: pre-wrap; word-break: normal; overflow-wrap: anywhere; max-width: 100%; }
+/* Printed summaries are tables, whose columns line up only unwrapped. */
+#fit_summary, #fit_summary_matrices { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
 /* Each row scrolls on its own so a wide matrix never drags the whole pane
    sideways and leaves the row labels off-screen. */
 .equation-pane { --ctgui-equation-scale: 1; display: flex; flex-direction: column; gap: 4px; background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px; }
