@@ -170,7 +170,7 @@ test_that("the tests do not use the cache directory a real session would", {
   expect_equal(
     normalizePath(ctgui_autosave_dir(), winslash = "/", mustWork = FALSE),
     normalizePath(
-      file.path(tempdir(), "ctsemGUI-test-cache", "R", "ctsemGUI"),
+      file.path(tempdir(), "ctsemGUI-test-cache"),
       winslash = "/", mustWork = FALSE
     )
   )
@@ -178,6 +178,12 @@ test_that("the tests do not use the cache directory a real session would", {
     ctgui_autosave_path(),
     file.path(ctgui_autosave_dir(), "autosave.rds")
   )
+  # ...and only the autosave moved. ctsem's cache holds the Julia engine's
+  # project directory; moving it made every test run precompile the engine.
+  expect_false(startsWith(
+    normalizePath(tools::R_user_dir("ctsem", which = "cache"), winslash = "/", mustWork = FALSE),
+    normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+  ))
 })
 
 test_that("a model survives a session ending and comes back in the next", {

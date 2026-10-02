@@ -18,8 +18,10 @@ ctgui_autosave_version <- 1L
 # every edit.
 ctgui_autosave_data_limit <- 20 * 1024^2
 
+# options(ctsemgui.autosave.dir =) moves it, which is how the tests keep away
+# from a user's file without moving R's whole cache directory.
 ctgui_autosave_dir <- function() {
-  tools::R_user_dir("ctsemGUI", which = "cache")
+  getOption("ctsemgui.autosave.dir") %||% tools::R_user_dir("ctsemGUI", which = "cache")
 }
 
 ctgui_autosave_path <- function(dir = ctgui_autosave_dir()) {
