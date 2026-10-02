@@ -19,11 +19,12 @@ ctgui_blueprint_structures <- function() {
       latents = "single",
       summary = "Each process returns to its own baseline and is not connected to the others.",
       detail = paste(
-        "The simplest continuous-time model worth fitting, and the natural",
-        "comparison for anything more complicated: if adding cross-effects does",
-        "not improve on this, the processes are not driving each other. Each",
-        "process has a free auto-effect, which sets how quickly a disturbance",
-        "fades, and its own noise."
+        "The simplest continuous-time model worth fitting, and a natural",
+        "comparison for anything more complicated. If adding cross-effects does",
+        "not improve on it, these data give no evidence that the processes",
+        "drive each other -- which is not the same as evidence that they do not.",
+        "Each process has a free auto-effect, which sets how quickly a",
+        "disturbance fades, and its own noise."
       )
     ),
     coupled = list(
@@ -45,12 +46,15 @@ ctgui_blueprint_structures <- function() {
       suffix = "trend",
       summary = "Coupled processes, each with a trend that shifts it steadily over time.",
       detail = paste(
-        "Adds a constant trend process to each measured process. The trend has",
-        "no dynamics of its own and feeds into its process, which produces a",
-        "steady drift in level on top of the coupled dynamics. Use this when",
-        "the series are going somewhere as well as responding to each other;",
-        "fitting coupled dynamics to trending data otherwise pushes the trend",
-        "into the auto-effects."
+        "Adds a trend process to each measured process. Each subject's trend",
+        "starts at zero and rises at a rate of its own (the trend's CINT, which",
+        "varies between subjects), and feeds into its process, so the level the",
+        "process returns to moves steadily over time underneath the coupled",
+        "dynamics. Worth trying when the series seem to be going somewhere as",
+        "well as responding to each other: an unmodelled trend can be absorbed",
+        "into the auto-effects, making the processes look more persistent than",
+        "they are. A trend and slow dynamics can be hard to tell apart over a",
+        "short series, so compare the fit with and without it."
       )
     ),
     growth = list(
@@ -63,8 +67,10 @@ ctgui_blueprint_structures <- function() {
         "A latent growth curve written as a dynamic system: the slope drives",
         "the level, and neither has process noise, so each subject follows a",
         "smooth trajectory set by their own starting point and rate. Subject",
-        "differences live in the initial level and slope. Because there is no",
-        "system noise, everything unexplained is measurement error."
+        "differences live in the initial level and slope, so the level takes",
+        "the place of a manifest intercept, which is fixed at zero. With no",
+        "system noise, the model treats everything a straight line does not",
+        "explain as measurement error."
       )
     ),
     oscillator = list(
@@ -75,10 +81,10 @@ ctgui_blueprint_structures <- function() {
       detail = paste(
         "Each process gets a velocity that drives its position, while the",
         "position pulls the velocity back, which produces cycles. The damping",
-        "parameter sets how quickly those cycles decay. This is a shape",
-        "discrete-time cross-lagged models cannot express at all, and it is",
-        "worth trying whenever a series looks cyclical rather than merely",
-        "persistent."
+        "parameter sets how quickly those cycles decay. A first-order model of",
+        "the observed series alone cannot produce this shape; it needs the",
+        "unobserved velocity. Worth trying when a series looks cyclical rather",
+        "than merely persistent."
       )
     )
   )
@@ -221,8 +227,15 @@ ctgui_blueprint_dynamics_cells <- function(blueprint) {
       add("DIFFUSION", primary, primary, ctgui_auto_label("DIFFUSION", primary, primary))
     }
     if (identical(blueprint$structure, "coupled_trend")) {
-      # A constant trend: no dynamics of its own, feeding its process.
+      # A linear trend: the trend process starts at zero, rises at a rate of
+      # its own (CINT), and feeds its process. Without the rate it is a
+      # constant, which only shifts the level its process settles at -- a
+      # second random intercept beside MANIFESTMEANS, and not separable from
+      # it. Its initial variance goes with its initial mean; see
+      # ctgui_blueprint_apply.
       add("DRIFT", primary, secondary, 1)
+      add("CINT", secondary, "CINT", ctgui_auto_label("CINT", secondary, "CINT"))
+      add("T0MEANS", secondary, "T0MEANS", 0)
     }
     if (identical(blueprint$structure, "growth")) {
       add("DRIFT", primary, secondary, 1)
@@ -265,6 +278,12 @@ ctgui_blueprint_measurement_cells <- function(blueprint, all_manifests, all_late
       # relative to it.
       value <- if (index == 1L) 1 else ctgui_auto_label("LAMBDA", block[index], measured)
       add("LAMBDA", block[index], measured, value)
+    }
+    # A growth level never decays, so its subject-varying initial value is
+    # each subject's intercept. A free MANIFESTMEANS on the same indicator
+    # would be that intercept again, which the data cannot split between them.
+    if (identical(blueprint$structure, "growth")) {
+      add("MANIFESTMEANS", block[1L], "MANIFESTMEANS", 0)
     }
   }
   cells
@@ -387,15 +406,29 @@ ctgui_blueprint_apply <- function(spec, blueprint, mode = c("replace", "extend")
     }
   }
 
+  if (identical(blueprint$structure, "coupled_trend")) {
+    # Every subject's trend starts at zero, so it has no initial variance to
+    # estimate, against the existing processes as much as the new ones.
+    for (process in blueprint$processes) {
+      trend <- ctgui_blueprint_latents(blueprint)[[process]][2L]
+      for (other in latent_names) {
+        cells <- c(cells, list(ctgui_blueprint_cell("T0VAR", trend, other, 0),
+          ctgui_blueprint_cell("T0VAR", other, trend, 0)))
+      }
+    }
+  }
+
   rebuilt <- ctgui_blueprint_apply_cells(rebuilt, cells)
   rebuilt <- ctgui_sync_model_from_matrices(rebuilt)
 
   if (identical(blueprint$structure, "growth")) {
     # Growth curves put the individual differences in where each subject starts
     # and how fast they change, rather than in the dynamics.
+    # A vector matrix's metadata is keyed by the matrix name as its column; a
+    # column of 1L matched nothing, and the call returned the spec unchanged.
     for (latent in new_latents) {
       rebuilt <- ctgui_set_parameter_metadata(
-        rebuilt, "T0MEANS", latent, 1L, indvarying = TRUE
+        rebuilt, "T0MEANS", latent, "T0MEANS", indvarying = TRUE
       )
     }
   }

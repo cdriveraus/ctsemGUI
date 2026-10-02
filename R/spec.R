@@ -694,8 +694,11 @@ ctgui_latex_fallback <- function(spec, error) {
 #' @param dtmean Mean time interval for generated data.
 #' @param logdtsd Log time interval standard deviation.
 #' @param wide Logical; passed to `ctsem::ctGenerate()`.
+#' @param backend Passed to `ctsem::ctGenerate()` where that version takes it;
+#'   ctsem 3.11.1 does not, and generates in R.
 ctgui_generate_data <- function(spec, n.subjects = 100, Tpoints = spec$Tpoints %||% 10,
-    burnin = 0, dtmean = 1, logdtsd = 0, wide = FALSE, free_defaults = TRUE) {
+    burnin = 0, dtmean = 1, logdtsd = 0, wide = FALSE, free_defaults = TRUE,
+    backend = NULL) {
   ctgui_check_spec(spec)
   if (!ctgui_has_ctsem()) stop("ctsem must be installed to generate data", call. = FALSE)
   gen_matrices <- if (isTRUE(free_defaults)) ctgui_generation_matrices(spec) else ctgui_matrices_with_metadata(spec)
@@ -717,7 +720,7 @@ ctgui_generate_data <- function(spec, n.subjects = 100, Tpoints = spec$Tpoints %
     tipredDefault = spec$tipredDefault,
     silent = TRUE
   )
-  generated <- ctgui_ctsem_call("ctGenerate", ctmodelobj = model,
+  args <- list(ctmodelobj = model,
     n.subjects = n.subjects,
     burnin = burnin,
     dtmean = dtmean,
@@ -725,6 +728,10 @@ ctgui_generate_data <- function(spec, n.subjects = 100, Tpoints = spec$Tpoints %
     Tpoints = Tpoints,
     wide = wide
   )
+  if (!is.null(backend) && "backend" %in% names(formals(getExportedValue("ctsem", "ctGenerate")))) {
+    args$backend <- backend
+  }
+  generated <- ctgui_ctsem_call("ctGenerate", .args = args)
   as.data.frame(generated, stringsAsFactors = FALSE)
 }
 

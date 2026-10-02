@@ -62,7 +62,8 @@ ctgui_generate_data(
   dtmean = 1,
   logdtsd = 0,
   wide = FALSE,
-  free_defaults = TRUE
+  free_defaults = TRUE,
+  backend = NULL
 )
 }
 \arguments{
@@ -130,6 +131,9 @@ quiet (\code{silent = TRUE}).}
 
 \item{free_defaults}{Whether data generation should substitute stable
 numeric defaults for free model parameters.}
+
+\item{backend}{Passed to \code{ctsem::ctGenerate()} where that version takes it;
+ctsem 3.11.1 does not, and generates in R.}
 }
 \value{
 A \code{ctsemgui_spec} object.

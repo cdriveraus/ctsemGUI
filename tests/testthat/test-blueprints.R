@@ -45,16 +45,28 @@ test_that("each template has the dynamics that make it that template", {
   expect_equal(free_cells(coupled), 4L)
 
   trend <- build("coupled_trend")
-  # A constant trend feeds its process and has no dynamics of its own.
+  # A trend feeds its process and has no dynamics of its own...
   expect_equal(trend$matrices$DRIFT["stress", "stress_trend"], "1")
   expect_equal(trend$matrices$DRIFT["stress_trend", "stress_trend"], "0")
   expect_equal(free_cells(trend$matrices$DRIFT[c("stress_trend", "sleep_trend"), ]), 0L)
+  # ...but rises at a rate of its own from zero. Without the rate it is a
+  # constant input: a second random intercept, not a trend.
+  expect_equal(free_cells(trend$matrices$CINT[c("stress_trend", "sleep_trend"), , drop = FALSE]), 2L)
+  expect_equal(unname(trend$matrices$T0MEANS[c("stress_trend", "sleep_trend"), 1L]), c("0", "0"))
+  expect_true(all(trend$matrices$T0VAR[c("stress_trend", "sleep_trend"), ] == "0"))
+  expect_true(all(trend$matrices$T0VAR[, c("stress_trend", "sleep_trend")] == "0"))
 
   growth <- build("growth")
   expect_equal(growth$matrices$DRIFT["stress_level", "stress_slope"], "1")
   # A growth curve has no system noise; everything unexplained is measurement.
   expect_equal(free_cells(growth$matrices$DIFFUSION), 0L)
   expect_true(all(growth$matrices$DIFFUSION == "0"))
+  # The level's subject-varying start is the intercept; a free manifest mean
+  # beside it would be the same intercept twice.
+  expect_equal(unname(growth$matrices$MANIFESTMEANS[, 1L]), c("0", "0"))
+  growth_model <- quiet_blueprint(ctgui_to_ctsem_model(growth))
+  growth_t0 <- growth_model$pars[growth_model$pars$matrix == "T0MEANS", ]
+  expect_true(all(growth_t0$indvarying))
 
   oscillator <- build("oscillator")
   expect_equal(oscillator$matrices$DRIFT["stress", "stress_velocity"], "1")

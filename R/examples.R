@@ -15,22 +15,29 @@ ctgui_example_value <- function(matrix, row, col, value) {
   list(matrix = matrix, row = row, col = col, value = value)
 }
 
+# A value that varies between subjects, normally with this sd around the value
+# the example gives it, or around the generation default where it gives none.
+ctgui_example_sd <- function(matrix, row, col, sd) {
+  list(matrix = matrix, row = row, col = col, sd = sd)
+}
+
 ctgui_example_catalog <- function() {
   list(
     coupled = list(
       title = "Two processes influencing each other",
       brief = "Stress and sleep, each affecting the other with different strength and sign.",
       detail = paste(
-        "The starting point for most applied work. The data are generated with",
+        "A common starting point in applied work. The data are generated with",
         "a strong effect of poor sleep on stress and a weaker effect the other",
-        "way, so the two directions should not come out alike."
+        "way, so with this much data the two directions should come out",
+        "different. Each subject also has their own baseline on each measure."
       ),
       look_for = paste(
         "Fit, then open Diagnostics > Dynamics. The cross-effect curves rise",
-        "from zero, peak, and decay: read where each peaks as how long that",
-        "influence takes to arrive. Compare the two directions against the true",
-        "values below, and note that neither is well summarised by a single",
-        "cross-lagged coefficient."
+        "from zero, peak, and decay: where each peaks is the interval at which",
+        "that influence is largest in the fitted model. Compare the two",
+        "directions against the true values below, and note that neither is",
+        "well summarised by a single cross-lagged coefficient."
       ),
       truth = list(
         structure = "coupled", processes = c("stress", "sleep"), indicators = 1L,
@@ -43,24 +50,33 @@ ctgui_example_catalog <- function() {
           ctgui_example_value("DIFFUSION", "sleep", "sleep", 1),
           ctgui_example_value("MANIFESTVAR", "stress_1", "stress_1", 0.2),
           ctgui_example_value("MANIFESTVAR", "sleep_1", "sleep_1", 0.2)
+        ),
+        # The model estimates a baseline per subject, as ctsem does by default.
+        # Data without one leave those variances nothing to find, and their
+        # correlations unidentified. Sleep is slow to settle, so it takes 24
+        # occasions to tell a subject's baseline from where they started.
+        individual = list(
+          ctgui_example_sd("MANIFESTMEANS", "stress_1", 1, 1),
+          ctgui_example_sd("MANIFESTMEANS", "sleep_1", 1, 1)
         )
       ),
-      generate = list(n.subjects = 60, Tpoints = 12, dtmean = 1, logdtsd = 0.3, burnin = 20)
+      generate = list(n.subjects = 60, Tpoints = 24, dtmean = 1, logdtsd = 0.3, burnin = 20)
     ),
 
     no_coupling = list(
       title = "Two processes that are not connected",
       brief = "Data with no cross-effects at all, fitted with a model that allows them.",
       detail = paste(
-        "The processes are generated completely independently. The model you",
+        "The processes are generated independently of each other. The model you",
         "are given still estimates effects in both directions, so this shows",
         "what an absent effect looks like when you go looking for one."
       ),
       look_for = paste(
-        "Both cross-effects should be near zero with intervals covering it.",
-        "Then switch the model to Independent processes in Build and compare",
-        "the two fits under Output > Fit Comparison. This is the comparison",
-        "worth making before believing any cross-effect."
+        "Both cross-effects should come out near zero, with intervals that",
+        "include it -- though about one interval in twenty will miss a true",
+        "value by chance. Then switch the model to Independent processes in",
+        "Build and compare the two fits under Output > Fit Comparison. That",
+        "comparison is worth making before reading much into any cross-effect."
       ),
       truth = list(
         structure = "independent", processes = c("processA", "processB"), indicators = 1L,
@@ -71,6 +87,10 @@ ctgui_example_catalog <- function() {
           ctgui_example_value("DIFFUSION", "processB", "processB", 1),
           ctgui_example_value("MANIFESTVAR", "processA_1", "processA_1", 0.2),
           ctgui_example_value("MANIFESTVAR", "processB_1", "processB_1", 0.2)
+        ),
+        individual = list(
+          ctgui_example_sd("MANIFESTMEANS", "processA_1", 1, 1),
+          ctgui_example_sd("MANIFESTMEANS", "processB_1", 1, 1)
         )
       ),
       # The model handed over is deliberately richer than the truth.
@@ -82,14 +102,14 @@ ctgui_example_catalog <- function() {
       title = "Growth with individual differences",
       brief = "Each subject follows a smooth trajectory with their own level and rate.",
       detail = paste(
-        "A latent growth curve written as a dynamic system. There is no process",
-        "noise, so every subject's path is determined by where they start and",
+        "A latent growth curve written as a dynamic system. The data have no",
+        "process noise, so every subject's path is set by where they start and",
         "how fast they change, and everything else is measurement error."
       ),
       look_for = paste(
         "Look at Data > Visuals first: the trajectories should look like",
         "straight lines with scatter around them, not like wandering series.",
-        "After fitting, Diagnostics > Prediction plots shows how tightly the",
+        "After fitting, Diagnostics > Prediction plots shows how closely the",
         "smoothed latent level tracks the observations."
       ),
       truth = list(
@@ -119,15 +139,15 @@ ctgui_example_catalog <- function() {
       brief = "A damped oscillator: it overshoots its baseline and swings back.",
       detail = paste(
         "The velocity of the process is a latent state of its own, never",
-        "observed directly. This shape cannot be expressed by a discrete-time",
-        "cross-lagged model at all, which is the clearest single argument for",
-        "modelling in continuous time."
+        "observed directly. A first-order model of the observed series alone",
+        "cannot produce this shape; it needs the unobserved velocity."
       ),
       look_for = paste(
         "Diagnostics > Dynamics shows the impulse response crossing zero and",
         "coming back rather than decaying straight to it. Then fit the same",
-        "data as Coupled processes in Build and look at Residual ACF: a model",
-        "without the velocity state leaves the cycle in the residuals."
+        "data as Independent processes in Build, with one process named mood,",
+        "and look at Residual ACF: a model without the velocity state may leave",
+        "some of the cycle in the residuals."
       ),
       truth = list(
         structure = "oscillator", processes = "mood", indicators = 1L,
@@ -136,25 +156,32 @@ ctgui_example_catalog <- function() {
           ctgui_example_value("DRIFT", "mood_velocity", "mood_velocity", -0.2),
           ctgui_example_value("DIFFUSION", "mood_velocity", "mood_velocity", 1),
           ctgui_example_value("MANIFESTVAR", "mood_1", "mood_1", 0.1)
-        )
+        ),
+        individual = list(ctgui_example_sd("MANIFESTMEANS", "mood_1", 1, 1))
       ),
       generate = list(n.subjects = 40, Tpoints = 30, dtmean = 0.4, logdtsd = 0.2, burnin = 10)
     ),
 
     ignored_trend = list(
       title = "A trend the model does not know about",
-      brief = "Trending data fitted without a trend, so you can see where it goes wrong.",
+      brief = "Trending data fitted without a trend, so you can see where that can go wrong.",
       detail = paste(
-        "Both processes drift steadily upward as well as responding to each",
-        "other, but the model you are given has no trend in it. Fitting data",
-        "like this without accounting for the trend pushes it into the",
-        "auto-effects, which then look far more persistent than they are."
+        "Both processes rise steadily, each subject at a rate of their own, as",
+        "well as responding to each other, but the model you are given has no",
+        "trend in it. A model without the trend can only account for the rise",
+        "through its dynamics, so the auto-effects tend to absorb it and the",
+        "processes look far more persistent than they are."
       ),
       look_for = paste(
-        "Fit and check Diagnostics > Residual ACF and Post Predictive: both",
-        "should show the model failing to reproduce the data. Then rebuild as",
-        "Coupled processes with trends in Build, refit, and compare. This is",
-        "what a misspecified model looks like when the diagnostics are working."
+        "Fit, and compare the auto-effects with the true values below. Expect",
+        "ctsem to report identification problems as well: with auto-effects",
+        "near zero a process barely returns to any baseline, so a subject's",
+        "starting level and their baseline can no longer be told apart, and",
+        "both may wander to implausible values. That is part of what this",
+        "misspecification looks like. Residual ACF and Post Predictive may also",
+        "show the model failing to reproduce the data. Then build Coupled",
+        "processes with trends in Build, with processes named skill and effort,",
+        "refit, and compare."
       ),
       truth = list(
         structure = "coupled_trend", processes = c("skill", "effort"), indicators = 1L,
@@ -163,16 +190,22 @@ ctgui_example_catalog <- function() {
           ctgui_example_value("DRIFT", "effort", "effort", -0.4),
           ctgui_example_value("DRIFT", "skill", "effort", 0.2),
           ctgui_example_value("DRIFT", "effort", "skill", 0.05),
-          ctgui_example_value("CINT", "skill_trend", 1, 0.3),
-          ctgui_example_value("CINT", "effort_trend", 1, 0.2),
+          ctgui_example_value("CINT", "skill_trend", 1, 0.15),
+          ctgui_example_value("CINT", "effort_trend", 1, 0.1),
           ctgui_example_value("DIFFUSION", "skill", "skill", 1),
           ctgui_example_value("DIFFUSION", "effort", "effort", 1),
-          ctgui_example_value("MANIFESTVAR", "skill_1", "skill_1", 0.2),
-          ctgui_example_value("MANIFESTVAR", "effort_1", "effort_1", 0.2),
+          ctgui_example_value("MANIFESTVAR", "skill_1", "skill_1", 0.3),
+          ctgui_example_value("MANIFESTVAR", "effort_1", "effort_1", 0.3),
           ctgui_example_value("DRIFT", "skill_trend", "skill_trend", -1e-4),
           ctgui_example_value("DRIFT", "effort_trend", "effort_trend", -1e-4),
           ctgui_example_value("DIFFUSION", "skill_trend", "skill_trend", 1e-6),
           ctgui_example_value("DIFFUSION", "effort_trend", "effort_trend", 1e-6)
+        ),
+        individual = list(
+          ctgui_example_sd("MANIFESTMEANS", "skill_1", 1, 1),
+          ctgui_example_sd("MANIFESTMEANS", "effort_1", 1, 1),
+          ctgui_example_sd("CINT", "skill_trend", 1, 0.05),
+          ctgui_example_sd("CINT", "effort_trend", 1, 0.05)
         )
       ),
       generation_note = paste(
@@ -182,28 +215,36 @@ ctgui_example_catalog <- function() {
         "can ignore them."
       ),
       model = list(structure = "coupled", processes = c("skill", "effort"), indicators = 1L),
-      generate = list(n.subjects = 60, Tpoints = 14, dtmean = 1, logdtsd = 0.2, burnin = 5)
+      # No burn-in: the trend model starts every subject's trend at zero at
+      # their first observation, and the data should too.
+      generate = list(n.subjects = 80, Tpoints = 20, dtmean = 1, logdtsd = 0.2, burnin = 0)
     ),
 
     real_data = list(
       title = "Real data, with predictors",
       brief = "ctsem's own test dataset: two processes, a time-dependent and a time-independent predictor.",
       detail = paste(
-        "Generated data is always tidier than real data. This one has unequal",
+        "Generated data is usually tidier than real data. This one has unequal",
         "intervals, missing observations and predictors of both kinds, so it is",
         "the example to open when you want to see how the data roles and the",
-        "predictor matrices are actually used."
+        "predictor matrices are actually used. The model lets each subject start",
+        "from their own initial state but gives everyone the same measurement",
+        "intercepts: with 30 subjects, letting both vary left their",
+        "correlations undetermined."
       ),
       look_for = paste(
         "Start at Data > Summary and Data > Visuals to see the missingness and",
         "the spread of time intervals before fitting anything. After fitting,",
         "Diagnostics > TI moderation shows how the subject-level predictor",
-        "shifts the trajectories."
+        "shifts the trajectories in the fitted model."
       ),
       data = list(kind = "ctsem", dataset = "ctstantestdat", label = "ctsem::ctstantestdat"),
       # Latents and manifests share a namespace in ctsem, so the processes are
       # named apart from the data columns their indicators take.
-      model = list(structure = "coupled", processes = c("etaY1", "etaY2"), indicators = 1L),
+      model = list(
+        structure = "coupled", processes = c("etaY1", "etaY2"), indicators = 1L,
+        fixed_across_subjects = "MANIFESTMEANS"
+      ),
       roles = list(
         id = "id", time = "time",
         manifest_names = c("Y1", "Y2"),
@@ -255,6 +296,13 @@ ctgui_example_spec <- function(example, base = NULL) {
       )
     }
   }
+
+  # Parameters of these vector matrices are the same for every subject.
+  for (matrix in plan$fixed_across_subjects %||% character()) {
+    for (row in rownames(spec$matrices[[matrix]])) {
+      spec <- ctgui_set_parameter_metadata(spec, matrix, row, matrix, indvarying = FALSE)
+    }
+  }
   spec
 }
 
@@ -304,15 +352,7 @@ ctgui_example_data <- function(example) {
     force(code)
   }
 
-  data <- withr_seed(ctgui_generate_data(
-    truth,
-    n.subjects = settings$n.subjects %||% 50,
-    Tpoints = settings$Tpoints %||% 10,
-    burnin = settings$burnin %||% 0,
-    dtmean = settings$dtmean %||% 1,
-    logdtsd = settings$logdtsd %||% 0,
-    free_defaults = TRUE
-  ))
+  data <- withr_seed(ctgui_example_generate(truth, example$truth$individual, settings))
 
   # Generated columns are named for the specification that produced them, which
   # is also the model being handed over unless the example says otherwise.
@@ -327,6 +367,49 @@ ctgui_example_data <- function(example) {
   names(data)[names(data) == "id"] <- target$id
   names(data)[names(data) == "time"] <- target$time
   data
+}
+
+# Generated one subject at a time when the example has individual differences.
+#
+# A generating specification holds numbers, and a number is the same for every
+# subject, so data generated from it in one call has no individual differences
+# at all. The models the examples hand over estimate random intercepts, as
+# ctsem does by default, and fitted to such data those variances have nothing
+# to find: they collapse toward zero and their correlations become
+# unidentified, which is a property of the example rather than of the model.
+# Here each subject's values are drawn first and that subject generated from
+# them.
+#
+# In R rather than Julia: the same draws for the same seed in every session
+# and on every machine, and no engine to start just to open an example.
+ctgui_example_generate <- function(truth, individual, settings) {
+  generate <- function(spec, n) {
+    ctgui_generate_data(
+      spec,
+      n.subjects = n,
+      Tpoints = settings$Tpoints %||% 10,
+      burnin = settings$burnin %||% 0,
+      dtmean = settings$dtmean %||% 1,
+      logdtsd = settings$logdtsd %||% 0,
+      free_defaults = TRUE,
+      backend = "r"
+    )
+  }
+  n <- settings$n.subjects %||% 50
+  if (!length(individual)) return(generate(truth, n))
+
+  means <- ctgui_generation_matrices(truth)
+  subjects <- lapply(seq_len(n), function(subject) {
+    spec <- truth
+    for (cell in individual) {
+      value <- means[[cell$matrix]][cell$row, cell$col] + stats::rnorm(1L, 0, cell$sd)
+      spec <- ctgui_set_matrix_value(spec, cell$matrix, cell$row, cell$col, value = value)
+    }
+    data <- generate(spec, 1L)
+    data[[truth$id]] <- subject
+    data
+  })
+  do.call(rbind, subjects)
 }
 
 ctgui_example_data_label <- function(example) {
@@ -346,6 +429,13 @@ ctgui_example_truth_note <- function(example) {
   lines <- vapply(values, function(value) {
     sprintf("  %s[%s, %s] = %s", value$matrix, value$row, value$col, format(value$value))
   }, character(1L))
+  individual <- truth$individual %||% list()
+  if (length(individual)) {
+    lines <- c(lines, "Varying between subjects, normally around the value above (or 0):",
+      vapply(individual, function(cell) {
+        sprintf("  %s[%s, %s]: sd %s", cell$matrix, cell$row, cell$col, format(cell$sd))
+      }, character(1L)))
+  }
 
   header <- if (!is.null(example$model)) {
     paste(
@@ -353,7 +443,10 @@ ctgui_example_truth_note <- function(example) {
       "been given. These are the values behind the data:"
     )
   } else {
-    "The data were generated from these values, so a good fit should recover them:"
+    paste(
+      "The data were generated from these values. Estimates from one data set",
+      "will not match them exactly, but the intervals should usually cover them:"
+    )
   }
   paste(c(
     header, lines,

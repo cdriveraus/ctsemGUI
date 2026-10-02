@@ -74,7 +74,33 @@ test_that("examples that disagree with their data say so", {
 
   recovering <- ctgui_example("coupled")
   expect_null(recovering$model)
-  expect_match(ctgui_example_truth_note(recovering), "should recover them", fixed = TRUE)
+  expect_match(ctgui_example_truth_note(recovering), "intervals should usually cover them", fixed = TRUE)
+})
+
+test_that("generated subjects differ where the model estimates that they do", {
+  skip_if_not_installed("ctsem")
+
+  # The models estimate a baseline per subject. Data generated with one value
+  # for everyone gave those variances nothing to find, and every example fitted
+  # with their correlations unidentified.
+  example <- ctgui_example("coupled")
+  expect_true(length(example$truth$individual) > 0L)
+  expect_match(ctgui_example_truth_note(example), "Varying between subjects", fixed = TRUE)
+  data <- quiet_example(ctgui_example_data(example))
+  means <- tapply(data$stress_1, data$id, mean, na.rm = TRUE)
+  # The baseline sd is 1; without it the subject means vary by the process alone.
+  expect_gt(stats::sd(means), 0.9)
+})
+
+test_that("the real-data example keeps the intercepts out of the random effects", {
+  skip_if_not_installed("ctsem")
+
+  # With 30 subjects, random intercepts beside random initial states left their
+  # correlations undetermined.
+  spec <- quiet_example(ctgui_example_spec(ctgui_example("real_data")))
+  pars <- quiet_example(ctgui_to_ctsem_model(spec))$pars
+  expect_false(any(pars$indvarying[pars$matrix == "MANIFESTMEANS" & !is.na(pars$param)]))
+  expect_true(all(pars$indvarying[pars$matrix == "T0MEANS" & !is.na(pars$param)]))
 })
 
 test_that("values added only to make generation possible are disclosed", {
