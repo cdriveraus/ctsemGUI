@@ -110,7 +110,7 @@ ctgui_reference_catalog <- function() {
     "Blog posts" = list(
       ctgui_reference(
         "Dynamic Systems Modeling in Psychology",
-        "QUick conceptual introduction to dynamics, time scales, prediction, and why static snapshots can be insufficient.",
+        "Quick conceptual introduction to dynamics, time scales, prediction, and why static snapshots can be insufficient.",
         "https://cdriver.netlify.app/post/introtodynamics/"
       ),
       ctgui_reference(

@@ -597,7 +597,7 @@ output$fit_expression_warning <- shiny::renderUI({
   if (!ctgui_spec_has_expressions(current_spec())) return(NULL)
   shiny::tags$p(
     class = "warning-note",
-    "This model uses expression parameters. Model compilation is likely required for this nonlinear specification. R must be set up to compile the model, and compilation can take a few minutes before fitting begins."
+    "This model uses expression parameters. On the Stan engine it is compiled before fitting, which needs R set up to compile C++ and can take a few minutes."
   )
 })
 
@@ -1663,7 +1663,7 @@ output$fit_backend_status <- shiny::renderUI({
     ),
     shiny::tags$p(
       class = "help-note ctgui-explain-detail",
-      "Both engines fit the same model specification. Julia is the engine being developed, covers more measurement types and is usually faster; Stan remains available for continuous and binary data, and comparing the two can help when a fit behaves oddly."
+      "Both engines fit the same model specification. Julia is the engine being developed and covers more measurement types; Stan remains available for continuous and binary data, and comparing the two can help when a fit behaves oddly."
     )
   )
 })

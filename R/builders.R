@@ -252,7 +252,13 @@ ctgui_validate_data <- function(spec, data) {
 
   covariates <- intersect(c(spec$tdpred_names, spec$tipred_names), names(data))
   for (variable in covariates) {
-    if (anyNA(data[[variable]])) add("error", variable, "Missing values in TD/TI predictors require explicit handling before fitting")
+    if (anyNA(data[[variable]])) {
+      add("warning", variable, if (variable %in% spec$tdpred_names) {
+        "Missing values in this time-dependent predictor are treated as 0 by ctsem"
+      } else {
+        "Missing values in this time-independent predictor are imputed by ctsem on some routes and refused on others"
+      })
+    }
     if (is.numeric(data[[variable]])) {
       s <- stats::sd(data[[variable]], na.rm = TRUE)
       if (is.finite(s) && s > 10) add("info", variable, "Predictor scale is large; centering/scaling may improve estimation")

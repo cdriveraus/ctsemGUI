@@ -50,8 +50,9 @@ ctgui_manifest_type_catalog <- function() {
       short = "Non-negative whole numbers, modelled as Poisson.",
       detail = paste(
         "Counts of events, modelled as Poisson with a log link, so the latent",
-        "process is the log rate. Use this rather than treating a count as",
-        "continuous when the numbers are small and the floor at zero matters."
+        "process acts on the log of the rate. Treating a count as continuous",
+        "is most questionable when the numbers are small and the floor at zero",
+        "matters."
       ),
       needs = "none", backends = "julia",
       since = "3.12.0", requires_args = character()

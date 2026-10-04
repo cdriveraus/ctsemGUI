@@ -49,8 +49,8 @@ ctgui_explanation_catalog <- function() {
         "interval, and the interval at which each effect is largest. The",
         "uncertainty around all of it is in the fit summary and the dynamics",
         "plot, which is where to go before quoting any of these numbers.",
-        "Anything the model implies at an interval you never observed is",
-        "extrapolation, and is flagged as such."
+        "What the model implies at intervals outside the range you observed",
+        "rests on the model's form more than on the data."
       )
     ),
     generate_from_fit = list(
@@ -96,9 +96,9 @@ ctgui_explanation_catalog <- function() {
         "at once it has fitted. Most generate their data from parameter values",
         "the example tells you, so fitting becomes a check on whether the model",
         "recovers what produced the data rather than a demonstration you have to",
-        "take on trust. Two of them hand you a model that disagrees with the",
-        "truth on purpose, because seeing what a misspecified fit can look like",
-        "is often more instructive than another well-behaved one."
+        "take on trust. Two of them hand you a model that differs from the one",
+        "that generated the data on purpose: one has effects the truth lacks,",
+        "the other lacks a part of the truth."
       )
     ),
     build = list(
@@ -112,10 +112,8 @@ ctgui_explanation_catalog <- function() {
         "effects between old and new start fixed at zero so you decide which",
         "connections to free. Either way you end up with a complete model that",
         "ctsem will accept and that you can edit anywhere else; whether your data",
-        "can identify it is a separate question that the fit answers. Templates",
-        "are starting points, not recommendations: fitting the same data under",
-        "two shapes and comparing them is often more informative than deciding",
-        "in advance which to pick."
+        "can identify it is a separate question. Templates are starting points,",
+        "not recommendations."
       )
     ),
     spec_data = list(
@@ -146,12 +144,11 @@ ctgui_explanation_catalog <- function() {
     raw_visuals = list(
       brief = "Look at trajectories, relationships, time gaps and missingness before fitting.",
       detail = paste(
-        "Many fitting problems show up here first. Check that trajectories look",
-        "like the process you think you are modelling, that the time gaps are what",
-        "you expect, and that missingness is not concentrated in particular people",
-        "or occasions. A variable measured on a very different scale from the rest",
-        "can make optimisation harder, and a process observed only a few times per",
-        "subject is unlikely to support subject-level variation in its dynamics."
+        "Some problems are easier to see here than after fitting: trajectories",
+        "that do not look like the process you think you are modelling, time gaps",
+        "that are not what you expect, missingness concentrated in particular",
+        "people or occasions. A variable measured on a very different scale from",
+        "the rest can make optimisation harder."
       )
     ),
     model_visuals = list(
@@ -177,12 +174,13 @@ ctgui_explanation_catalog <- function() {
     kalman = list(
       brief = "Compare observed data against model predictions and smoothed latent states.",
       detail = paste(
-        "Predicted values use only information up to each time point, so they show",
-        "how well the model forecasts. Smoothed states use the whole series and show",
-        "the model's account of what the latent process was doing, which is only as",
-        "good as the model. Gaps between observed and predicted that persist in",
-        "particular people or stretches of time may point to structure the model",
-        "is missing; gaps that come and go are what measurement error looks like."
+        "Predicted values use only the observations before each time point, so",
+        "they show how well the model forecasts. Smoothed states use the whole",
+        "series and show the model's account of what the latent process was",
+        "doing, which is only as good as the model. Even a correct model leaves",
+        "gaps between observed and predicted, because new process noise and",
+        "measurement error cannot be forecast; gaps that persist in particular",
+        "people or stretches of time may point to structure the model is missing."
       )
     ),
     postpred = list(
@@ -198,28 +196,33 @@ ctgui_explanation_catalog <- function() {
       )
     ),
     acf = list(
-      brief = "Residual autocorrelation shows predictable structure the model has not explained.",
+      brief = "Autocorrelation in the one-step-ahead prediction errors, over elapsed time.",
       detail = paste(
-        "If the model captured the time dependence in the data, little of it",
-        "would remain in the residuals. Autocorrelation that remains could",
+        "The residuals are standardised prediction errors, each made before its",
+        "observation was seen. If the model captured the time dependence in the",
+        "data, little of it would remain in them. Autocorrelation that remains could",
         "reflect dynamics the model leaves out -- another process, a trend, a",
         "cycle -- or individual differences it does not allow for, and it can",
         "also arise from a few unusual subjects or by chance, so treat it as a",
         "prompt to look further rather than a diagnosis. The autocorrelation is",
-        "computed over elapsed time rather than over observation index."
+        "approximated over elapsed time rather than over observation index."
       )
     ),
     dynamics = list(
-      brief = "Impulse responses show how effects propagate and decay over time.",
+      brief = "The regression coefficients the fitted model implies at each time interval.",
       detail = paste(
         "A continuous-time model implies a different set of regression coefficients",
-        "at every time interval, and these plots show that whole curve rather than",
-        "one arbitrary lag. The auto-effect curve describes persistence in the",
-        "fitted model: how long a disturbance takes to fade. A cross-effect curve",
-        "describes transmission: how a change in one process is followed by",
-        "changes in another, and when that is largest. These are the model's",
-        "implications, so they are only as good as its specification, and the",
-        "curve outside the intervals you actually observed is extrapolation."
+        "at every time interval, and these plots show them across a range of",
+        "intervals rather than at a single lag. Each curve is the expected change",
+        "in one process after a unit change in another (or in itself), with the",
+        "other processes unchanged at the start; it includes effects that pass",
+        "through them. With observational ticked, the starting change instead brings with",
+        "it the changes in the other processes that accompany it in the fitted",
+        "model. The units are the processes' own, so the size of an effect in one",
+        "direction is not directly comparable with the other unless the processes",
+        "are on a common scale. These are the model's implications, so they are",
+        "only as good as its specification, and the curve outside the intervals",
+        "you actually observed is extrapolation."
       )
     ),
     generation = list(
@@ -242,8 +245,11 @@ ctgui_explanation_catalog <- function() {
         "sampling and the bootstrap methods make fewer of those assumptions at",
         "greater cost, and have limits of their own: importance sampling can end",
         "with few effective draws, and a bootstrap needs enough subjects to",
-        "resample. If the methods disagree markedly, treat that as a sign the",
-        "likelihood is awkwardly shaped and the intervals deserve caution."
+        "resample. The methods also answer slightly different questions, so they",
+        "can disagree for several reasons: a likelihood far from quadratic, too",
+        "few draws or resamples, or a misspecified model, under which curvature",
+        "and between-subject resampling no longer agree. Marked disagreement is a",
+        "reason for caution with the intervals."
       )
     ),
     validation = list(

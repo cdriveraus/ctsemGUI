@@ -25,19 +25,18 @@ ctgui_example_catalog <- function() {
   list(
     coupled = list(
       title = "Two processes influencing each other",
-      brief = "Stress and sleep, each affecting the other with different strength and sign.",
+      brief = "Stress and sleep, each affecting the other with a different size and sign.",
       detail = paste(
-        "A common starting point in applied work. The data are generated with",
-        "a strong effect of poor sleep on stress and a weaker effect the other",
-        "way, so with this much data the two directions should come out",
-        "different. Each subject also has their own baseline on each measure."
+        "The data are generated with a negative effect of sleep on stress",
+        "(DRIFT -0.35) and a smaller positive effect of stress on sleep",
+        "(DRIFT 0.1). Each subject also has their own baseline on each measure."
       ),
       look_for = paste(
-        "Fit, then open Diagnostics > Dynamics. The cross-effect curves rise",
-        "from zero, peak, and decay: where each peaks is the interval at which",
-        "that influence is largest in the fitted model. Compare the two",
-        "directions against the true values below, and note that neither is",
-        "well summarised by a single cross-lagged coefficient."
+        "Fit, and compare the estimated DRIFT values in the fit summary, with",
+        "their intervals, against the true values below. Diagnostics > Dynamics",
+        "then shows what those values imply at each time interval: the expected",
+        "change in one process after a unit change in the other alone, in the",
+        "processes' own units."
       ),
       truth = list(
         structure = "coupled", processes = c("stress", "sleep"), indicators = 1L,
@@ -72,11 +71,10 @@ ctgui_example_catalog <- function() {
         "what an absent effect looks like when you go looking for one."
       ),
       look_for = paste(
-        "Both cross-effects should come out near zero, with intervals that",
-        "include it -- though about one interval in twenty will miss a true",
-        "value by chance. Then switch the model to Independent processes in",
-        "Build and compare the two fits under Output > Fit Comparison. That",
-        "comparison is worth making before reading much into any cross-effect."
+        "Look at the two cross-effects and their intervals; an interval can miss",
+        "a true value by chance. You can also switch the model to Independent",
+        "processes in Build and compare the two fits under Output > Fit",
+        "Comparison."
       ),
       truth = list(
         structure = "independent", processes = c("processA", "processB"), indicators = 1L,
@@ -107,10 +105,10 @@ ctgui_example_catalog <- function() {
         "how fast they change, and everything else is measurement error."
       ),
       look_for = paste(
-        "Look at Data > Visuals first: the trajectories should look like",
-        "straight lines with scatter around them, not like wandering series.",
-        "After fitting, Diagnostics > Prediction plots shows how closely the",
-        "smoothed latent level tracks the observations."
+        "Look at Data > Visuals first: generated this way, each trajectory is a",
+        "straight line with measurement error scattered around it. After",
+        "fitting, Diagnostics > Prediction plots shows the smoothed latent level",
+        "beside the observations."
       ),
       truth = list(
         structure = "growth", processes = "ability", indicators = 1L,
@@ -125,11 +123,10 @@ ctgui_example_catalog <- function() {
         )
       ),
       generation_note = paste(
-        "Two of the values above are a tiny number rather than zero. That is",
-        "only so the data could be simulated: ctsem's simulator cannot handle a",
-        "process with no random variation at all. The model you are fitting has",
-        "them at exactly zero, which is what a growth curve means. You can",
-        "ignore them."
+        "The DRIFT and DIFFUSION values above are tiny numbers rather than",
+        "zero only so the data could be simulated: ctsem's simulator fails on",
+        "an auto-effect of exactly zero and on a process with no random",
+        "variation at all. The model you are fitting has them at exactly zero."
       ),
       generate = list(n.subjects = 80, Tpoints = 8, dtmean = 1, logdtsd = 0.2, burnin = 0)
     ),
@@ -143,8 +140,9 @@ ctgui_example_catalog <- function() {
         "cannot produce this shape; it needs the unobserved velocity."
       ),
       look_for = paste(
-        "Diagnostics > Dynamics shows the impulse response crossing zero and",
-        "coming back rather than decaying straight to it. Then fit the same",
+        "In the generating model the impulse response crosses zero and comes",
+        "back rather than decaying straight to it; Diagnostics > Dynamics shows",
+        "whether the fitted one does. Then fit the same",
         "data as Independent processes in Build, with one process named mood,",
         "and look at Residual ACF: a model without the velocity state may leave",
         "some of the cycle in the residuals."
@@ -168,18 +166,17 @@ ctgui_example_catalog <- function() {
       detail = paste(
         "Both processes rise steadily, each subject at a rate of their own, as",
         "well as responding to each other, but the model you are given has no",
-        "trend in it. A model without the trend can only account for the rise",
-        "through its dynamics, so the auto-effects tend to absorb it and the",
-        "processes look far more persistent than they are."
+        "trend in it, so the rise has to be accounted for by other parts of the",
+        "model. Auto-effects estimated closer to zero than the truth, making the",
+        "processes look more persistent than they are, are one way that can show."
       ),
       look_for = paste(
-        "Fit, and compare the auto-effects with the true values below. Expect",
-        "ctsem to report identification problems as well: with auto-effects",
-        "near zero a process barely returns to any baseline, so a subject's",
-        "starting level and their baseline can no longer be told apart, and",
-        "both may wander to implausible values. That is part of what this",
-        "misspecification looks like. Residual ACF and Post Predictive may also",
-        "show the model failing to reproduce the data. Then build Coupled",
+        "Fit, and compare the auto-effects with the true values below. ctsem may",
+        "also report identification problems: with auto-effects near zero a",
+        "process barely returns to any baseline, so a subject's starting level",
+        "and their baseline become hard to tell apart, and both may wander to",
+        "implausible values. Residual ACF and Post Predictive may also show the",
+        "model failing to reproduce the data. Then build Coupled",
         "processes with trends in Build, with processes named skill and effort,",
         "refit, and compare."
       ),
@@ -209,10 +206,10 @@ ctgui_example_catalog <- function() {
         )
       ),
       generation_note = paste(
-        "The tiny values on the trend processes are only so the data could be",
-        "simulated: ctsem's simulator cannot handle a process with no random",
-        "variation at all. They are not part of what is being fitted, and you",
-        "can ignore them."
+        "The tiny DRIFT and DIFFUSION values on the trend processes are only so",
+        "the data could be simulated: ctsem's simulator fails on an auto-effect",
+        "of exactly zero and on a process with no random variation at all. In",
+        "the data's own terms they are zero."
       ),
       model = list(structure = "coupled", processes = c("skill", "effort"), indicators = 1L),
       # No burn-in: the trend model starts every subject's trend at zero at
@@ -224,13 +221,13 @@ ctgui_example_catalog <- function() {
       title = "Real data, with predictors",
       brief = "ctsem's own test dataset: two processes, a time-dependent and a time-independent predictor.",
       detail = paste(
-        "Generated data is usually tidier than real data. This one has unequal",
+        "This one has unequal",
         "intervals, missing observations and predictors of both kinds, so it is",
         "the example to open when you want to see how the data roles and the",
         "predictor matrices are actually used. The model lets each subject start",
         "from their own initial state but gives everyone the same measurement",
         "intercepts: with 30 subjects, letting both vary left their",
-        "correlations undetermined."
+        "correlations poorly determined."
       ),
       look_for = paste(
         "Start at Data > Summary and Data > Visuals to see the missingness and",
@@ -445,7 +442,7 @@ ctgui_example_truth_note <- function(example) {
   } else {
     paste(
       "The data were generated from these values. Estimates from one data set",
-      "will not match them exactly, but the intervals should usually cover them:"
+      "will not match them exactly, and an interval can miss its true value:"
     )
   }
   paste(c(

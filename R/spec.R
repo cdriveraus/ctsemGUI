@@ -255,7 +255,7 @@ ctgui_validate <- function(spec) {
     offdiag <- mat[row(mat) != col(mat)]
     offdiag_numeric <- suppressWarnings(as.numeric(offdiag))
     if (any(is.na(offdiag_numeric) | offdiag_numeric != 0)) {
-      add_message("warning", "MANIFESTVAR", "MANIFESTVAR is usually diagonal for first-pass ctsem models")
+      add_message("info", "MANIFESTVAR", "MANIFESTVAR has off-diagonal entries, so measurement errors are correlated across those variables")
     }
   }
 
@@ -328,7 +328,7 @@ ctgui_validate <- function(spec) {
   }
 
   if (length(spec$tipred_names) > 0L && isTRUE(spec$tipredDefault)) {
-    add_message("info", "tipredDefault", "TI predictors affect all free parameters by default; beginners often set tipredDefault = FALSE and opt in per parameter")
+    add_message("info", "tipredDefault", "TI predictors moderate all free parameters by default; set tipredDefault = FALSE to choose which parameters they moderate")
   }
 
   pars <- spec$matrices[["PARS"]]

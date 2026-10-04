@@ -243,7 +243,7 @@ ctgui_measurement_matrix_note <- function(spec) {
 
 ctgui_matrix_note <- function(matrix_name) {
   switch(matrix_name,
-    DRIFT = "Continuous-time effects among latent processes. Diagonal cells are self-regulation; off-diagonal cells are cross-process effects.",
+    DRIFT = "Continuous-time effects among latent processes: the column process affects the row process. Diagonal cells are auto-effects; off-diagonal cells are cross-effects.",
     CINT = "Latent process intercepts. Fixed numbers or free labels set constant input to each latent process.",
     DIFFUSION = "Lower triangular system-noise matrix. Diagonal entries are system-noise standard deviations; lower off-diagonals set unconstrained noise correlations.",
     LAMBDA = "Measurement loadings. Rows are manifest variables, columns are latent processes.",

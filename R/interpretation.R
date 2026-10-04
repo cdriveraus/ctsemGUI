@@ -188,29 +188,29 @@ ctgui_interpret_cross_effects <- function(drift, intervals = NULL) {
     if (!is.finite(rate) || isTRUE(all.equal(rate, 0))) next
     peak <- ctgui_cross_effect_peak(drift, target, source)
     if (is.null(peak)) next
-    direction <- if (peak$value >= 0) "raises" else "lowers"
 
     # Lead with the effect at the interval the user actually observed, because
     # that is the number their data speak to. The peak describes the shape of
-    # the curve and comes second.
-    text <- paste0("In the fitted model, a unit change in ", names_[source], " ",
-      direction, " ", names_[target])
-    if (!is.null(intervals) && is.finite(intervals$median)) {
-      at_median <- ctgui_discrete_drift(drift, intervals$median)
-      if (!is.null(at_median)) {
-        text <- paste0(text, " by ", ctgui_round(at_median[target, source]),
-          " over your median interval of ", ctgui_round(intervals$median), ".")
-      } else {
-        text <- paste0(text, ".")
-      }
+    # the curve and comes second. The direction is read from the value that is
+    # quoted: with feedback the curve can change sign, so the peak's sign need
+    # not be the sign at the median interval.
+    at_median <- if (!is.null(intervals) && is.finite(intervals$median)) {
+      ctgui_discrete_drift(drift, intervals$median)
+    }
+    quoted <- if (!is.null(at_median)) at_median[target, source] else peak$value
+    direction <- if (quoted >= 0) "raises" else "lowers"
+    text <- paste0("In the fitted model, a unit change in ", names_[source],
+      " alone ", direction, " ", names_[target])
+    text <- if (!is.null(at_median)) {
+      paste0(text, " by ", ctgui_round(abs(quoted)), " over your median interval of ",
+        ctgui_round(intervals$median), ".")
     } else {
-      text <- paste0(text, ".")
+      paste0(text, ".")
     }
 
     text <- if (isTRUE(peak$at_edge)) {
       paste0(text, " The effect is still growing at the longest interval examined (",
-        ctgui_round(peak$time), "), so it peaks somewhere beyond that, which can ",
-        "happen when one of the processes barely decays.")
+        ctgui_round(peak$time), "), so any peak lies beyond that.")
     } else {
       paste0(text, " It is largest at an interval of about ", ctgui_round(peak$time),
         ", where it reaches ", ctgui_round(peak$value), ".")
@@ -247,9 +247,8 @@ ctgui_interpret_timescale <- function(drift, intervals, free = NULL) {
     notes[[length(notes) + 1L]] <- ctgui_interpretation_note(paste0(
       "On its auto-effect alone, the fastest process has a half-life of about ",
       ctgui_round(fastest), ", shorter than half your median interval. Sampling ",
-      "much slower than a process moves can make its dynamics hard to identify: ",
-      "check the intervals around these effects, and whether a simpler model ",
-      "describes the data about as well."
+      "much slower than a process moves can make its dynamics hard to identify, ",
+      "so check the intervals around these effects."
     ), kind = "caution")
   }
   notes

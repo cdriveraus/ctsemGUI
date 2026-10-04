@@ -1,6 +1,6 @@
 ctgui_help_catalog <- function() {
   list(
-    help_gui_time_model = list(title = "Time model", text = "Choose continuous time for irregular intervals or dynamics between observations; choose discrete time when the observation step is the time unit."),
+    help_gui_time_model = list(title = "Time model", text = "Continuous time models the process between observations and uses the actual intervals; discrete time treats each observation step as one unit of time."),
     help_gui_logdtsd = list(title = "Generated logdtsd", text = "The standard deviation of log time intervals in generated data. Use 0 for equal intervals."),
     help_gui_generation_defaults = list(title = "Generation preview values", text = "Replaces free labels with simple numeric values so ctGenerate can preview data shape. These values are not for inference."),
     help_fit_optimize = list(topic = "ctFit", param = "optimize", tooltip = "Whether to optimize, or to sample the full posterior (much slower)."),
@@ -37,7 +37,7 @@ ctgui_help_catalog <- function() {
     help_kalmanvec = list(topic = "plot.ctKalmanDF", param = "kalmanvec", tooltip = "Prediction series to include in the Kalman plot."),
     help_errorvec = list(topic = "plot.ctKalmanDF", param = "errorvec", tooltip = "Error or interval series to include in the Kalman plot."),
     help_ctPostPredPlots = list(topic = "ctPostPredPlots", tooltip = "Plot posterior-predictive comparisons between observed and generated data."),
-    help_ctACFresiduals = list(topic = "ctACFresiduals", tooltip = "Assess residual autocorrelation left unexplained by the model."),
+    help_ctACFresiduals = list(topic = "ctACFresiduals", tooltip = "Autocorrelation of the standardised one-step-ahead prediction errors, over elapsed time."),
     # ctACFresiduals forwards these controls through `...` to ctACF, whose
     # Rd file documents the actual arguments.
     help_acf_varnames = list(topic = "ctACF", param = "varnames", tooltip = "Variables whose residual autocorrelation is calculated."),
@@ -46,7 +46,7 @@ ctgui_help_catalog <- function() {
     help_dynamic_subjects = list(topic = "ctDiscretePars", param = "subjects", tooltip = "Subjects, or population mean, for which discrete parameters are calculated."),
     help_dynamic_times = list(topic = "ctDiscretePars", param = "times", tooltip = "Times at which discrete-time parameters are evaluated."),
     help_dynamic_nsamples = list(topic = "ctDiscretePars", param = "nsamples", tooltip = "Number of posterior samples used for uncertainty summaries."),
-    help_dynamic_observational = list(topic = "ctDiscretePars", param = "observational", tooltip = "Whether effects are calculated from observational rather than intervention-style dynamics."),
+    help_dynamic_observational = list(topic = "ctDiscretePars", param = "observational", tooltip = "Unticked, the starting change is in one process alone. Ticked, it brings the changes in the other processes that accompany it in the fitted model's stationary covariance (impulseType = 'observed')."),
     help_ctPredictTIP = list(topic = "ctPredictTIP", tooltip = "Predict trajectories and dynamics at selected time-independent-predictor values."),
     help_tipred_tipreds = list(topic = "ctPredictTIP", param = "tipreds", tooltip = "Time-independent predictors whose values are varied."),
     help_tipred_subject = list(topic = "ctPredictTIP", param = "subject", tooltip = "Subject whose parameters are used for the prediction."),

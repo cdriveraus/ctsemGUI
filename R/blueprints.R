@@ -19,12 +19,11 @@ ctgui_blueprint_structures <- function() {
       latents = "single",
       summary = "Each process returns to its own baseline and is not connected to the others.",
       detail = paste(
-        "The simplest continuous-time model worth fitting, and a natural",
-        "comparison for anything more complicated. If adding cross-effects does",
-        "not improve on it, these data give no evidence that the processes",
-        "drive each other -- which is not the same as evidence that they do not.",
         "Each process has a free auto-effect, which sets how quickly a",
-        "disturbance fades, and its own noise."
+        "disturbance fades, and its own noise. Fitted beside a model with",
+        "cross-effects, it is one way to ask whether the data support those",
+        "effects; a comparison that favours this model is not evidence that",
+        "they are absent."
       )
     ),
     coupled = list(
@@ -34,9 +33,9 @@ ctgui_blueprint_structures <- function() {
       detail = paste(
         "The continuous-time counterpart of a cross-lagged panel model. Each",
         "process has a free auto-effect and a free effect on every other",
-        "process, so the implied regression coefficients differ at every time",
-        "interval rather than being fixed to the interval you happened to",
-        "observe. System noise is correlated across processes unless you say",
+        "process, so the implied regression coefficients are a function of the",
+        "time interval rather than tied to one observed interval. System noise",
+        "is correlated across processes unless you say",
         "otherwise."
       )
     ),
@@ -47,14 +46,12 @@ ctgui_blueprint_structures <- function() {
       summary = "Coupled processes, each with a trend that shifts it steadily over time.",
       detail = paste(
         "Adds a trend process to each measured process. Each subject's trend",
-        "starts at zero and rises at a rate of its own (the trend's CINT, which",
+        "starts at zero and changes at a rate of its own (the trend's CINT, which",
         "varies between subjects), and feeds into its process, so the level the",
         "process returns to moves steadily over time underneath the coupled",
-        "dynamics. Worth trying when the series seem to be going somewhere as",
-        "well as responding to each other: an unmodelled trend can be absorbed",
-        "into the auto-effects, making the processes look more persistent than",
-        "they are. A trend and slow dynamics can be hard to tell apart over a",
-        "short series, so compare the fit with and without it."
+        "dynamics. An unmodelled trend can be absorbed into the auto-effects,",
+        "making the processes look more persistent than they are. A trend and",
+        "slow dynamics can also be hard to tell apart over a short series."
       )
     ),
     growth = list(
@@ -77,14 +74,13 @@ ctgui_blueprint_structures <- function() {
       title = "Damped oscillator",
       latents = "pair",
       suffix = "velocity",
-      summary = "A process that swings back toward its baseline and overshoots.",
+      summary = "A process that can swing back past its baseline and cycle.",
       detail = paste(
         "Each process gets a velocity that drives its position, while the",
-        "position pulls the velocity back, which produces cycles. The damping",
-        "parameter sets how quickly those cycles decay. A first-order model of",
-        "the observed series alone cannot produce this shape; it needs the",
-        "unobserved velocity. Worth trying when a series looks cyclical rather",
-        "than merely persistent."
+        "position pulls the velocity back, which produces cycles unless the",
+        "damping is strong. The damping parameter sets how quickly those cycles",
+        "decay. A first-order model of a single observed process cannot produce",
+        "cycles; this one does it through the unobserved velocity."
       )
     )
   )
