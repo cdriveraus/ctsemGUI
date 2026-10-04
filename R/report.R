@@ -129,21 +129,24 @@ ctgui_report_document <- function(spec, source = ctgui_output_data_source(),
   # they happened to be clicked, so the document reads as an analysis.
   order <- c("fit", "uncertainty", "summary", "summary_matrices", "generate_from_fit",
     "cov_check", "postpred", "residual_acf", "kalman", "dynamics", "tipred",
-    "model_pars", "fit_comparison", "raw_plot")
+    "model_pars", "model_visual", "fit_comparison", "raw_plot")
   titles <- c(
     fit = "Fitting", uncertainty = "Uncertainty", summary = "Fit summary",
     summary_matrices = "Summary matrices", generate_from_fit = "Data generated from the fit",
     cov_check = "Covariance check", postpred = "Posterior predictive checks",
     residual_acf = "Residual autocorrelation", kalman = "Predictions",
     dynamics = "Dynamics over time", tipred = "Time-independent predictor effects",
-    model_pars = "Model parameters", fit_comparison = "Fit comparison",
-    raw_plot = "Data visualisation"
+    model_pars = "Model parameters", model_visual = "Model diagram",
+    fit_comparison = "Fit comparison", raw_plot = "Data visualisation"
   )
   present <- c(intersect(order, names(snippets)), setdiff(names(snippets), order))
 
   for (action in present) {
+    # [[ on a named vector errors on a missing name rather than returning NULL,
+    # so an action recorded without a title here took the whole report down.
+    title <- if (action %in% names(titles)) titles[[action]] else action
     lines <- c(lines,
-      ctgui_report_heading(titles[[action]] %||% action),
+      ctgui_report_heading(title),
       ctgui_report_fence(ctgui_report_code_lines(snippets[[action]]))
     )
   }

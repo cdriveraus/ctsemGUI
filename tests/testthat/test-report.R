@@ -81,6 +81,21 @@ test_that("sections are ordered as a write-up, not as they were clicked", {
   expect_lt(summary, acf)
 })
 
+test_that("every action the server records has a section, and an unknown one still reports", {
+  # The model diagram was recorded as model_visual while the report knew it as
+  # model_pars, and the missing title failed the whole download.
+  server_source <- paste(readLines(ctgui_test_source_path("R", "app_server.R"), warn = FALSE), collapse = "\n")
+  recorded <- unique(regmatches(server_source,
+    gregexpr('record_output_code\\("[a-z_]+"', server_source))[[1]])
+  recorded <- sub('^record_output_code\\("', "", sub('"$', "", recorded))
+  expect_gt(length(recorded), 5L)
+  snippets <- stats::setNames(as.list(rep("x <- 1", length(recorded) + 1L)), c(recorded, "not_a_known_action"))
+  doc <- ctgui_report_document(report_spec(), snippets = snippets)
+  expect_true("## Model diagram" %in% doc)
+  expect_true("## not_a_known_action" %in% doc)
+  for (action in recorded) expect_false(paste("##", action) %in% doc, info = action)
+})
+
 test_that("a model with nothing run yet reports the specification only", {
   doc <- ctgui_report_document(report_spec())
 
