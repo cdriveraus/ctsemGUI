@@ -3,9 +3,18 @@ name: Fast package checks
 on:
   pull_request:
   push:
+  workflow_dispatch:
+  # ctsem's development branch moves without anything being pushed here, so a
+  # change there that breaks the GUI would otherwise wait for the next push.
+  schedule:
+    - cron: '41 4 * * *'
+
+concurrency:
+  group: fast-checks-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -45,5 +54,130 @@ jobs:
         run: Rscript tools/check-package-hygiene.R
       - name: Check JavaScript syntax
         run: find inst -name '*.js' -print0 | xargs -0 -n1 node --check
+
+  # The GUI has to work with the ctsem users install from CRAN and with the
+  # development branch that will become the next release, and the two differ
+  # in what they accept: the GUI asks the installed ctsem rather than assuming.
+  tests:
+    name: tests (ctsem ${{ matrix.ctsem }})
+    runs-on: ubuntu-latest
+    # The juliaFit leg builds ctsem's Stan models from source when its commit
+    # is new. A run past this has hung rather than run long.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        ctsem: [cran, juliaFit]
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      MAKEFLAGS: -j4
+    steps:
+      - uses: actions/checkout@v7
+      - uses: r-lib/actions/setup-r@v2
+
+      # Pinned to one commit for the whole run, so the compiler cache key, the
+      # install and the version check below all mean the same ctsem even if
+      # the branch moves mid-run.
+      - name: Resolve the ctsem under test
+        id: ctsem
+        shell: bash
+        run: |
+          if [ "${{ matrix.ctsem }}" = juliaFit ]; then
+            sha=$(git ls-remote https://github.com/cdriveraus/ctsem.git refs/heads/juliaFit | cut -f1)
+            if [ -z "$sha" ]; then
+              echo "::error::Could not resolve cdriveraus/ctsem@juliaFit"
+              exit 1
+            fi
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+            echo "ref=github::cdriveraus/ctsem@$sha" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=any::ctsem" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ctsem's three Stan models are nearly all of its build time. ccache keys
+      # on the preprocessed source, so a juliaFit commit that touches only R
+      # recompiles nothing.
+      - name: Compiler cache
+        if: matrix.ctsem == 'juliaFit'
+        uses: actions/cache@v5
+        with:
+          path: ~/.ccache
+          key: ccache-ctsem-${{ steps.ctsem.outputs.sha }}
+          restore-keys: |
+            ccache-ctsem-
+      - name: Point R at ccache
+        if: matrix.ctsem == 'juliaFit'
+        shell: bash
+        run: |
+          command -v ccache >/dev/null || sudo apt-get install -y ccache
+          mkdir -p ~/.R ~/.ccache
+          {
+            echo 'CC = ccache gcc'
+            echo 'CXX = ccache g++'
+            echo 'CXX11 = ccache g++'
+            echo 'CXX14 = ccache g++'
+            echo 'CXX17 = ccache g++'
+            echo 'CXX20 = ccache g++'
+          } >> ~/.R/Makevars
+          printf 'max_size = 5.0G\nsloppiness = include_file_ctime,include_file_mtime,time_macros\n' > ~/.ccache/ccache.conf
+          ccache -z
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"all"'
+          extra-packages: ${{ steps.ctsem.outputs.ref }}
+          # Separate caches, or one leg restores the other's ctsem and pak
+          # then replaces it on every run.
+          cache-version: ctsem-${{ matrix.ctsem }}
+
+      - name: Compiler cache statistics
+        if: always() && matrix.ctsem == 'juliaFit'
+        run: ccache -s
+
+      # A leg that silently installed the other ctsem would pass while testing
+      # nothing new, so the version is checked rather than assumed.
+      - name: Confirm which ctsem is under test
+        shell: Rscript {0}
+        env:
+          CTSEM_LEG: ${{ matrix.ctsem }}
+          CTSEM_SHA: ${{ steps.ctsem.outputs.sha }}
+        run: |
+          d <- utils::packageDescription("ctsem")
+          leg <- Sys.getenv("CTSEM_LEG")
+          if (identical(leg, "juliaFit")) {
+            want <- Sys.getenv("CTSEM_SHA")
+            ok <- identical(d$RemoteSha, want)
+            label <- sprintf("ctsem %s at cdriveraus/ctsem@%s (juliaFit)", d$Version, substr(want, 1, 8))
+            if (!ok) msg <- sprintf("expected cdriveraus/ctsem@%s, found ctsem %s with RemoteSha %s",
+              want, d$Version, if (is.null(d$RemoteSha)) "none" else d$RemoteSha)
+          } else {
+            cran <- utils::available.packages(repos = "https://cloud.r-project.org")["ctsem", "Version"]
+            ok <- identical(d$Version, unname(cran)) && is.null(d$RemoteSha)
+            label <- sprintf("ctsem %s from CRAN", d$Version)
+            if (!ok) msg <- sprintf("expected CRAN's ctsem %s, found %s%s", cran, d$Version,
+              if (is.null(d$RemoteSha)) "" else paste0(" from ", d$RemoteSha))
+          }
+          if (!ok) {
+            cat(sprintf("::error title=Wrong ctsem (%s leg)::%s\n", leg, msg))
+            quit(status = 1)
+          }
+          cat(sprintf("::notice title=ctsem under test::%s\n", label))
+
       - name: Run tests
-        run: Rscript tools/run-tests.R
+        shell: bash
+        timeout-minutes: 40
+        run: |
+          set +e
+          Rscript tools/run-tests.R > "$RUNNER_TEMP/tests.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/tests.log"
+          if [ $status -ne 0 ]; then
+            # The failure list goes in the annotation: a run's log is not
+            # readable without signing in, its annotations are.
+            failed=$(grep -E '^── [0-9]+\. (Failure|Error)' "$RUNNER_TEMP/tests.log" | head -12 | paste -sd'|' -)
+            if [ -z "$failed" ]; then
+              failed=$(tail -c 700 "$RUNNER_TEMP/tests.log" | paste -sd' ' -)
+            fi
+            echo "::error title=Tests failed against ctsem ${{ matrix.ctsem }}::$failed"
+            exit 1
+          fi
