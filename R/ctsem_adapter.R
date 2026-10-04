@@ -340,15 +340,30 @@ ctgui_julia_check_worker <- function(args) {
   tryCatch(getExportedValue("ctsem", "ctJuliaStatus")(), error = function(e) NULL)
 }
 
+# How to get Julia, in terms the installed ctsem can act on. CRAN's ctsem 3.11
+# has no Julia backend and no ctJuliaInstall() to run, so telling its users to
+# run it sends them looking for a function that does not exist.
+ctgui_julia_remedy <- function() {
+  if (isTRUE(ctgui_ctsem_capabilities()$optional[["ctJuliaInstall"]])) {
+    "Run ctsem::ctJuliaInstall()"
+  } else {
+    "Install a ctsem with the Julia backend (3.12.0 or later)"
+  }
+}
+
+ctgui_julia_unavailable <- function() {
+  if (!isTRUE(ctgui_ctsem_capabilities()$optional[["ctJuliaStatus"]])) {
+    return(list(available = FALSE, message = "This ctsem version has no Julia backend."))
+  }
+  list(available = FALSE, message = paste0("Julia is not set up. ", ctgui_julia_remedy(), " to use it."))
+}
+
 # Turn whatever the child reported into the shape the panel expects. A child
 # that failed or returned nothing means Julia is not usable here, which is a
 # real answer rather than a reason to keep waiting.
 ctgui_julia_status_from_check <- function(status) {
   if (is.null(status) || !is.list(status) || !isTRUE(status$available)) {
-    return(list(
-      available = FALSE,
-      message = "Julia is not set up. Run ctsem::ctJuliaInstall() to use it."
-    ))
+    return(ctgui_julia_unavailable())
   }
   list(
     available = TRUE,
@@ -361,18 +376,13 @@ ctgui_julia_status_from_check <- function(status) {
 ctgui_julia_status_uncached <- function() {
   if (!ctgui_has_ctsem()) return(list(available = FALSE, message = "ctsem is not installed."))
   if (!isTRUE(ctgui_ctsem_capabilities()$optional[["ctJuliaStatus"]])) {
-    return(list(available = FALSE, message = "This ctsem version has no Julia backend."))
+    return(ctgui_julia_unavailable())
   }
   status <- tryCatch(ctgui_ctsem_call("ctJuliaStatus"), error = function(e) e)
   if (inherits(status, "error")) {
     return(list(available = FALSE, message = paste("Julia is unavailable:", conditionMessage(status))))
   }
-  if (!isTRUE(status$available)) {
-    return(list(
-      available = FALSE,
-      message = "Julia is not set up. Run ctsem::ctJuliaInstall() to use it."
-    ))
-  }
+  if (!isTRUE(status$available)) return(ctgui_julia_unavailable())
   list(
     available = TRUE,
     version = status$julia %||% "",

@@ -133,6 +133,23 @@ test_that("whatever the check reports becomes a definite answer", {
   }
 })
 
+test_that("a ctsem without the Julia backend is not told to run ctJuliaInstall()", {
+  # CRAN's ctsem 3.11 has neither ctJuliaStatus nor ctJuliaInstall.
+  capabilities <- getFromNamespace("ctgui_ctsem_capabilities", "ctsemGUI")
+  without <- function() {
+    caps <- capabilities()
+    caps$optional[c("ctJuliaStatus", "ctJuliaInstall")] <- FALSE
+    caps
+  }
+  testthat::local_mocked_bindings(ctgui_ctsem_capabilities = without, .package = "ctsemGUI")
+  status <- ctgui_julia_status_from_check(NULL)
+  expect_false(status$available)
+  expect_match(status$message, "no Julia backend", fixed = TRUE)
+  remedy <- getFromNamespace("ctgui_julia_remedy", "ctsemGUI")()
+  expect_no_match(remedy, "ctJuliaInstall", fixed = TRUE)
+  expect_match(remedy, "3.12.0", fixed = TRUE)
+})
+
 test_that("the check worker needs only ctsem", {
   # It runs in a child started with package = FALSE.
   worker <- getFromNamespace("ctgui_julia_check_worker", "ctsemGUI")

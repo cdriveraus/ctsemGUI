@@ -797,7 +797,7 @@ measurement_backend_note <- function(spec = current_spec()) {
     message,
     if (!available) {
       paste(" Julia is not available here, so this model cannot be fitted as specified.",
-        "Run ctsem::ctJuliaInstall(), or choose continuous or binary types instead.")
+        paste0(ctgui_julia_remedy(), ", or choose continuous or binary types instead."))
     }
   )
 }
@@ -1719,7 +1719,7 @@ fit_backend_for_model <- function(spec) {
   list(backend = NA_character_, message = paste(
     reason,
     "Julia is not available here, so this model cannot be fitted.",
-    "Run ctsem::ctJuliaInstall(), or change those variables to continuous or binary."
+    paste0(ctgui_julia_remedy(), ", or change those variables to continuous or binary.")
   ))
 }
 
