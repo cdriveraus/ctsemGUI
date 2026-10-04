@@ -182,10 +182,14 @@ jobs:
               want, d$Version, if (is.null(d$RemoteSha)) "none" else d$RemoteSha)
           } else {
             cran <- utils::available.packages(repos = "https://cloud.r-project.org")["ctsem", "Version"]
-            ok <- identical(d$Version, unname(cran)) && is.null(d$RemoteSha)
+            # pak records a CRAN install as RemoteType "standard", with the
+            # version as its RemoteSha; install.packages() records neither.
+            from_cran <- is.null(d$RemoteType) || identical(d$RemoteType, "standard")
+            ok <- identical(d$Version, unname(cran)) && from_cran
             label <- sprintf("ctsem %s from CRAN", d$Version)
             if (!ok) msg <- sprintf("expected CRAN's ctsem %s, found %s%s", cran, d$Version,
-              if (is.null(d$RemoteSha)) "" else paste0(" from ", d$RemoteSha))
+              if (from_cran) "" else sprintf(" from %s %s", d$RemoteType,
+                if (is.null(d$RemoteSha)) "" else d$RemoteSha))
           }
           if (!ok) {
             cat(sprintf("::error title=Wrong ctsem (%s leg)::%s\n", leg, msg))
