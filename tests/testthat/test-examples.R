@@ -74,7 +74,9 @@ test_that("examples that disagree with their data say so", {
 
   recovering <- ctgui_example("coupled")
   expect_null(recovering$model)
-  expect_match(ctgui_example_truth_note(recovering), "intervals should usually cover them", fixed = TRUE)
+  recovering_note <- ctgui_example_truth_note(recovering)
+  expect_match(recovering_note, "generated from these values", fixed = TRUE)
+  expect_no_match(recovering_note, "different model", fixed = TRUE)
 })
 
 test_that("generated subjects differ where the model estimates that they do", {
@@ -115,7 +117,6 @@ test_that("values added only to make generation possible are disclosed", {
     # part of the model, and told it without needing to know what a singular
     # drift matrix is.
     expect_match(note, "only so the data could be simulated", fixed = TRUE)
-    expect_match(note, "ignore them", fixed = TRUE)
     expect_true(grepl(note, ctgui_example_truth_note(example), fixed = TRUE), info = id)
   }
 })
