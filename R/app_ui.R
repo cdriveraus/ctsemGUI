@@ -1,8 +1,27 @@
 # Application UI composition -------------------------------------------------
 
+ctgui_variable_select_options <- function(placeholder = NULL) {
+  c(list(create = TRUE, persist = FALSE, openOnFocus = TRUE),
+    if (!is.null(placeholder)) list(placeholder = placeholder))
+}
+
+# A list of variables chosen from the data or typed as new names. The same
+# control wherever variables are named, so it behaves the same everywhere.
+ctgui_variable_select_ui <- function(id, label, choices, selected = character(),
+    note = "Choose a dataset variable or type new names, separated by commas.",
+    placeholder = NULL) {
+  shiny::div(
+    shiny::selectizeInput(
+      id, label, choices = choices, selected = selected, multiple = TRUE,
+      options = ctgui_variable_select_options(placeholder)
+    ),
+    if (!is.null(note)) shiny::tags$p(class = "help-note", note)
+  )
+}
+
 ctgui_data_roles_ui <- function(spec, data = NULL) {
   roles <- ctgui_data_role_selection(data, spec)
-  creatable <- list(create = TRUE, persist = FALSE, openOnFocus = TRUE)
+  creatable <- ctgui_variable_select_options()
   shiny::div(
     class = "control-grid",
     shiny::tags$select(
@@ -22,21 +41,13 @@ ctgui_data_roles_ui <- function(spec, data = NULL) {
       shiny::tags$p(class = "help-note", "Add manifest and choose the latent process it measures."),
       shiny::actionButton("spec_add_manifest", "Add manifest", class = "ctgui-spec-add", `data-add-role` = "manifest")
     ),
-    shiny::div(
-      shiny::selectizeInput(
-        "tdpred_names", "Time dependent predictors",
-        choices = roles$tdpred_choices, selected = roles$tdpred_names,
-        multiple = TRUE, options = creatable
-      ),
-      shiny::tags$p(class = "help-note", "Choose a dataset variable or type new names, separated by commas.")
+    ctgui_variable_select_ui(
+      "tdpred_names", "Time dependent predictors",
+      choices = roles$tdpred_choices, selected = roles$tdpred_names
     ),
-    shiny::div(
-      shiny::selectizeInput(
-        "tipred_names", "Time independent predictors",
-        choices = roles$tipred_choices, selected = roles$tipred_names,
-        multiple = TRUE, options = creatable
-      ),
-      shiny::tags$p(class = "help-note", "Choose a dataset variable or type new names, separated by commas.")
+    ctgui_variable_select_ui(
+      "tipred_names", "Time independent predictors",
+      choices = roles$tipred_choices, selected = roles$tipred_names
     ),
     shiny::selectizeInput(
       "id", "ID column", choices = roles$id_choices, selected = roles$id,

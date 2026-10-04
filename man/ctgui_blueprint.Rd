@@ -13,7 +13,8 @@ ctgui_blueprint(
   indicator_type = 0L,
   indicator_ncategories = 5L,
   indicator_censormin = NA_real_,
-  indicator_censormax = NA_real_
+  indicator_censormax = NA_real_,
+  manifests = NULL
 )
 }
 \arguments{
@@ -21,13 +22,18 @@ ctgui_blueprint(
 
 \item{processes}{Names of the processes to create.}
 
-\item{indicators}{Number of manifest indicators measuring each process.}
+\item{indicators}{Number of manifest indicators measuring each process, for
+any process \code{manifests} gives no names for.}
 
 \item{free_noise_correlations}{Whether system noise may correlate across
 processes.}
 
 \item{connect_existing}{When extending, whether effects between existing and
 new processes are freely estimated or held at zero.}
+
+\item{manifests}{Optional list, one element per process in the same order,
+naming the manifest variables that measure it -- typically columns of the
+data. A process given none gets \code{indicators} numbered names.}
 }
 \value{
 A \code{ctsemgui_blueprint}.

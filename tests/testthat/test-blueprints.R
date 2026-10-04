@@ -227,3 +227,36 @@ test_that("a latent that reaches nothing observed is still flagged, with a fix",
   # A check that only reports a problem leaves the reader stuck.
   expect_match(messages[[1L]], "Give it a manifest loading", fixed = TRUE)
 })
+
+test_that("a template measures each process with the variables chosen for it", {
+  # Choosing data columns is the point: a template that only numbers its
+  # indicators leaves every one to be renamed to match the data afterwards.
+  blueprint <- ctgui_blueprint("coupled", c("stress", "sleep"),
+    manifests = list(c("Y1", "Y2"), NULL))
+  spec <- quiet_blueprint(ctgui_blueprint_apply(empty_spec(), blueprint, "replace"))
+  expect_equal(spec$manifest_names, c("Y1", "Y2", "sleep_1"))
+  expect_equal(unname(spec$matrices$LAMBDA["Y1", "stress"]), "1")
+  expect_true(is.na(suppressWarnings(as.numeric(spec$matrices$LAMBDA["Y2", "stress"]))))
+  expect_equal(unname(spec$matrices$LAMBDA["Y1", "sleep"]), "0")
+  expect_equal(unname(spec$matrices$LAMBDA["sleep_1", "sleep"]), "1")
+
+  summary <- ctgui_blueprint_summary(empty_spec(), blueprint, "replace")
+  expect_match(summary, "2, 1 indicators respectively", fixed = TRUE)
+  expect_match(summary, "Manifest variables: Y1, Y2, sleep_1", fixed = TRUE)
+})
+
+test_that("chosen manifests that cannot be built say why", {
+  expect_error(ctgui_blueprint("coupled", c("a", "b"), manifests = list("x", "x")),
+    "only one process: x", fixed = TRUE)
+  # Latents and manifests share one namespace in ctsem.
+  expect_error(ctgui_blueprint("coupled", c("a", "b"), manifests = list("b", NULL)),
+    "cannot name both a process and a manifest variable", fixed = TRUE)
+})
+
+test_that("a template offers data columns, and keeps existing manifests when extending", {
+  ctgui_build_manifest_choices <- getFromNamespace("ctgui_build_manifest_choices", "ctsemGUI")
+  data <- data.frame(id = 1, time = 0, Y1 = 1, Y2 = 2)
+  spec <- quiet_blueprint(ctgui_spec(latent_names = "eta", manifest_names = "Y1"))
+  expect_equal(ctgui_build_manifest_choices(data, spec, "replace"), c("Y1", "Y2"))
+  expect_equal(ctgui_build_manifest_choices(data, spec, "extend"), "Y2")
+})

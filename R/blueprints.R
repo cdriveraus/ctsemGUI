@@ -100,7 +100,11 @@ ctgui_blueprint_structure <- function(structure) {
 #'
 #' @param structure One of the ids returned by `ctgui_blueprint_structure_ids()`.
 #' @param processes Names of the processes to create.
-#' @param indicators Number of manifest indicators measuring each process.
+#' @param indicators Number of manifest indicators measuring each process, for
+#'   any process `manifests` gives no names for.
+#' @param manifests Optional list, one element per process in the same order,
+#'   naming the manifest variables that measure it -- typically columns of the
+#'   data. A process given none gets `indicators` numbered names.
 #' @param free_noise_correlations Whether system noise may correlate across
 #'   processes.
 #' @param connect_existing When extending, whether effects between existing and
@@ -110,7 +114,8 @@ ctgui_blueprint_structure <- function(structure) {
 ctgui_blueprint <- function(structure = "coupled", processes = c("process1", "process2"),
     indicators = 1L, free_noise_correlations = TRUE, connect_existing = FALSE,
     indicator_type = 0L, indicator_ncategories = 5L,
-    indicator_censormin = NA_real_, indicator_censormax = NA_real_) {
+    indicator_censormin = NA_real_, indicator_censormax = NA_real_,
+    manifests = NULL) {
   ctgui_blueprint_structure(structure)
   processes <- ctgui_as_names(processes, "processes")
   if (!length(processes)) stop("Name at least one process.", call. = FALSE)
@@ -126,7 +131,7 @@ ctgui_blueprint <- function(structure = "coupled", processes = c("process1", "pr
   if (is.na(indicator_type)) indicator_type <- 0L
   ctgui_manifest_type_entry(indicator_type)
 
-  structure(
+  blueprint <- structure(
     list(
       structure = structure,
       processes = processes,
@@ -140,6 +145,27 @@ ctgui_blueprint <- function(structure = "coupled", processes = c("process1", "pr
     ),
     class = "ctsemgui_blueprint"
   )
+
+  # Names chosen for a process replace its numbered ones. Checked here rather
+  # than at apply, so the builder can say what is wrong while it is typed.
+  manifests <- rep_len(as.list(manifests %||% list()), length(processes))
+  blueprint$manifests <- stats::setNames(lapply(seq_along(processes), function(i) {
+    chosen <- ctgui_as_names(manifests[[i]], "manifests", allow_empty = TRUE)
+    if (length(chosen)) chosen else paste0(processes[i], "_", seq_len(indicators))
+  }), processes)
+  all_manifests <- ctgui_blueprint_manifest_names(blueprint)
+  repeated <- unique(all_manifests[duplicated(all_manifests)])
+  if (length(repeated)) {
+    stop("Each manifest variable can measure only one process: ",
+      paste(repeated, collapse = ", "), ".", call. = FALSE)
+  }
+  # ctsem keeps latent and manifest names in one namespace.
+  shared <- intersect(all_manifests, ctgui_blueprint_latent_names(blueprint))
+  if (length(shared)) {
+    stop(paste(shared, collapse = ", "), " cannot name both a process and a manifest variable.",
+      call. = FALSE)
+  }
+  blueprint
 }
 
 # The measurement description the blueprint gives every manifest it creates.
@@ -157,8 +183,8 @@ ctgui_blueprint_measurement <- function(blueprint, manifest_names) {
 }
 
 # Latent names are the process names, with a second latent appended for the
-# structures that need one.  Manifests are always numbered, whatever the
-# indicator count, so the naming rule does not change shape with k.
+# structures that need one.  Manifests nobody named are always numbered,
+# whatever the indicator count, so the naming rule does not change shape with k.
 ctgui_blueprint_latents <- function(blueprint) {
   definition <- ctgui_blueprint_structure(blueprint$structure)
   if (identical(definition$latents, "single")) {
@@ -178,6 +204,7 @@ ctgui_blueprint_measured_latent <- function(blueprint, process) {
 }
 
 ctgui_blueprint_manifests <- function(blueprint) {
+  if (!is.null(blueprint$manifests)) return(blueprint$manifests)
   stats::setNames(lapply(blueprint$processes, function(process) {
     paste0(process, "_", seq_len(blueprint$indicators))
   }), blueprint$processes)
@@ -441,11 +468,15 @@ ctgui_blueprint_summary <- function(spec, blueprint, mode = c("replace", "extend
   manifests <- ctgui_blueprint_manifest_names(blueprint)
 
   measurement <- ctgui_blueprint_measurement(blueprint, manifests)
+  counts <- lengths(ctgui_blueprint_manifests(blueprint))
   lines <- c(
     paste0(definition$title, ": ", length(blueprint$processes), " process",
       if (length(blueprint$processes) == 1L) "" else "es", ", ",
-      blueprint$indicators, " indicator",
-      if (blueprint$indicators == 1L) "" else "s", " each."),
+      if (length(unique(counts)) == 1L) {
+        paste0(counts[1L], " indicator", if (counts[1L] == 1L) "" else "s", " each.")
+      } else {
+        paste0(paste(counts, collapse = ", "), " indicators respectively.")
+      }),
     paste0("Latent processes: ", paste(latents, collapse = ", ")),
     paste0("Manifest variables: ", paste(manifests, collapse = ", "))
   )

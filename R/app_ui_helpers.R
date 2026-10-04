@@ -144,7 +144,7 @@ ctgui_build_ui <- function() {
       shiny::div(
         class = "control-grid",
         shiny::textInput("build_processes", "Process names", value = "process1, process2"),
-        shiny::numericInput("build_indicators", "Indicators per process", value = 1, min = 1, step = 1),
+        shiny::numericInput("build_indicators", "Numbered indicators per process", value = 1, min = 1, step = 1),
         shiny::checkboxInput("build_noise_correlations", "Let system noise correlate across processes", value = TRUE),
         shiny::conditionalPanel(
           "input.build_mode == 'extend'",
@@ -155,9 +155,14 @@ ctgui_build_ui <- function() {
           )
         )
       ),
+      shiny::uiOutput("build_manifest_selectors", class = "control-grid"),
       shiny::tags$p(
         class = "help-note",
-        "Latent processes take the names you give here; manifest variables are numbered from them. Rename anything afterwards in the visual editor."
+        paste(
+          "Latent processes take the names you give here. Choose the manifest variables",
+          "measuring each one from the data, or type new names; a process left empty gets",
+          "numbered ones. Rename anything afterwards in the visual editor."
+        )
       )
     ),
     shiny::div(

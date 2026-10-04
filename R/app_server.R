@@ -287,13 +287,33 @@ build_mode <- function() {
   if (identical(input$build_mode, "extend")) "extend" else "replace"
 }
 
+# Keyed by position, so renaming a process keeps the variables chosen for it.
+build_manifest_id <- function(index) paste0("build_manifests_", index)
+
+output$build_manifest_selectors <- shiny::renderUI({
+  processes <- ctgui_parse_names(input$build_processes)
+  if (!length(processes)) return(NULL)
+  choices <- ctgui_build_manifest_choices(current_data(), current_spec(), build_mode())
+  shiny::tagList(lapply(seq_along(processes), function(index) {
+    id <- build_manifest_id(index)
+    kept <- as.character(shiny::isolate(input[[id]]) %||% character())
+    ctgui_variable_select_ui(
+      id, paste("Manifest variables measuring", processes[index]),
+      choices = unique(c(choices, kept)), selected = kept, note = NULL,
+      placeholder = paste0("Data variables or new names (empty: ", processes[index], "_1, ...)")
+    )
+  }))
+})
+
 # Invalid input is normal while a name is being typed, so the blueprint reports
 # why it cannot be built and the panel says so, rather than erroring.
 current_blueprint <- shiny::reactive({
+  processes <- ctgui_parse_names(input$build_processes)
   tryCatch(
     ctgui_blueprint(
       structure = input$build_structure %||% "coupled",
-      processes = ctgui_parse_names(input$build_processes),
+      processes = processes,
+      manifests = lapply(seq_along(processes), function(index) input[[build_manifest_id(index)]]),
       indicators = input$build_indicators %||% 1L,
       free_noise_correlations = isTRUE(input$build_noise_correlations),
       connect_existing = isTRUE(input$build_connect_existing),

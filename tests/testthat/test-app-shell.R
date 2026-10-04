@@ -21,6 +21,22 @@ test_that("server construction has a testServer-compatible seam", {
   )))
 })
 
+test_that("the template builder takes each process's manifests from the data", {
+  skip_if_not_installed("shiny")
+
+  suppressWarnings(shiny::testServer(ctgui_app_server(ctgui_spec(), ctgui_help_catalog()), {
+    current_data(data.frame(id = rep(1:2, each = 2), time = rep(0:1, 2), Y1 = 1:4, Y2 = 4:1))
+    session$setInputs(build_processes = "stress, sleep", build_mode = "replace")
+    selectors <- paste(as.character(output$build_manifest_selectors$html), collapse = "\n")
+    expect_match(selectors, "Manifest variables measuring stress", fixed = TRUE)
+    expect_match(selectors, "Manifest variables measuring sleep", fixed = TRUE)
+    expect_match(selectors, "Y2", fixed = TRUE)
+
+    session$setInputs(build_manifests_1 = c("Y1", "Y2"))
+    expect_match(output$build_summary, "Manifest variables: Y1, Y2, sleep_1", fixed = TRUE)
+  }))
+})
+
 test_that("close GUI control stops the Shiny app", {
   server_source <- paste(readLines(ctgui_test_source_path("R", "app_server.R"), warn = FALSE), collapse = "\n")
   expect_match(server_source, 'observeEvent(input$close_gui', fixed = TRUE)

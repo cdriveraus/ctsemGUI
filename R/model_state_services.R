@@ -418,6 +418,10 @@ ctgui_data_role_selection <- function(data, spec) {
     manifest_choices = choices_for(
       c(spec$manifest_names, spec$id, spec$time), spec$manifest_names
     ),
+    # A template's manifests: any data column but the id and time. Whether the
+    # current manifests are free to take depends on whether the template
+    # replaces the model or extends it; see ctgui_build_manifest_choices().
+    template_choices = choices_for(c(spec$id, spec$time)),
     tdpred_choices = choices_for(
       c(spec$tdpred_names, spec$id), spec$tdpred_names
     ),
@@ -432,6 +436,11 @@ ctgui_data_role_selection <- function(data, spec) {
     id = spec$id,
     time = spec$time
   )
+}
+
+ctgui_build_manifest_choices <- function(data, spec, mode = c("replace", "extend")) {
+  choices <- ctgui_data_role_selection(data, spec)$template_choices
+  if (identical(match.arg(mode), "extend")) setdiff(choices, spec$manifest_names) else choices
 }
 
 ctgui_tipred_subject_data <- function(data, spec) {
