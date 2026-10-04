@@ -43,7 +43,7 @@ test_that("fit settings warn when the specification contains an expression", {
 
   suppressWarnings(shiny::testServer(ctgui_app_server(spec, ctgui_help_catalog()), {
     warning <- paste(as.character(output$fit_expression_warning), collapse = "\n")
-    expect_match(warning, "Model compilation is likely required", fixed = TRUE)
+    expect_match(warning, "compiled before fitting", fixed = TRUE)
     expect_match(warning, "can take a few minutes", fixed = TRUE)
   }))
 })
