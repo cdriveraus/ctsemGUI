@@ -71,9 +71,27 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       MAKEFLAGS: -j4
+      # Consent to ctsem installing the engine's Julia dependencies from a
+      # script. Julia itself comes from setup-julia below.
+      CTSEM_JULIA_AGREE: 'yes'
+      # The workload replays whole fits to build a faster image, which costs
+      # most of the precompile time and is paid again on every engine change.
+      # The tests need the engine to load, not to be fast.
+      CTSEM_PRECOMPILE_WORKLOAD: 'false'
     steps:
       - uses: actions/checkout@v7
       - uses: r-lib/actions/setup-r@v2
+
+      # Only the juliaFit leg: CRAN's ctsem has no Julia backend.
+      - uses: julia-actions/setup-julia@v3
+        if: matrix.ctsem == 'juliaFit'
+        with:
+          # ctsem's pin, in R/ctJuliaInstall.R and its own CI.
+          version: '1.12.7'
+      # The depot: registries, packages and compiled images, the engine's
+      # among them, so an unchanged engine is not precompiled again.
+      - uses: julia-actions/cache@v3
+        if: matrix.ctsem == 'juliaFit'
 
       # Pinned to one commit for the whole run, so the compiler cache key, the
       # install and the version check below all mean the same ctsem even if
@@ -89,7 +107,7 @@ jobs:
               exit 1
             fi
             echo "sha=$sha" >> "$GITHUB_OUTPUT"
-            echo "ref=github::cdriveraus/ctsem@$sha" >> "$GITHUB_OUTPUT"
+            echo "ref=github::cdriveraus/ctsem@$sha any::JuliaConnectoR" >> "$GITHUB_OUTPUT"
           else
             echo "ref=any::ctsem" >> "$GITHUB_OUTPUT"
           fi
@@ -97,6 +115,18 @@ jobs:
       # ctsem's three Stan models are nearly all of its build time. ccache keys
       # on the preprocessed source, so a juliaFit commit that touches only R
       # recompiles nothing.
+      # ctsem copies the engine into a project directory named by its
+      # content hash and resolves it there; the compiled image in the depot
+      # belongs to that copy.
+      - name: Engine project cache
+        if: matrix.ctsem == 'juliaFit'
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/R/ctsem/julia
+          key: ctsem-engine-${{ steps.ctsem.outputs.sha }}
+          restore-keys: |
+            ctsem-engine-
+
       - name: Compiler cache
         if: matrix.ctsem == 'juliaFit'
         uses: actions/cache@v5
@@ -119,7 +149,7 @@ jobs:
             echo 'CXX17 = ccache g++'
             echo 'CXX20 = ccache g++'
           } >> ~/.R/Makevars
-          printf 'max_size = 5.0G\nsloppiness = include_file_ctime,include_file_mtime,time_macros\n' > ~/.ccache/ccache.conf
+          printf 'max_size = 2.0G\nsloppiness = include_file_ctime,include_file_mtime,time_macros\n' > ~/.ccache/ccache.conf
           ccache -z
 
       - uses: r-lib/actions/setup-r-dependencies@v2
@@ -162,6 +192,11 @@ jobs:
             quit(status = 1)
           }
           cat(sprintf("::notice title=ctsem under test::%s\n", label))
+
+      - name: Julia engine loads and fits
+        if: matrix.ctsem == 'juliaFit'
+        timeout-minutes: 45
+        run: Rscript tools/julia-smoke.R
 
       - name: Run tests
         shell: bash
