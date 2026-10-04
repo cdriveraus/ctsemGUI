@@ -1,3 +1,15 @@
+test_that("the measurement network draws without warnings on this ggplot2", {
+  # ggplot2 4 ignores label.size on a label, with a warning, and the border
+  # width with it.
+  draw <- getFromNamespace("ctgui_draw_matrix_network", "ctsemGUI")
+  spec <- suppressMessages(ctgui_spec(latent_names = c("a", "b"), manifest_names = c("y1", "y2")))
+  options <- list(general_scale = 1, text_scale = 1, label_offset = 0.2, spread = 1)
+  file <- withr::local_tempfile(fileext = ".png")
+  grDevices::png(file)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_no_warning(print(draw(spec, "LAMBDA", options)))
+})
+
 test_that("matrix batches preserve annotations and commit as one spec", {
   apply_batch <- getFromNamespace("ctgui_apply_matrix_batch", "ctsemGUI")
   spec <- ctgui_spec(

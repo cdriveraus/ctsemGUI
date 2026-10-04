@@ -57,6 +57,12 @@ ctgui_network_matrix_cell_active <- function(value) {
   TRUE
 }
 
+# The width of a label's border. ggplot2 4 made it the linewidth aesthetic and
+# ignores label.size with a warning; earlier versions know only label.size.
+ctgui_label_border <- function(width) {
+  if ("linewidth" %in% ggplot2::GeomLabel$aesthetics()) list(linewidth = width) else list(label.size = width)
+}
+
 ctgui_draw_matrix_network <- function(spec, matrix_name, options) {
   mat <- ctgui_matrix(spec, matrix_name)
   covariance <- matrix_name %in% c(
@@ -204,11 +210,13 @@ ctgui_draw_matrix_network <- function(spec, matrix_name, options) {
         ggplot2::aes(label = name, filter = node_type == "latent"),
         size = label_size
       ) +
-      ggraph::geom_node_label(
-        ggplot2::aes(label = name, filter = node_type == "observed"),
-        size = label_size, fill = "#f8fafc", colour = "#334155",
-        label.size = 0.5
-      )
+      do.call(ggraph::geom_node_label, c(
+        list(
+          ggplot2::aes(label = name, filter = node_type == "observed"),
+          size = label_size, fill = "#f8fafc", colour = "#334155"
+        ),
+        ctgui_label_border(0.5)
+      ))
   } else {
     plot <- plot +
       ggraph::geom_node_point(
