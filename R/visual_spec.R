@@ -591,10 +591,16 @@ ctgui_visual_apply_graph <- function(spec, graph) {
     metadata <- spec$parameter_metadata
     if (!is.null(metadata) && nrow(metadata)) {
       # Existing effects are represented by graph edges. Newly added predictors
-      # retain the all/none choice made when their node was created.
+      # retain the all/none choice made when their node was created. Only the
+      # parameters this view draws are reset: it leaves out T0VAR cells ctsem
+      # disables, and clearing what it does not show changed the model on a
+      # commit that changed nothing.
+      shown <- vapply(Filter(function(node) identical(node$kind, "parameter"), graph$nodes %||% list()),
+        function(node) ctgui_cell_key(node$matrix %||% "", node$row %||% "", node$col %||% ""), character(1L))
+      drawn <- ctgui_metadata_keys(metadata) %in% shown
       for (tipred in intersect(previous_tipreds, spec$tipred_names)) {
         field <- paste0(tipred, "_effect")
-        if (field %in% names(metadata)) metadata[[field]] <- FALSE
+        if (field %in% names(metadata)) metadata[[field]][drawn] <- FALSE
       }
       for (edge in graph$edges %||% list()) {
         if (!identical(edge$edge_kind, "tipred_effect")) next

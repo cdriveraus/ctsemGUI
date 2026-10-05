@@ -116,6 +116,23 @@ ctgui_commit_spec_fields <- function(previous, fields, reason = "specification")
   carrier$Tpoints <- fields$Tpoints
   carrier$tipredDefault <- fields$tipredDefault
 
+  # Toggling tipredDefault is a choice about every parameter, so the flags
+  # change with it, and per-predictor policies give way to it.
+  if (!identical(isTRUE(previous$tipredDefault), isTRUE(fields$tipredDefault))) {
+    carrier$visual$tipred_defaults <- list()
+    metadata <- carrier$parameter_metadata
+    if (!is.null(metadata) && nrow(metadata)) {
+      for (field in grep("_effect$", names(metadata), value = TRUE)) metadata[[field]] <- isTRUE(fields$tipredDefault)
+      carrier$parameter_metadata <- metadata
+    }
+  }
+  rename <- c(
+    ctgui_positional_renames(previous$latent_names, fields$latent_names),
+    ctgui_positional_renames(previous$manifest_names, fields$manifest_names),
+    ctgui_positional_renames(previous$tdpred_names, fields$tdpred_names),
+    ctgui_positional_renames(previous$tipred_names, fields$tipred_names)
+  )
+
   updated <- ctgui_respec_preserving(
     carrier,
     latent_names = fields$latent_names,
@@ -125,9 +142,21 @@ ctgui_commit_spec_fields <- function(previous, fields, reason = "specification")
     manifest_type = fields$manifest_type,
     ncategories = fields$ncategories,
     censormin = fields$censormin,
-    censormax = fields$censormax
+    censormax = fields$censormax,
+    rename = rename
   )
   ctgui_commit_spec(previous, updated, reason = reason)
+}
+
+# A name edited in place is a rename: same position, the old name gone and
+# the new one not there before. Read as a removal and an addition, the
+# process lost every setting -- labels, fixed values, transforms, random
+# effects -- and started again from the template defaults.
+ctgui_positional_renames <- function(old, new) {
+  old <- as.character(old %||% character()); new <- as.character(new %||% character())
+  if (!length(old) || length(old) != length(new)) return(character())
+  changed <- old != new & !(old %in% new) & !(new %in% old)
+  stats::setNames(new[changed], old[changed])
 }
 
 ctgui_add_spec_variable <- function(previous, kind, name, measuring = "") {

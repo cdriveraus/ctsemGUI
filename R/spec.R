@@ -552,6 +552,14 @@ ctgui_respec_preserving <- function(previous, latent_names, manifest_names,
     }
     metadata$row <- rename_values(metadata$row)
     metadata$col <- rename_values(metadata$col)
+    # A TI predictor's effects are columns named after it, so they follow it
+    # through a rename instead of resetting to the default.
+    for (old_name in names(rename)) {
+      old_field <- paste0(old_name, "_effect")
+      if (old_field %in% names(metadata) && nzchar(rename[[old_name]])) {
+        names(metadata)[names(metadata) == old_field] <- paste0(rename[[old_name]], "_effect")
+      }
+    }
     keep <- vapply(seq_len(nrow(metadata)), function(i) {
       mat <- rebuilt$matrices[[metadata$matrix[i]]]
       !is.null(mat) && metadata$row[i] %in% rownames(mat) && metadata$col[i] %in% colnames(mat)
@@ -629,6 +637,14 @@ ctgui_spec_from_model <- function(model) {
   spec$model <- model
   spec$pars <- model$pars
   spec$parameter_metadata <- ctgui_parameter_metadata_from_pars(model$pars, spec$tipred_names, spec$matrices)
+  # A ctsem model does not record the tipredDefault it was built with, and
+  # assuming TRUE gave a model built with FALSE an effect of every predictor on
+  # every parameter. Its effects are read from the parameters above; the
+  # default, which only applies to parameters added later, follows them.
+  effects <- grep("_effect$", names(spec$parameter_metadata), value = TRUE)
+  if (length(effects) && nrow(spec$parameter_metadata)) {
+    spec$tipredDefault <- all(vapply(effects, function(field) all(spec$parameter_metadata[[field]]), logical(1L)))
+  }
   spec$source <- "ctsem-rds"
   spec
 }
@@ -1127,29 +1143,54 @@ ctgui_refresh_parameter_metadata <- function(spec, matrices = spec$matrices) {
       row <- data.frame(matrix = matrix_name, row = rownames(mat)[r], col = colnames(mat)[c],
         param = parsed$param, transform = parsed$transform, indvarying = parsed$indvarying,
         sdscale = parsed$sdscale, extra_pars = "", stringsAsFactors = FALSE)
-      has_annotation <- grepl("|", as.character(mat[r, c]), fixed = TRUE)
-      if (nrow(prior) && !grepl("|", as.character(mat[r, c]), fixed = TRUE)) {
-        row$transform <- prior$transform[1L] %||% ""
-        row$indvarying <- isTRUE(prior$indvarying[1L])
-        row$sdscale <- suppressWarnings(as.numeric(prior$sdscale[1L]))
-        if (is.na(row$sdscale)) row$sdscale <- if (isTRUE(prior$sdscale[1L])) 1 else 0
-        if ("extra_pars" %in% names(prior)) row$extra_pars <- prior$extra_pars[1L] %||% ""
+      cell <- as.character(mat[r, c])
+      has_annotation <- grepl("|", cell, fixed = TRUE)
+      # An annotation names TI effects only with all five fields; a shorter one
+      # leaves them to the default, as ctsem reads it.
+      explicit_tipreds <- has_annotation &&
+        lengths(regmatches(cell, gregexpr("|", cell, fixed = TRUE))) >= 4L
+      # A label another cell already uses is the same parameter -- an equality
+      # constraint -- so it takes that parameter's settings rather than its own
+      # matrix's defaults. Otherwise one raw parameter is transformed two ways,
+      # a softplus on a diagonal and the identity off it, and the cells differ.
+      # That holds whether the cell was fixed or held another parameter: its own
+      # prior settings belonged to the parameter it no longer names.
+      relabelled <- !nrow(prior) || !identical(as.character(prior$param[1L]), parsed$param)
+      shared <- if (relabelled && !has_annotation && nrow(old)) {
+        old[old$param == parsed$param & ctgui_cell_key(old$matrix, old$row, old$col) != key, , drop = FALSE]
+      } else old[0L, , drop = FALSE]
+      source <- if (nrow(shared)) shared[1L, , drop = FALSE] else if (nrow(prior) && !has_annotation) prior else NULL
+      if (!is.null(source)) {
+        row$transform <- source$transform[1L] %||% ""
+        if (!nzchar(row$transform) && nrow(shared) && !is.null(spec$pars)) {
+          # The shared parameter's blank transform is its own matrix's default.
+          fitted <- spec$pars$transform[spec$pars$param %in% parsed$param]
+          if (length(fitted)) row$transform <- as.character(fitted[1L])
+        }
+        row$indvarying <- isTRUE(source$indvarying[1L])
+        row$sdscale <- suppressWarnings(as.numeric(source$sdscale[1L]))
+        if (is.na(row$sdscale)) row$sdscale <- if (isTRUE(source$sdscale[1L])) 1 else 0
+        if ("extra_pars" %in% names(source)) row$extra_pars <- source$extra_pars[1L] %||% ""
       }
       # These mean/intercept paths are individual-varying by default in the
       # visual and matrix editors.  An existing metadata row or an explicit
       # compact annotation (including ||FALSE) always takes precedence.
-      if (!nrow(prior) && !has_annotation &&
+      if (is.null(source) && !has_annotation &&
           matrix_name %in% c("CINT", "MANIFESTMEANS", "T0MEANS")) {
         row$indvarying <- TRUE
       }
       for (tipred in tipred_names) {
         field <- paste0(tipred, "_effect")
-        row[[field]] <- tipred %in% parsed$tipreds
-        if (nrow(prior) && !grepl("|", as.character(mat[r, c]), fixed = TRUE) && field %in% names(prior)) row[[field]] <- isTRUE(prior[[field]][1L])
-        # A visual TI-predictor policy applies to subsequently created
-        # parameters as well, without overwriting an existing explicit choice.
-        policy <- spec$visual$tipred_defaults[[tipred]] %||% NULL
-        if (!nrow(prior) && !is.null(policy)) row[[field]] <- isTRUE(policy)
+        # A parameter with no choice of its own for this predictor -- new, or
+        # the predictor is -- takes the predictor's visual all/none policy, or
+        # else the model's tipredDefault, written explicitly so that what is
+        # shown is what ctsem fits.
+        default <- isTRUE(spec$visual$tipred_defaults[[tipred]] %||% spec$tipredDefault)
+        row[[field]] <- if (explicit_tipreds) {
+          tipred %in% parsed$tipreds
+        } else if (!is.null(source) && field %in% names(source)) {
+          isTRUE(source[[field]][1L])
+        } else default
       }
       if (!identical(matrix_name, "PARS") &&
           ctgui_parameter_is_expression(mat[r, c], spec$latent_names)) {
@@ -1199,7 +1240,8 @@ ctgui_matrices_with_metadata <- function(spec) {
     }, logical(1L))
     mat[r, c] <- ctgui_parameter_annotation_encode(
       param = mat[r, c], transform = transform, indvarying = indvarying,
-      sdscale = sdscale, tipreds = spec$tipred_names[effects]
+      sdscale = sdscale, tipreds = spec$tipred_names[effects],
+      explicit_tipreds = length(spec$tipred_names) > 0L
     )
     matrices[[matrix_name]] <- mat
   }

@@ -63,7 +63,7 @@ ctgui_expression_metadata_guidance <- function() {
 }
 
 ctgui_parameter_annotation_encode <- function(param, transform = "",
-    indvarying = FALSE, sdscale = 1, tipreds = character()) {
+    indvarying = FALSE, sdscale = 1, tipreds = character(), explicit_tipreds = FALSE) {
   param <- trimws(as.character(param)[1L])
   if (!nzchar(param) || !is.na(suppressWarnings(as.numeric(param)))) return(param)
   transform <- trimws(as.character(transform %||% "")[1L])
@@ -74,6 +74,10 @@ ctgui_parameter_annotation_encode <- function(param, transform = "",
   # default, which can be TRUE.  Keep FALSE explicit so disabling random
   # effects in either editor is preserved when the model is rebuilt.
   suffix <- c(transform, if (isTRUE(indvarying)) "TRUE" else "FALSE", if (identical(scale, 1)) "" else as.character(scale))
+  # The same holds for TI effects: an omitted field means ctsem's tipredDefault,
+  # so a parameter shown with none was fitted with every predictor. An empty
+  # field is ctsem's "none", and the GUI's flags are then what is fitted.
+  if (isTRUE(explicit_tipreds)) return(paste(c(param, suffix, paste(tipreds, collapse = ",")), collapse = "|"))
   if (length(tipreds)) suffix <- c(suffix, paste(tipreds, collapse = ","))
   while (length(suffix) && !nzchar(suffix[length(suffix)])) suffix <- suffix[-length(suffix)]
   if (!length(suffix)) return(param)
