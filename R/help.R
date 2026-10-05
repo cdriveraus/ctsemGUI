@@ -53,7 +53,7 @@ ctgui_help_catalog <- function() {
     help_tipred_timestep = list(topic = "ctPredictTIP", param = "timestep", tooltip = "Time increment used to calculate predicted trajectories."),
     help_tipred_tipvalues = list(topic = "ctPredictTIP", param = "TIPvalues", tooltip = "Values assigned to the selected time-independent predictors."),
     help_matrix_random_effects = list(title = "RandomEffects", text = "Estimate subject-level variation in this free parameter. Available only for free parameter labels, not fixed numeric cells."),
-    help_matrix_transform = list(title = "Transform", text = "Transforms generally do not need adjusting, but can support different priors or penalties and, in specific cases, added flexibility such as positive drift diagonals."),
+    help_matrix_transform = list(title = "Transform", text = "Leave blank for ctsem's default, which depends on the matrix: for example, it keeps standard deviations positive. Transforms generally do not need adjusting, but can support different priors or penalties and, in specific cases, added flexibility such as positive drift diagonals."),
     help_matrix_random_effects_scale = list(title = "RandomEffectsScale", text = "Scale for the standard deviation of this parameter's RandomEffects distribution. The default is 1."),
     help_matrix_time_independent_predictors = list(title = "Time Independent Predictors", text = "Subject-level predictors that moderate this free parameter. They must be named in Model > Specification.")
   )

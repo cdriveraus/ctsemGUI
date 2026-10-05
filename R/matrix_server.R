@@ -348,7 +348,10 @@ ctgui_matrix_server <- function(
     shiny::div(
       class = "matrix-cell-metadata",
       shiny::div(
-        "Transform: ", ctgui_display_transform(meta$transform[1L])
+        "Transform: ", {
+          shown <- ctgui_display_transform(meta$transform[1L])
+          if (nzchar(shown)) shown else ctgui_transform_default_label
+        }
       ),
       shiny::div(
         "RandomEffects: ",
@@ -447,10 +450,8 @@ ctgui_matrix_server <- function(
             arg_label("RandomEffects", "help_matrix_random_effects"),
             value = isTRUE(meta$indvarying[1L])
           ),
-          shiny::textInput(
-            id("transform"), arg_label("Transform", "help_matrix_transform"),
-            value = ctgui_display_transform(meta$transform[1L])
-          ),
+          ctgui_transform_input(id("transform"),
+            arg_label("Transform", "help_matrix_transform"), meta$transform[1L]),
           shiny::numericInput(
             id("sdscale"),
             arg_label(
@@ -517,10 +518,7 @@ ctgui_matrix_server <- function(
             id("indvarying"), "RandomEffects",
             value = isTRUE(meta$indvarying[1L])
           ),
-          shiny::textInput(
-            id("transform"), "Transform",
-            value = ctgui_display_transform(meta$transform[1L])
-          ),
+          ctgui_transform_input(id("transform"), "Transform", meta$transform[1L]),
           shiny::numericInput(
             id("sdscale"), "RandomEffectsScale", value = scale, step = 0.1
           ),

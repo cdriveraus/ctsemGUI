@@ -273,10 +273,61 @@ test_that("additional visual PARS parameters inherit ctsem metadata defaults", {
   expect_equal(metadata$transform[1L], "param")
 })
 
-test_that("blank identity transforms are displayed explicitly", {
-  expect_equal(ctgui_display_transform(""), "param")
-  expect_equal(ctgui_display_transform(NA_character_), "param")
+test_that("a blank transform is shown blank, meaning ctsem's default", {
+  # Blank is not the identity: for a standard deviation ctsem's default keeps
+  # it positive. Showing it as "param" sent "param" back.
+  expect_equal(ctgui_display_transform(""), "")
+  expect_equal(ctgui_display_transform(NA_character_), "")
   expect_equal(ctgui_display_transform("exp(param)"), "exp(param)")
+})
+
+test_that("a variance path freed again keeps ctsem's positive transform", {
+  skip_if_not_installed("ctsem")
+  quiet <- function(x) suppressWarnings(suppressMessages(x))
+  model_transform <- function(spec, matrix, row) {
+    pars <- quiet(ctgui_to_ctsem_model(spec))$pars
+    index <- if (matrix == "MANIFESTVAR") match(row, spec$manifest_names) else match(row, spec$latent_names)
+    pars$transform[pars$matrix == matrix & pars$row == index & pars$col == index]
+  }
+  spec <- quiet(ctgui_example_spec(ctgui_example("coupled")))
+  cells <- list(c("MANIFESTVAR", "stress_1", "noise:MANIFESTVAR:stress_1"),
+    c("DIFFUSION", "stress", "noise:DIFFUSION:stress"))
+  defaults <- vapply(cells, function(cell) model_transform(spec, cell[1], cell[2]), character(1L))
+  expect_false(any(defaults == "param"))
+
+  # Deleting a variance path leaves a fixed zero loop, which the editor still
+  # draws and sends back with every commit.
+  is_cell <- function(edge) any(vapply(cells, function(cell)
+    identical(edge$matrix, cell[1]) && identical(edge$row, cell[2]) && identical(edge$col, cell[2]), logical(1L)))
+  graph <- ctgui_visual_graph(spec, "state_space")
+  graph$edges <- Filter(Negate(is_cell), graph$edges)
+  deleted <- quiet(ctgui_visual_apply_graph(spec, graph))
+
+  # Freed again by drawing it, as the client adds a new path...
+  redrawn_graph <- ctgui_visual_graph(deleted, "state_space")
+  redrawn_graph$edges <- c(Filter(Negate(is_cell), redrawn_graph$edges), lapply(cells, function(cell) list(
+    id = paste(cell[1], cell[2], cell[2], sep = "\r"), matrix = cell[1], row = cell[2], col = cell[2],
+    source = cell[3], target = cell[3], directed = FALSE, edge_kind = "variance", value = "__free__")))
+  redrawn <- quiet(ctgui_visual_apply_graph(deleted, redrawn_graph))
+  # ...and by giving the zero loop a label in the path inspector, which sends
+  # the transform field as it is shown.
+  edited <- deleted
+  for (cell in cells) {
+    shown <- Filter(is_cell, ctgui_visual_graph(edited, "state_space")$edges)
+    shown <- Filter(function(edge) identical(edge$matrix, cell[1]), shown)[[1]]
+    edited <- quiet(ctgui_visual_update_edge(edited, list(matrix = cell[1], row = cell[2], col = cell[2],
+      value = paste0("again_", cell[2]), transform = shown$transform)))
+  }
+
+  for (i in seq_along(cells)) {
+    expect_equal(model_transform(redrawn, cells[[i]][1], cells[[i]][2]), defaults[[i]], info = cells[[i]][1])
+    expect_equal(model_transform(edited, cells[[i]][1], cells[[i]][2]), defaults[[i]], info = cells[[i]][1])
+  }
+  # A transform the user types for an existing parameter is still the user's.
+  typed <- quiet(ctgui_visual_update_edge(redrawn, list(matrix = "MANIFESTVAR", row = "stress_1",
+    col = "stress_1", value = as.character(redrawn$matrices$MANIFESTVAR["stress_1", "stress_1"]),
+    transform = "param")))
+  expect_equal(model_transform(typed, "MANIFESTVAR", "stress_1"), "param")
 })
 
 test_that("initial visual view preserves T0VAR cells suppressed by random T0MEANS", {

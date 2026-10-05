@@ -111,7 +111,7 @@ ctgui_visual_edge_style <- function(spec, matrix, row, col, value) {
   fixed <- !is.na(suppressWarnings(as.numeric(strsplit(text, "|", fixed = TRUE)[[1L]][1L])))
   meta <- ctgui_visual_metadata(spec, matrix, row, col)
   expression <- ctgui_parameter_is_expression(text, spec$latent_names)
-  transform <- if (is.null(meta)) "param" else ctgui_display_transform(meta$transform[1L])
+  transform <- if (is.null(meta)) "" else ctgui_display_transform(meta$transform[1L])
   extra <- if (is.null(meta) || !"extra_pars" %in% names(meta)) "" else meta$extra_pars[1L] %||% ""
   tipreds <- character()
   if (!is.null(meta)) tipreds <- spec$tipred_names[vapply(spec$tipred_names, function(name) {

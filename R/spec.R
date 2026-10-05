@@ -1206,9 +1206,22 @@ ctgui_matrices_with_metadata <- function(spec) {
   matrices
 }
 
+# A blank transform means ctsem's own default for the matrix, which is a
+# positive transform for a standard deviation and a negative one for an
+# auto-effect -- not the identity. It used to be shown as "param", and the
+# inputs then sent "param" back, so freeing a variance path or editing any
+# setting of such a cell set it to the identity: measurement error sds came
+# back negative. Blank is shown as blank.
 ctgui_display_transform <- function(transform) {
   value <- trimws(as.character(transform)[1L])
-  if (is.na(value) || !nzchar(value)) "param" else value
+  if (is.na(value) || !nzchar(value)) "" else value
+}
+
+ctgui_transform_default_label <- "ctsem default"
+
+ctgui_transform_input <- function(id, label, transform) {
+  shiny::textInput(id, label, value = ctgui_display_transform(transform),
+    placeholder = ctgui_transform_default_label)
 }
 
 ctgui_set_parameter_metadata <- function(spec, matrix, row, col, transform = NULL,

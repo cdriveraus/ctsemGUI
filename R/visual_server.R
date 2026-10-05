@@ -203,10 +203,7 @@ ctgui_visual_server <- function(input, output, session, current_spec,
             "visual_path_random", "RandomEffects",
             value = isTRUE(edge$indvarying)
           ),
-          shiny::textInput(
-            "visual_path_transform", "Transform",
-            value = ctgui_display_transform(edge$transform)
-          ),
+          ctgui_transform_input("visual_path_transform", "Transform", edge$transform),
           shiny::numericInput(
             "visual_path_sdscale", "RandomEffectsScale",
             value = suppressWarnings(as.numeric(edge$sdscale %||% 1)), step = 0.1
@@ -259,10 +256,7 @@ ctgui_visual_server <- function(input, output, session, current_spec,
             paste0(prefix, "_indvarying"), "RandomEffects",
             value = isTRUE(meta$indvarying[1L])
           ),
-          shiny::textInput(
-            paste0(prefix, "_transform"), "Transform",
-            value = ctgui_display_transform(meta$transform[1L])
-          ),
+          ctgui_transform_input(paste0(prefix, "_transform"), "Transform", meta$transform[1L]),
           shiny::numericInput(
             paste0(prefix, "_sdscale"), "RandomEffectsScale",
             value = scale, step = 0.1
