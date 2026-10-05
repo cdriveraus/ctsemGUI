@@ -301,6 +301,26 @@ ctgui_validate <- function(spec) {
     ))
   }
 
+  # Text meant as a number that ctsem would read as something else, without
+  # complaint: "0,5" is a free parameter named "0,5", and TRUE a free
+  # parameter named TRUE.
+  for (matrix_name in names(spec$matrices)) {
+    mat <- spec$matrices[[matrix_name]]
+    if (!is.matrix(mat) || !length(mat)) next
+    base <- vapply(as.vector(mat), ctgui_parameter_annotation_base, character(1L), USE.NAMES = FALSE)
+    comma <- unique(base[grepl("^[-+]?[0-9]*,[0-9]+$", base)])
+    if (length(comma)) {
+      add_message("error", matrix_name, paste0(matrix_name, " has ", paste(comma, collapse = ", "),
+        ", which ctsem reads as a parameter name, not a number. Use a decimal point: ",
+        sub(",", ".", comma[1L], fixed = TRUE), "."))
+    }
+    reserved <- unique(base[base %in% c("TRUE", "FALSE", "T", "F", "NA", "NaN", "NULL")])
+    if (length(reserved)) {
+      add_message("error", matrix_name, paste0(matrix_name, " has ", paste(reserved, collapse = ", "),
+        ", which is neither a number nor a usable parameter name."))
+    }
+  }
+
   lambda <- spec$matrices[["LAMBDA"]]
   if (!is.null(lambda) && is.matrix(lambda)) {
     reaches <- ctgui_latents_reaching_measurement(spec)
@@ -1211,6 +1231,11 @@ ctgui_refresh_parameter_metadata <- function(spec, matrices = spec$matrices) {
         row$indvarying <- FALSE
         row$sdscale <- 1
         for (tipred in tipred_names) row[[paste0(tipred, "_effect")]] <- FALSE
+      } else if (nrow(prior) && ctgui_parameter_is_expression(prior$param[1L], spec$latent_names)) {
+        # A cell that held an expression and was given a plain label kept the
+        # expression's PARS list, and those PARS stayed in the model as free
+        # parameters nothing used -- flat directions in every fit.
+        row$extra_pars <- ""
       }
       rows[[length(rows) + 1L]] <- row
     }
@@ -1219,7 +1244,6 @@ ctgui_refresh_parameter_metadata <- function(spec, matrices = spec$matrices) {
   spec$parameter_metadata <- if (length(rows)) do.call(rbind, rows) else empty
   spec$matrices <- ctgui_order_matrices(cleaned)
   ctgui_sync_extra_pars(spec)
-  spec
 }
 
 ctgui_matrices_with_metadata <- function(spec) {

@@ -147,3 +147,26 @@ test_that("a stale matrix-inspector field does not undo a later visual edit, or 
     expect_equal(ctgui_matrix_metadata_row(current_spec(), "DRIFT", "stress", "sleep")$transform, "exp(param)")
   }))
 })
+
+test_that("a decimal comma or a reserved word in a cell stops the fit instead of freeing a parameter", {
+  skip_if_not_installed("ctsem")
+  spec <- quiet(ctgui_example_spec(ctgui_example("coupled")))
+  for (typed in c("0,5", "TRUE", "NA")) {
+    edited <- quiet(ctgui_set_matrix_value(spec, "DRIFT", "stress", "sleep", value = typed))
+    errors <- quiet(ctgui_validate(edited))
+    expect_true(any(errors$severity == "error" & errors$field == "DRIFT"), info = typed)
+    expect_error(quiet(ctgui_to_ctsem_model(edited)), info = typed)
+  }
+  expect_match(paste(quiet(ctgui_validate(quiet(ctgui_set_matrix_value(spec, "DRIFT", "stress", "sleep",
+    value = "0,5"))))$message, collapse = " "), "0.5", fixed = TRUE)
+})
+
+test_that("an expression replaced by a plain label takes its PARS parameters with it", {
+  skip_if_not_installed("ctsem")
+  spec <- quiet(ctgui_example_spec(ctgui_example("coupled")))
+  spec <- quiet(ctgui_set_matrix_value(spec, "DRIFT", "stress", "sleep", label = "a + b * stress"))
+  spec <- quiet(ctgui_set_parameter_metadata(spec, "DRIFT", "stress", "sleep", extra_pars = "a, b"))
+  expect_setequal(fitted_pars(spec)$param[fitted_pars(spec)$matrix == "PARS"], c("a", "b"))
+  plain <- quiet(ctgui_set_matrix_value(spec, "DRIFT", "stress", "sleep", label = "plain"))
+  expect_false(any(fitted_pars(plain)$matrix == "PARS"))
+})
