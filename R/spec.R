@@ -124,6 +124,16 @@ ctgui_spec <- function(latent_names = "eta1",
       tdpred_names = tdpred_names)
     pars <- model[["pars"]]
     parameter_metadata <- ctgui_parameter_metadata_from_pars(pars, tipred_names, base_matrices)
+    # Only a transform written into a cell was chosen; the rest are ctsem's
+    # defaults and stay blank, so ctsem resolves them again whenever the model
+    # is rebuilt (see ctgui_sync_model_from_matrices).
+    chosen <- vapply(seq_len(nrow(parameter_metadata)), function(i) {
+      cell <- matrices[[parameter_metadata$matrix[i]]]
+      if (is.null(cell) || !is.matrix(cell) || is.null(rownames(cell))) return(FALSE)
+      r <- match(parameter_metadata$row[i], rownames(cell)); c <- match(parameter_metadata$col[i], colnames(cell))
+      !is.na(r) && !is.na(c) && nzchar(ctgui_parse_parameter_cell(cell[r, c], tipred_names)$transform)
+    }, logical(1L))
+    parameter_metadata$transform[!chosen] <- ""
     source <- "ctsem"
   } else {
     base_matrices <- ctgui_default_matrices(
@@ -1261,9 +1271,39 @@ ctgui_display_transform <- function(transform) {
 
 ctgui_transform_default_label <- "ctsem default"
 
-ctgui_transform_input <- function(id, label, transform) {
+# The transform ctsem resolved for a parameter, to show what a blank field means.
+ctgui_resolved_transform <- function(spec, param) {
+  pars <- spec$pars
+  if (is.null(pars) || is.null(param) || !length(param) || is.na(param[1L])) return("")
+  found <- as.character(pars$transform[!is.na(pars$param) & pars$param == param[1L]])
+  if (length(found)) gsub("\\s+", "", found[1L]) else ""
+}
+
+ctgui_transform_input <- function(id, label, transform, resolved = "") {
   shiny::textInput(id, label, value = ctgui_display_transform(transform),
-    placeholder = ctgui_transform_default_label)
+    placeholder = if (nzchar(resolved %||% "")) {
+      paste0(ctgui_transform_default_label, ": ", resolved)
+    } else ctgui_transform_default_label)
+}
+
+# Transforms stored as the default ctsem resolved for them, as every spec saved
+# before transforms were kept blank has them, made blank again, so that a
+# change ctsem resolves differently -- the time type -- takes effect.
+ctgui_unfreeze_default_transforms <- function(spec) {
+  metadata <- spec$parameter_metadata
+  if (is.null(metadata) || !nrow(metadata) || !ctgui_has_ctsem()) return(spec)
+  probe <- spec
+  probe$parameter_metadata$transform <- ""
+  model <- tryCatch(suppressWarnings(suppressMessages(ctgui_to_ctsem_model(probe))),
+    error = function(e) NULL)
+  if (is.null(model)) return(spec)
+  defaults <- ctgui_parameter_metadata_from_pars(model$pars, spec$tipred_names, spec$matrices)
+  index <- match(ctgui_metadata_keys(metadata), ctgui_metadata_keys(defaults))
+  squash <- function(x) gsub("\\s+", "", as.character(x))
+  default <- !is.na(index) & squash(metadata$transform) == squash(defaults$transform[index])
+  metadata$transform[default] <- ""
+  spec$parameter_metadata <- metadata
+  spec
 }
 
 ctgui_set_parameter_metadata <- function(spec, matrix, row, col, transform = NULL,
@@ -1337,6 +1377,14 @@ ctgui_sync_model_from_matrices <- function(spec, ctsem_default_keys = character(
       spec$model <- rebuilt$model
       spec$pars <- spec$model[["pars"]]
       previous_metadata <- spec$parameter_metadata
+      # A transform nobody chose stays blank, so ctsem resolves it each time the
+      # model is built. Stored as the string ctsem returned, it was frozen: a
+      # model switched to discrete time kept the continuous-time DRIFT
+      # diagonal, a negative softplus, where ctsem uses a logistic, and every
+      # autoregression was forced negative.
+      default_keys <- if (is.null(previous_metadata) || !nrow(previous_metadata)) character() else {
+        ctgui_metadata_keys(previous_metadata)[!nzchar(trimws(as.character(previous_metadata$transform)))]
+      }
       if (length(ctsem_default_keys) && !is.null(previous_metadata) && nrow(previous_metadata)) {
         previous_keys <- ctgui_cell_key(previous_metadata$matrix, previous_metadata$row, previous_metadata$col)
         previous_metadata <- previous_metadata[!(previous_keys %in% ctsem_default_keys), , drop = FALSE]
@@ -1345,6 +1393,10 @@ ctgui_sync_model_from_matrices <- function(spec, ctsem_default_keys = character(
         ctgui_parameter_metadata_from_pars(spec$pars, spec$tipred_names, spec$matrices),
         previous_metadata
       )
+      if (length(default_keys) && nrow(spec$parameter_metadata)) {
+        unchosen <- ctgui_metadata_keys(spec$parameter_metadata) %in% default_keys
+        spec$parameter_metadata$transform[unchosen] <- ""
+      }
       # ctsem's global tipredDefault is used while constructing the model, but
       # the visual editor supports a persistent all/none policy per predictor.
       # Reapply that policy only to newly created parameters, preserving any

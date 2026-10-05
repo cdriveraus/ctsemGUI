@@ -110,6 +110,9 @@ ctgui_commit_spec_fields <- function(previous, fields, reason = "specification")
   # carried over.  Rebuilding from ctgui_spec() alone would regenerate default
   # matrices, so adding one variable would silently discard the whole model.
   carrier <- previous
+  # ctsem's default transforms depend on the time type: a DRIFT diagonal is a
+  # negative rate in continuous time and an autoregression in discrete time.
+  if (!identical(previous$type, fields$type)) carrier <- ctgui_unfreeze_default_transforms(carrier)
   carrier$type <- fields$type
   carrier$id <- fields$id
   carrier$time <- fields$time

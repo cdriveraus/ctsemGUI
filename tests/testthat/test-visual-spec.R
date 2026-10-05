@@ -250,8 +250,14 @@ test_that("new visual parameters inherit the same ctsem metadata defaults as mat
   ))
   matrix_meta <- ctgui_visual_metadata(matrix_spec, "LAMBDA", "y2", "eta")
   visual_meta <- ctgui_visual_metadata(visual_spec, "LAMBDA", "y2", "eta")
-  expect_true(nzchar(matrix_meta$transform[1L]))
+  # Neither chose a transform, so both leave it to ctsem, which resolves one.
   expect_equal(visual_meta$transform[1L], matrix_meta$transform[1L])
+  fitted <- function(spec) {
+    pars <- suppressWarnings(suppressMessages(ctgui_to_ctsem_model(spec)))$pars
+    pars$transform[pars$matrix == "LAMBDA" & pars$row == 2 & !is.na(pars$param)]
+  }
+  expect_true(nzchar(fitted(matrix_spec)))
+  expect_equal(fitted(visual_spec), fitted(matrix_spec))
   expect_equal(visual_meta$indvarying[1L], matrix_meta$indvarying[1L])
   expect_equal(visual_meta$sdscale[1L], matrix_meta$sdscale[1L])
 })
@@ -265,12 +271,17 @@ test_that("additional visual PARS parameters inherit ctsem metadata defaults", {
   ))
   metadata <- ctgui_visual_metadata(updated, "PARS", "PARS1", "PARS")
   expect_equal(metadata$param[1L], "shape")
-  expect_equal(metadata$transform[1L], "param")
+  fitted <- function(spec) {
+    pars <- suppressWarnings(suppressMessages(ctgui_to_ctsem_model(spec)))$pars
+    gsub("\\s+", "", pars$transform[!is.na(pars$param) & pars$param == "shape"][1L])
+  }
+  # Blank is ctsem's default, which for PARS is the identity.
+  expect_equal(metadata$transform[1L], "")
+  expect_equal(fitted(updated), "param")
   updated <- ctgui_set_parameter_metadata(
     updated, "PARS", "PARS1", "PARS", transform = ""
   )
-  metadata <- ctgui_visual_metadata(updated, "PARS", "PARS1", "PARS")
-  expect_equal(metadata$transform[1L], "param")
+  expect_equal(fitted(updated), "param")
 })
 
 test_that("a blank transform is shown blank, meaning ctsem's default", {
@@ -287,7 +298,7 @@ test_that("a variance path freed again keeps ctsem's positive transform", {
   model_transform <- function(spec, matrix, row) {
     pars <- quiet(ctgui_to_ctsem_model(spec))$pars
     index <- if (matrix == "MANIFESTVAR") match(row, spec$manifest_names) else match(row, spec$latent_names)
-    pars$transform[pars$matrix == matrix & pars$row == index & pars$col == index]
+    gsub("\\s+", "", pars$transform[pars$matrix == matrix & pars$row == index & pars$col == index])
   }
   spec <- quiet(ctgui_example_spec(ctgui_example("coupled")))
   cells <- list(c("MANIFESTVAR", "stress_1", "noise:MANIFESTVAR:stress_1"),

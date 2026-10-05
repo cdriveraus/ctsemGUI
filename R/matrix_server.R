@@ -320,6 +320,35 @@ ctgui_matrix_server <- function(
   matrix_group_names <- function(spec, group = input$matrix_group) {
     ctgui_matrix_group_names(spec, group)
   }
+  # What each inspector field showed when it was drawn, by input id. Shiny
+  # keeps an input's last value after its field is gone, and these ids carry
+  # the matrix row and column *index*, so values read back blindly reverted
+  # settings changed since in the visual editor, and after the processes were
+  # reordered landed on another cell. A field's value is used only for the
+  # parameter it was drawn for, and only once the user has changed it.
+  rendered_meta <- new.env(parent = emptyenv())
+  remember_meta <- function(id, cell, value) {
+    assign(id, list(cell = cell, value = value), envir = rendered_meta)
+    value
+  }
+  # `empty` is what a drawn field means when it sends NULL: a multiple select
+  # with nothing chosen sends NULL, so clearing the last TI predictor in the
+  # inspector used to read as "no change".
+  edited_meta <- function(id, cell, empty = NULL) {
+    shown <- get0(id, envir = rendered_meta, inherits = FALSE)
+    if (is.null(shown) || !identical(shown$cell, cell)) return(NULL)
+    value <- input[[id]]
+    if (is.null(value)) {
+      if (is.null(empty)) return(NULL)
+      value <- empty
+    }
+    flat <- function(x) sort(as.character(unlist(x)))
+    if (identical(flat(value), flat(shown$value))) return(NULL)
+    value
+  }
+  meta_cell <- function(matrix_name, row_name, col_name, param) {
+    paste(ctgui_cell_key(matrix_name, row_name, col_name), param, sep = "\r")
+  }
   matrix_network_options <- function(matrix_name) {
     id <- function(field) ctgui_matrix_network_id(matrix_name, field)
     list(
@@ -428,6 +457,8 @@ ctgui_matrix_server <- function(
         matrix_name, selected$row, selected$col, field
       )
     }
+    cell <- meta_cell(matrix_name, row_name, col_name, meta$param[1L])
+    shown <- function(field, value) remember_meta(id(field), cell, value)
     shiny::div(
       class = "matrix-cell-inspector",
       shiny::tags$h5("Cell Specific Details"),
@@ -448,16 +479,18 @@ ctgui_matrix_server <- function(
           shiny::checkboxInput(
             id("indvarying"),
             arg_label("RandomEffects", "help_matrix_random_effects"),
-            value = isTRUE(meta$indvarying[1L])
+            value = shown("indvarying", isTRUE(meta$indvarying[1L]))
           ),
           ctgui_transform_input(id("transform"),
-            arg_label("Transform", "help_matrix_transform"), meta$transform[1L]),
+            arg_label("Transform", "help_matrix_transform"),
+            shown("transform", ctgui_display_transform(meta$transform[1L])),
+            resolved = ctgui_resolved_transform(spec, meta$param[1L])),
           shiny::numericInput(
             id("sdscale"),
             arg_label(
               "RandomEffectsScale", "help_matrix_random_effects_scale"
             ),
-            value = scale, step = 0.1
+            value = shown("sdscale", scale), step = 0.1
           ),
           if (length(spec$tipred_names)) shiny::selectizeInput(
             id("tipreds"),
@@ -465,12 +498,12 @@ ctgui_matrix_server <- function(
               "Time Independent Predictors",
               "help_matrix_time_independent_predictors"
             ),
-            choices = spec$tipred_names, selected = tipreds, multiple = TRUE
+            choices = spec$tipred_names, selected = shown("tipreds", tipreds), multiple = TRUE
           )
         ),
         shiny::textInput(
           id("extra_pars"), "PARS (free parameters in expression)",
-          value = meta$extra_pars[1L] %||% "",
+          value = shown("extra_pars", meta$extra_pars[1L] %||% ""),
           placeholder = "e.g. nonlinear_a, nonlinear_b"
         )
       )
@@ -509,6 +542,8 @@ ctgui_matrix_server <- function(
       scale <- suppressWarnings(as.numeric(meta$sdscale[1L]))
       if (is.na(scale)) scale <- 1
       id <- function(field) ctgui_matrix_meta_id("PARS", row, 1L, field)
+      cell <- meta_cell("PARS", rownames(pars)[row], colnames(pars)[1L], meta$param[1L])
+      shown <- function(field, value) remember_meta(id(field), cell, value)
       shiny::div(
         class = "matrix-cell-inspector",
         shiny::tags$h5(as.character(pars[row, 1L])),
@@ -516,15 +551,17 @@ ctgui_matrix_server <- function(
           class = "control-grid",
           shiny::checkboxInput(
             id("indvarying"), "RandomEffects",
-            value = isTRUE(meta$indvarying[1L])
+            value = shown("indvarying", isTRUE(meta$indvarying[1L]))
           ),
-          ctgui_transform_input(id("transform"), "Transform", meta$transform[1L]),
+          ctgui_transform_input(id("transform"), "Transform",
+            shown("transform", ctgui_display_transform(meta$transform[1L])),
+            resolved = ctgui_resolved_transform(spec, meta$param[1L])),
           shiny::numericInput(
-            id("sdscale"), "RandomEffectsScale", value = scale, step = 0.1
+            id("sdscale"), "RandomEffectsScale", value = shown("sdscale", scale), step = 0.1
           ),
           if (length(spec$tipred_names)) shiny::selectizeInput(
             id("tipreds"), "Time Independent Predictors",
-            choices = spec$tipred_names, selected = tipreds, multiple = TRUE
+            choices = spec$tipred_names, selected = shown("tipreds", tipreds), multiple = TRUE
           )
         )
       )
@@ -826,11 +863,12 @@ ctgui_matrix_server <- function(
         id <- function(field) {
           ctgui_matrix_meta_id(matrix_name, row, col, field)
         }
-        transform <- input[[id("transform")]]
-        indvarying <- input[[id("indvarying")]]
-        sdscale <- input[[id("sdscale")]]
-        tipreds <- input[[id("tipreds")]]
-        extra_pars <- input[[id("extra_pars")]]
+        cell <- meta_cell(matrix_name, rownames(mat)[row], colnames(mat)[col], meta$param[1L])
+        transform <- edited_meta(id("transform"), cell)
+        indvarying <- edited_meta(id("indvarying"), cell)
+        sdscale <- edited_meta(id("sdscale"), cell)
+        tipreds <- edited_meta(id("tipreds"), cell, empty = character())
+        extra_pars <- edited_meta(id("extra_pars"), cell)
         if (is.null(transform)) transform <- meta$transform
         if (is.null(indvarying)) indvarying <- meta$indvarying
         if (is.null(sdscale)) sdscale <- meta$sdscale
