@@ -647,12 +647,14 @@ ctgui_spec_from_model <- function(model) {
   spec$model <- model
   spec$pars <- model$pars
   spec$parameter_metadata <- ctgui_parameter_metadata_from_pars(model$pars, spec$tipred_names, spec$matrices)
-  # A ctsem model does not record the tipredDefault it was built with, and
-  # assuming TRUE gave a model built with FALSE an effect of every predictor on
-  # every parameter. Its effects are read from the parameters above; the
-  # default, which only applies to parameters added later, follows them.
+  # The default for parameters added later. ctsem 3.12 keeps it on the model;
+  # 3.11 does not, and assuming TRUE gave a model built with FALSE an effect of
+  # every predictor on every parameter, so there it follows the effects read
+  # from the parameters above.
   effects <- grep("_effect$", names(spec$parameter_metadata), value = TRUE)
-  if (length(effects) && nrow(spec$parameter_metadata)) {
+  if (is.logical(model[["tipredDefault"]]) && length(model[["tipredDefault"]]) == 1L) {
+    spec$tipredDefault <- isTRUE(model[["tipredDefault"]])
+  } else if (length(effects) && nrow(spec$parameter_metadata)) {
     spec$tipredDefault <- all(vapply(effects, function(field) all(spec$parameter_metadata[[field]]), logical(1L)))
   }
   spec$source <- "ctsem-rds"

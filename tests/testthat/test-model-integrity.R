@@ -45,6 +45,15 @@ test_that("a model built with tipredDefault = FALSE loads without gaining TI eff
   loaded <- quiet(ctgui_project_spec(model))
   expect_false(any(as.logical(fitted_pars(loaded)$g_effect)))
   expect_false(isTRUE(loaded$tipredDefault))
+
+  # ctsem 3.12 records the setting, which then wins over what the effects
+  # suggest; 3.11 does not, and the effects decide.
+  recorded <- quiet(ctsem::ctModel(LAMBDA = diag(2), manifestNames = c("y1", "y2"),
+    latentNames = c("a", "b"), TIpredNames = "g", tipredDefault = TRUE, type = "ct", silent = TRUE))
+  recorded[["tipredDefault"]] <- FALSE
+  expect_false(isTRUE(quiet(ctgui_project_spec(recorded))$tipredDefault))
+  recorded[["tipredDefault"]] <- NULL
+  expect_true(isTRUE(quiet(ctgui_project_spec(recorded))$tipredDefault))
 })
 
 test_that("toggling tipredDefault changes, and shows, every parameter's TI effects", {
