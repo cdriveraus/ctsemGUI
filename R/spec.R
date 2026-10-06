@@ -748,14 +748,15 @@ ctgui_generate_data <- function(spec, n.subjects = 100, Tpoints = spec$Tpoints %
     tipredDefault = spec$tipredDefault,
     silent = TRUE
   )
-  args <- list(ctmodelobj = model,
-    n.subjects = n.subjects,
+  args <- list(ctmodelobj = model)
+  args[[ctgui_generate_count_param()]] <- n.subjects
+  args <- c(args, list(
     burnin = burnin,
     dtmean = dtmean,
     logdtsd = logdtsd,
     Tpoints = Tpoints,
     wide = wide
-  )
+  ))
   if (!is.null(backend) && "backend" %in% names(formals(getExportedValue("ctsem", "ctGenerate")))) {
     args$backend <- backend
   }

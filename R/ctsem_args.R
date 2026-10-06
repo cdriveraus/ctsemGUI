@@ -190,6 +190,13 @@ ctgui_update_arg_choices <- function(session, id, choices, selected, arg) {
     selected = selected)
 }
 
+# ctsem 3.12 renamed ctGenerate's n.subjects to n, and warns on the old name;
+# the GUI keeps n.subjects as its own option name and passes whichever the
+# installed ctsem takes.
+ctgui_generate_count_param <- function() {
+  if (isTRUE(ctgui_ctsem_arg("ctGenerate", "n")$found)) "n" else "n.subjects"
+}
+
 # ctsem 3.12 replaced ctDiscretePars' observational with impulseType; the
 # Dynamics field takes whichever the installed ctsem has.
 ctgui_dynamics_impulse_param <- function() {

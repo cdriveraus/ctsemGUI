@@ -67,15 +67,15 @@ ctgui_output_data_code <- function(source = ctgui_output_data_source()) {
 
   switch(type,
     generated = {
-      args <- list(
-        ctmodelobj = ctgui_code_symbol("model"),
-        n.subjects = ctgui_code_option(generation, "n.subjects", 100),
+      args <- list(ctmodelobj = ctgui_code_symbol("model"))
+      args[[ctgui_generate_count_param()]] <- ctgui_code_option(generation, "n.subjects", 100)
+      args <- c(args, list(
         burnin = ctgui_code_option(generation, "burnin", 0),
         dtmean = ctgui_code_option(generation, "dtmean", 1),
         logdtsd = ctgui_code_option(generation, "logdtsd", 0),
         Tpoints = ctgui_code_option(generation, "Tpoints", 10),
         wide = ctgui_code_option(generation, "wide", FALSE)
-      )
+      ))
       lines <- ctgui_code_arg_lines(args)
       c(
         "# The GUI preview substituted numeric defaults for free parameters.",
