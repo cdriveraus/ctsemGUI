@@ -132,10 +132,6 @@ ctgui_ctsem_fit_value <- function(fit, paths, default = NULL) {
   default
 }
 
-ctgui_ctsem_fit_field <- function(fit, field, default = NULL) {
-  ctgui_ctsem_fit_value(fit, list(field), default)
-}
-
 ctgui_ctsem_is_fit <- function(x) {
   if (is.null(x)) return(FALSE)
   if (inherits(x, c("ctStanFit", "ctFit"))) return(TRUE)

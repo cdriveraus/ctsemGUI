@@ -48,11 +48,6 @@ ctgui_matrix_schema <- function(spec) {
   )
 }
 
-ctgui_matrix_schema_entry <- function(spec, matrix_name) {
-  schema <- ctgui_matrix_schema(spec)
-  schema[[matrix_name]]
-}
-
 ctgui_matrix_schema_dims <- function(spec) {
   schema <- ctgui_matrix_schema(spec)
   keep <- c(ctgui_required_matrices)
@@ -61,12 +56,6 @@ ctgui_matrix_schema_dims <- function(spec) {
     keep <- c(keep, "TDPREDMEANS", "TDPREDVAR")
   }
   lapply(schema[keep], `[[`, "dims")
-}
-
-ctgui_matrix_schema_visual <- function(spec, view = NULL) {
-  schema <- ctgui_matrix_schema(spec)
-  if (is.null(view)) return(vapply(schema, function(x) x$visual %||% "", character(1L)))
-  names(Filter(function(x) identical(x$visual, view), schema))
 }
 
 ctgui_normalize_matrices <- function(spec, matrices = spec$matrices) {

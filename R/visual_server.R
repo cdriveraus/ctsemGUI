@@ -14,11 +14,11 @@ ctgui_visual_draft_set <- function(spec) {
 
 ctgui_visual_server <- function(input, output, session, current_spec,
     current_data, commit_current_spec, sync_matrix_inputs_from_spec,
-    fit_status_value, matrix_status, send_message = NULL, notify = NULL) {
+    fit_status_value, send_message = NULL, notify = NULL) {
   stopifnot(
     is.function(current_spec), is.function(current_data),
     is.function(commit_current_spec), is.function(sync_matrix_inputs_from_spec),
-    is.function(fit_status_value), is.function(matrix_status)
+    is.function(fit_status_value)
   )
   if (is.null(send_message)) {
     send_message <- function(type, message) session$sendCustomMessage(type, message)
@@ -304,7 +304,6 @@ ctgui_visual_server <- function(input, output, session, current_spec,
     commit_current_spec(updated, reason = "visual_graph")
     sync_matrix_inputs_from_spec(updated)
     fit_status_value("Visual model changed. Refit when ready.")
-    matrix_status("Visual change applied to model matrices.")
     status("Visual changes are applied directly to the current model.")
     send(graph$view)
   }, ignoreInit = TRUE)
@@ -356,7 +355,6 @@ ctgui_visual_server <- function(input, output, session, current_spec,
     commit_current_spec(updated, reason = "visual_random_effect")
     sync_matrix_inputs_from_spec(updated)
     fit_status_value("Visual model changed. Refit when ready.")
-    matrix_status("Random effect updated in model matrices.")
     status(if (enabled) "Random effect enabled for the selected parameter." else "Random effect disabled for the selected parameter.")
   }, ignoreInit = TRUE)
 
@@ -432,7 +430,6 @@ ctgui_visual_server <- function(input, output, session, current_spec,
     commit_current_spec(updated, reason = "visual_path")
     sync_matrix_inputs_from_spec(updated)
     fit_status_value("Visual model changed. Refit when ready.")
-    matrix_status("Visual path updated in model matrices.")
     status("Visual changes are applied directly to the current model.")
     if (identical(item$matrix, "T0MEANS")) {
       send("initial_state")

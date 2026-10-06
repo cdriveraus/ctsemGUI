@@ -5,6 +5,10 @@
   // the ctsem equation display, and are typeset here rather than compiled to
   // an image by a TeX installation the user is unlikely to have.
 
+  // KaTeX has no \vect; ctsem uses it for the bold vector symbols that carry
+  // the meaning of every underbrace annotation, so it is supplied here rather
+  // than stripped. A macro ctsem adds later is not lost silently: KaTeX reports
+  // the undefined control sequence and the row shows its own source.
   var MACROS = {};
   MACROS["\\vect"] = "\\boldsymbol{#1}";
 

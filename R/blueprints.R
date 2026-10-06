@@ -86,8 +86,6 @@ ctgui_blueprint_structures <- function() {
   )
 }
 
-ctgui_blueprint_structure_ids <- function() names(ctgui_blueprint_structures())
-
 ctgui_blueprint_structure <- function(structure) {
   structures <- ctgui_blueprint_structures()
   if (length(structure) != 1L || is.na(structure) || !structure %in% names(structures)) {
@@ -98,7 +96,7 @@ ctgui_blueprint_structure <- function(structure) {
 
 #' Describe a model to build
 #'
-#' @param structure One of the ids returned by `ctgui_blueprint_structure_ids()`.
+#' @param structure One of the names of `ctgui_blueprint_structures()`.
 #' @param processes Names of the processes to create.
 #' @param indicators Number of manifest indicators measuring each process, for
 #'   any process `manifests` gives no names for.

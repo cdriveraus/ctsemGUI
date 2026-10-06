@@ -382,12 +382,6 @@ ctgui_output_snippet <- function(action, options = list(), spec = NULL) {
         "colour", "(plotted variable)"))),
       "# Use the Data > Visuals controls to reproduce the current GUI plot."
     ),
-    model_visual = c(
-      "# Model visualisation",
-      paste0("# Visual type: ", ctgui_code_value(ctgui_code_option(options,
-        "visual_type", "Temporal dynamics graph"))),
-      "# The graph is derived from DRIFT, DIFFUSION, and LAMBDA."
-    ),
     stop("Unknown output action: ", action, call. = FALSE)
   )
 }

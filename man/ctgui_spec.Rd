@@ -5,7 +5,6 @@
 \alias{ctgui_validate}
 \alias{ctgui_matrix_names}
 \alias{ctgui_matrix}
-\alias{ctgui_set_matrix}
 \alias{ctgui_set_matrix_value}
 \alias{ctgui_to_ctsem_model}
 \alias{ctgui_export_code}
@@ -35,8 +34,6 @@ ctgui_validate(spec)
 ctgui_matrix_names(spec)
 
 ctgui_matrix(spec, matrix)
-
-ctgui_set_matrix(spec, matrix, value)
 
 ctgui_set_matrix_value(
   spec,
@@ -101,11 +98,11 @@ other types.}
 
 \item{matrix}{Matrix name.}
 
-\item{value}{A replacement matrix or a scalar matrix cell value.}
-
 \item{row}{Row index or row name.}
 
 \item{col}{Column index or column name.}
+
+\item{value}{A scalar matrix cell value.}
 
 \item{label}{Free-parameter label for a matrix cell.}
 

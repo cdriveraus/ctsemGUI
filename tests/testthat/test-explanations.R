@@ -1,6 +1,6 @@
 ctgui_explanation_catalog <- getFromNamespace("ctgui_explanation_catalog", "ctsemGUI")
 ctgui_explanation_ui <- getFromNamespace("ctgui_explanation_ui", "ctsemGUI")
-ctgui_explanation_keys <- getFromNamespace("ctgui_explanation_keys", "ctsemGUI")
+ctgui_explanation_keys <- function() names(getFromNamespace("ctgui_explanation_catalog", "ctsemGUI")())
 
 test_that("every explanation is written at both levels", {
   catalog <- ctgui_explanation_catalog()

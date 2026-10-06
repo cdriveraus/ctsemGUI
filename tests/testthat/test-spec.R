@@ -97,9 +97,7 @@ test_that("whole matrix edits and generated data work", {
   skip_if_not_installed("ctsem")
 
   spec <- ctgui_spec(latent_names = "eta1", manifest_names = "Y1")
-  drift <- ctgui_matrix(spec, "DRIFT")
-  drift[1, 1] <- -0.3
-  spec <- ctgui_set_matrix(spec, "DRIFT", drift)
+  spec <- ctgui_set_matrix_value(spec, "DRIFT", 1, 1, value = -0.3)
 
   expect_equal(as.numeric(ctgui_matrix(spec, "DRIFT")[1, 1]), -0.3)
 
@@ -269,4 +267,12 @@ test_that("an editable matrix set never shows one ctModel cannot take back", {
   )
   expect_false("NOTANARGUMENT" %in% names(prepared))
   expect_true("LAMBDA" %in% names(prepared))
+})
+
+test_that("a cell takes part in the model when it is a parameter or a non-zero value", {
+  cell_active <- getFromNamespace("ctgui_cell_active", "ctsemGUI")
+  expect_false(cell_active("0"))
+  expect_true(cell_active("-0.2"))
+  expect_true(cell_active("drift_a||TRUE|1|group"))
+  expect_false(cell_active("   "))
 })

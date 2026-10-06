@@ -319,13 +319,6 @@ ctgui_fit_log_overwrite <- function(line) {
   out
 }
 
-ctgui_fit_log_clean <- function(text) {
-  if (!length(text) || !nzchar(text)) return("")
-  text <- gsub("\r\n", "\n", text, fixed = TRUE)
-  lines <- strsplit(text, "\n", fixed = TRUE)[[1L]]
-  paste(vapply(lines, ctgui_fit_log_overwrite, character(1L), USE.NAMES = FALSE), collapse = "\n")
-}
-
 # Cluster workers announce themselves and repeat their startup warnings once
 # per worker per pass, which says the same thing many times over.
 ctgui_fit_log_collapse <- function(lines) {
@@ -397,15 +390,6 @@ ctgui_fit_log_warnings <- function(lines) {
 # ones are the most recent. Keeping the tail bounds both the message the user
 # reads and the memory the session holds.
 ctgui_fit_log_limit <- 400L
-
-ctgui_fit_log_tail <- function(text, limit = ctgui_fit_log_limit) {
-  lines <- strsplit(text, "\n", fixed = TRUE)[[1L]]
-  if (length(lines) <= limit) return(text)
-  paste(c(
-    paste0("... ", length(lines) - limit, " earlier lines omitted ..."),
-    utils::tail(lines, limit)
-  ), collapse = "\n")
-}
 
 ctgui_fit_log_path <- function(directory = tempdir()) {
   file.path(directory, paste0(

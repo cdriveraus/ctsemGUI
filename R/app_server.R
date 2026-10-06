@@ -58,7 +58,6 @@ pending_fit_spec <- shiny::reactiveVal(NULL)
 fit_counter <- shiny::reactiveVal(0L)
 output_code_snippets <- shiny::reactiveVal(list())
 diagnostics_status <- shiny::reactiveVal("No fit diagnostics have been run.")
-matrix_status <- shiny::reactiveVal("Matrix edits update the current model spec.")
 plot_cache <- shiny::reactiveValues()
 spec_inputs_suspended <- shiny::reactiveVal(FALSE)
 fit_gen_cores_follow_fit <- shiny::reactiveVal(TRUE)
@@ -86,11 +85,6 @@ register_plot_export <- function(id) {
 lapply(c("raw_plot", "kalman_plot", "residual_acf_plot", "dynamics_plot"), register_plot_export)
 
 parse_names <- ctgui_parse_names
-
-parse_optional_integer <- function(x) {
-  if (is.null(x) || length(x) == 0L || is.na(x)) return(NULL)
-  as.integer(x)
-}
 
 explain_ui <- function(key) {
   ctgui_explanation_ui(key)
@@ -361,7 +355,6 @@ shiny::observeEvent(input$build_apply, {
   commit_current_spec(updated, reason = "blueprint")
   refresh_visual_editor(updated)
   fit_status_value("The model changed. Refit when ready.")
-  matrix_status("Built from a template. Every matrix cell was set by the template.")
   shiny::showNotification(
     paste0(
       ctgui_blueprint_structure(blueprint$structure)$title,
@@ -374,7 +367,6 @@ shiny::observeEvent(input$build_apply, {
 
 output$explain_spec_data <- shiny::renderUI(explain_ui("spec_data"))
 output$explain_raw_visuals <- shiny::renderUI(explain_ui("raw_visuals"))
-output$explain_model_visuals <- shiny::renderUI(explain_ui("model_visuals"))
 output$explain_fit_registry <- shiny::renderUI(explain_ui("fit_registry"))
 output$explain_kalman <- shiny::renderUI(explain_ui("kalman"))
 output$explain_postpred <- shiny::renderUI(explain_ui("postpred"))
@@ -409,13 +401,6 @@ lapply(names(help_catalog), register_help)
 shiny::observeEvent(input$close_gui, {
   shiny::stopApp()
 }, ignoreInit = TRUE)
-
-manifest_type_values <- function(manifest_names = parse_names(input$manifest_names)) {
-  ctgui_manifest_type_values(
-    manifest_names, shiny::reactiveValuesToList(input),
-    current_spec()$manifest_type
-  )
-}
 
 input_spec_fields <- function(committed = NULL) {
   values <- shiny::reactiveValuesToList(input)
@@ -676,8 +661,6 @@ assign_r_object <- function(object, name, label) {
   TRUE
 }
 
-is_ctsem_model <- function(x) !is.null(x$pars) && !is.null(x$latentNames) && !is.null(x$manifestNames)
-
 output$uncertainty_eligibility <- shiny::renderUI({
   eligibility <- ctgui_optim_uncertainty_eligibility(active_fit())
   class <- if (isTRUE(eligibility$ok)) "help-note" else "warning-note"
@@ -799,7 +782,7 @@ visual_server <- ctgui_visual_server(
   current_spec = current_spec, current_data = current_data,
   commit_current_spec = commit_current_spec,
   sync_matrix_inputs_from_spec = sync_matrix_inputs_from_spec,
-  fit_status_value = fit_status_value, matrix_status = matrix_status
+  fit_status_value = fit_status_value
 )
 
 matrix_id_part <- ctgui_matrix_id_part
@@ -827,7 +810,6 @@ shiny::observeEvent(input$spec_add_variable, {
   }
   commit_current_spec(commit)
   fit_status_value("Model changed. Refit when ready.")
-  matrix_status("Added variable to the current model specification.")
 }, ignoreInit = TRUE)
 
 output$manifest_type_controls <- shiny::renderUI({
@@ -879,117 +861,6 @@ measurement_backend_note <- function(spec = current_spec()) {
 output$measurement_backend_note <- shiny::renderUI(measurement_backend_note())
 output$fit_measurement_note <- shiny::renderUI(measurement_backend_note())
 
-output$matrix_builder_ui <- shiny::renderUI({
-  spec <- current_spec()
-  latent_choices <- spec$latent_names
-  manifest_choices <- spec$manifest_names
-  structure <- input$matrix_builder_structure %||% "dynamic_var"
-  measurement <- input$measurement_builder_type %||% "single_indicator"
-  trend_controls <- if (identical(structure, "dynamic_var_trend")) {
-    shiny::tagList(
-      shiny::selectizeInput("matrix_builder_trend_latents", "Trend latents",
-        choices = latent_choices, selected = utils::tail(latent_choices, length(input$matrix_builder_dynamic_latents %||% latent_choices)), multiple = TRUE),
-      shiny::selectInput("matrix_builder_trend_type", "Trend process",
-        choices = c("Linear" = "linear", "Exponential" = "exponential"), selected = "linear"),
-      shiny::selectInput("matrix_builder_trend_coupling", "Trend coupling",
-        choices = c("Fixed to 1" = "fixed", "Free parameter" = "free"), selected = "fixed")
-    )
-  } else NULL
-  measurement_controls <- if (!identical(measurement, "single_indicator")) {
-    shiny::tagList(
-      shiny::textInput("measurement_manifest_blocks", "Manifest blocks per factor",
-        value = paste(manifest_choices, collapse = "; ")),
-      if (identical(measurement, "fixed_loadings")) {
-        shiny::textInput("measurement_fixed_loading", "Fixed non-marker loading", value = "0.75")
-      }
-    )
-  } else NULL
-  shiny::tagList(
-    shiny::tags$h4("Matrix Builder"),
-    shiny::tags$p(class = "help-note", "Specification defines model names. These controls only populate matrices for the current spec."),
-    shiny::div(
-      class = "control-grid",
-      shiny::selectInput("matrix_builder_structure", "Dynamic matrix structure",
-        choices = stats::setNames(ctgui_structures()$id, ctgui_structures()$title),
-        selected = structure),
-      shiny::selectizeInput("matrix_builder_dynamic_latents", "Dynamic / level latents",
-        choices = latent_choices, selected = latent_choices, multiple = TRUE),
-      if (identical(structure, "linear_growth")) {
-        shiny::selectizeInput("matrix_builder_slope_latents", "Slope latents",
-          choices = latent_choices, selected = character(), multiple = TRUE)
-      },
-      trend_controls,
-      shiny::checkboxInput("matrix_builder_noise_cor", "Free system-noise correlations", value = TRUE),
-      shiny::actionButton("matrix_builder_apply", "Apply dynamic matrices", class = "btn-primary")
-    ),
-    shiny::tags$hr(),
-    shiny::div(
-      class = "control-grid",
-      shiny::selectInput("measurement_builder_type", "Measurement matrix preset",
-        choices = stats::setNames(ctgui_measurements()$id, ctgui_measurements()$title),
-        selected = measurement),
-      shiny::selectizeInput("measurement_factor_latents", "Measured factor latents",
-        choices = latent_choices, selected = utils::head(latent_choices, min(length(latent_choices), length(manifest_choices))), multiple = TRUE),
-      measurement_controls,
-      if (identical(structure, "dynamic_var_trend")) {
-        shiny::selectizeInput("measurement_trend_latents", "Trend latents sharing measurement",
-          choices = latent_choices, selected = input$matrix_builder_trend_latents %||% character(), multiple = TRUE)
-      },
-      shiny::actionButton("measurement_builder_apply", "Apply measurement matrices")
-    )
-  )
-})
-
-shiny::observeEvent(input$matrix_builder_apply, {
-  spec <- current_spec()
-  structure <- input$matrix_builder_structure %||% "dynamic_var"
-  options <- list(
-    dynamic_latents = input$matrix_builder_dynamic_latents %||% spec$latent_names,
-    level_latents = input$matrix_builder_dynamic_latents %||% spec$latent_names,
-    slope_latents = input$matrix_builder_slope_latents %||% character(),
-    trend_latents = input$matrix_builder_trend_latents %||% character(),
-    trend_type = input$matrix_builder_trend_type %||% "linear",
-    trend_coupling = input$matrix_builder_trend_coupling %||% "fixed",
-    free_noise_correlations = isTRUE(input$matrix_builder_noise_cor)
-  )
-  updated <- tryCatch(ctgui_build_matrices(spec, structure = structure, options = options), error = function(e) e)
-  if (inherits(updated, "error")) {
-    shiny::showNotification(conditionMessage(updated), type = "error")
-    return()
-  }
-  commit_current_spec(updated, reason = "data_roles")
-  fit_status_value("Model matrices changed. Refit when ready.")
-  matrix_status(paste("Applied", structure, "matrices without changing specification names."))
-  shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(updated), selected = "DRIFT")
-})
-
-shiny::observeEvent(input$measurement_builder_apply, {
-  spec <- current_spec()
-  factors <- input$measurement_factor_latents %||% spec$latent_names
-  blocks <- input$measurement_manifest_blocks %||% NULL
-  fixed_value <- suppressWarnings(as.numeric(input$measurement_fixed_loading %||% 0.75))
-  if (is.na(fixed_value)) fixed_value <- 0.75
-  fixed_loadings <- replicate(length(factors), c(1, fixed_value), simplify = FALSE)
-  updated <- tryCatch(ctgui_build_measurement_matrices(
-    spec,
-    measurement = input$measurement_builder_type %||% "single_indicator",
-    options = list(
-      factor_latents = factors,
-      trend_latents = input$measurement_trend_latents %||% character(),
-      manifest_blocks = blocks,
-      fixed_loadings = fixed_loadings
-    )
-  ), error = function(e) e)
-  if (inherits(updated, "error")) {
-    shiny::showNotification(conditionMessage(updated), type = "error")
-    return()
-  }
-  commit_current_spec(updated, reason = "specification")
-  fit_status_value("Measurement matrices changed. Refit when ready.")
-  matrix_status("Applied measurement matrices without changing specification names.")
-  shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(updated), selected = "LAMBDA")
-})
-
 rebuild_spec_if_needed <- function(committed = NULL) {
   # An explicit browser payload contains the values authored before a page
   # transition and must not be discarded merely because widget synchronization
@@ -1006,7 +877,6 @@ rebuild_spec_if_needed <- function(committed = NULL) {
     error = function(e) e
   )
   if (inherits(commit, "error")) {
-    matrix_status(paste("Specification not rebuilt:", conditionMessage(commit)))
     shiny::showNotification(conditionMessage(commit), type = "error")
     return(invisible(FALSE))
   }
@@ -1014,14 +884,12 @@ rebuild_spec_if_needed <- function(committed = NULL) {
   commit_current_spec(commit)
   new_spec <- commit$spec
   fit_status_value("Model changed. Refit when ready.")
-  shiny::updateSelectInput(session, "model_visual_matrix", choices = ctgui_matrix_names(new_spec), selected = "DRIFT")
-  matrix_status("Matrix edits update the current model spec.")
   invisible(TRUE)
 }
 matrix_server <- ctgui_matrix_server(
   input = input, output = output, session = session,
   current_spec = current_spec, commit_current_spec = commit_current_spec,
-  matrix_status = matrix_status, fit_status_value = fit_status_value,
+  fit_status_value = fit_status_value,
   visual_refresh = function(spec, view) {
     visual_server$refresh(spec, view = view)
   },
@@ -1112,113 +980,6 @@ output$fit_equation_blocks <- shiny::renderUI({
 output$fit_equation_source <- shiny::renderText(fit_latex_source())
 output$validation_table_spec <- shiny::renderTable(ctgui_validate(current_spec()), rownames = FALSE)
 
-output$model_visual_controls <- shiny::renderUI({
-  spec <- current_spec()
-  choices <- c(
-    "Temporal dynamics graph",
-    "System noise graph",
-    "Measurement graph",
-    if (!is.null(spec$builder) && identical(spec$builder$structure, "dynamic_var_trend")) "Trend structure graph",
-    "Generated trajectories"
-  )
-  view <- input$model_visual_type %||% choices[1L]
-  if (!view %in% choices) view <- choices[1L]
-  shiny::div(
-    class = "control-grid",
-    shiny::selectInput("model_visual_type", "View", choices = choices, selected = view),
-    if (identical(view, "Generated trajectories")) {
-      shiny::tagList(
-        shiny::numericInput("model_visual_subjects", "Generated subjects", value = 6, min = 1, step = 1),
-        shiny::numericInput("model_visual_tpoints", "Generated time points", value = 20, min = 1, step = 1)
-      )
-    }
-  )
-})
-
-output$model_visual_plot <- shiny::renderPlot({
-  spec <- current_spec()
-  view <- input$model_visual_type %||% "Temporal dynamics graph"
-  record_output_code("model_visual", output_code_snippet("model_visual"))
-  if (view %in% c("Temporal dynamics graph", "System noise graph", "Measurement graph", "Trend structure graph")) {
-    element <- switch(view,
-      `Temporal dynamics graph` = "drift",
-      `System noise graph` = "diffusion",
-      `Measurement graph` = "measurement",
-      `Trend structure graph` = "trend"
-    )
-    edges <- ctgui_graph_edges(spec, element)
-    graphics::plot.new()
-    if (nrow(edges) == 0L) {
-      graphics::text(0.5, 0.5, paste("No", element, "edges to show"), cex = 0.9)
-      return(invisible(NULL))
-    }
-    nodes <- unique(c(edges$from, edges$to))
-    theta <- seq(0, 2 * pi, length.out = length(nodes) + 1L)[-length(nodes) - 1L]
-    coords <- data.frame(name = nodes, x = cos(theta), y = sin(theta))
-    graphics::plot.window(xlim = c(-1.3, 1.3), ylim = c(-1.3, 1.3), asp = 1)
-    draw_edge <- function(from, to, directed, col = "grey35") {
-      from_xy <- coords[coords$name == from, ]
-      to_xy <- coords[coords$name == to, ]
-      if (nrow(from_xy) == 0L || nrow(to_xy) == 0L) return()
-      if (identical(from, to)) {
-        graphics::symbols(from_xy$x + 0.09, from_xy$y + 0.09, circles = 0.08,
-          inches = FALSE, add = TRUE, fg = col)
-        return()
-      }
-      if (isTRUE(directed)) {
-        dx <- to_xy$x - from_xy$x
-        dy <- to_xy$y - from_xy$y
-        distance <- sqrt(dx^2 + dy^2)
-        if (is.finite(distance) && distance > 0) {
-          node_radius <- 0.18
-          start_x <- from_xy$x + node_radius * dx / distance
-          start_y <- from_xy$y + node_radius * dy / distance
-          end_x <- to_xy$x - node_radius * dx / distance
-          end_y <- to_xy$y - node_radius * dy / distance
-          graphics::arrows(start_x, start_y, end_x, end_y,
-            length = 0.1, angle = 22, code = 2, col = col, lwd = 1.6)
-        }
-      } else {
-        graphics::segments(from_xy$x, from_xy$y, to_xy$x, to_xy$y, col = col, lwd = 1.6)
-      }
-    }
-    edge_col <- switch(element,
-      drift = "steelblue",
-      diffusion = "purple4",
-      measurement = "darkgreen",
-      trend = "firebrick",
-      "grey35"
-    )
-    for (i in seq_len(nrow(edges))) draw_edge(edges$from[i], edges$to[i], edges$directed[i], edge_col)
-    graphics::points(coords$x, coords$y, pch = 21, bg = "white", cex = 4)
-    graphics::text(coords$x, coords$y, coords$name, cex = 0.9)
-    graphics::title(view)
-    return(invisible(NULL))
-  }
-  data <- tryCatch(ctgui_generate_data(
-    spec,
-    n.subjects = input$model_visual_subjects,
-    Tpoints = input$model_visual_tpoints,
-    free_defaults = TRUE,
-    wide = FALSE
-  ), error = function(e) e)
-  if (inherits(data, "error")) {
-    graphics::plot.new()
-    graphics::text(0.5, 0.5, conditionMessage(data), cex = 0.8)
-    return(invisible(NULL))
-  }
-  y <- spec$manifest_names[1L]
-  if (!y %in% names(data)) y <- names(data)[vapply(data, is.numeric, logical(1L))][1L]
-  graphics::plot(data[[spec$time]], data[[y]], type = "n", xlab = spec$time, ylab = y,
-    main = "Generated trajectories from current spec")
-  for (id in unique(data[[spec$id]])) {
-    rows <- data[[spec$id]] %in% id
-    ordered <- order(data[[spec$time]][rows])
-    graphics::lines(data[[spec$time]][rows][ordered], data[[y]][rows][ordered],
-      col = grDevices::adjustcolor("steelblue", 0.35))
-  }
-})
-
 set_output_code_snippet <- function(key, lines) {
   snippets <- output_code_snippets()
   snippets[[key]] <- paste(lines, collapse = "\n")
@@ -1286,7 +1047,6 @@ output_code_options <- function(action) {
       id = input$raw_plot_subject,
       colour = input$raw_plot_colour
     ),
-    model_visual = list(visual_type = input$model_visual_type),
     generate_from_fit = list(
       nsamples = arg_field("fit_gen_samples", "help_fit_gen_nsamples"),
       fullposterior = input$fit_gen_fullposterior,

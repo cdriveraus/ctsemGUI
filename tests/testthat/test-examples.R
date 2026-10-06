@@ -1,5 +1,5 @@
 ctgui_example <- getFromNamespace("ctgui_example", "ctsemGUI")
-ctgui_example_ids <- getFromNamespace("ctgui_example_ids", "ctsemGUI")
+ctgui_example_ids <- function() names(getFromNamespace("ctgui_example_catalog", "ctsemGUI")())
 ctgui_example_catalog <- getFromNamespace("ctgui_example_catalog", "ctsemGUI")
 ctgui_example_spec <- getFromNamespace("ctgui_example_spec", "ctsemGUI")
 ctgui_example_data <- getFromNamespace("ctgui_example_data", "ctsemGUI")

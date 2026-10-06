@@ -29,7 +29,6 @@ test_that("visual server commits layouts and graph edits through its boundary", 
     messages <- shiny::reactiveVal(list())
     sync_count <- shiny::reactiveVal(0L)
     fit_status <- shiny::reactiveVal("")
-    matrix_status <- shiny::reactiveVal("")
 
     commit <- function(updated, reason = "edit", ...) {
       current_spec(updated)
@@ -42,7 +41,7 @@ test_that("visual server commits layouts and graph edits through its boundary", 
     }
     visual <- ctgui_visual_server(
       input, output, session, current_spec, current_data, commit, sync,
-      fit_status, matrix_status, send_message = send,
+      fit_status, send_message = send,
       notify = function(...) NULL
     )
   }
@@ -90,7 +89,6 @@ test_that("visual server commits layouts and graph edits through its boundary", 
     expect_equal(current_spec()$matrices$DRIFT["eta", "eta"], "changed_drift")
     expect_equal(tail(commits(), 1L), "visual_graph")
     expect_equal(sync_count(), 1L)
-    expect_equal(matrix_status(), "Visual change applied to model matrices.")
   }))
 })
 

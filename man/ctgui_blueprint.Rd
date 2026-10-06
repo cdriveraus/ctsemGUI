@@ -18,7 +18,7 @@ ctgui_blueprint(
 )
 }
 \arguments{
-\item{structure}{One of the ids returned by \code{ctgui_blueprint_structure_ids()}.}
+\item{structure}{One of the names of \code{ctgui_blueprint_structures()}.}
 
 \item{processes}{Names of the processes to create.}
 

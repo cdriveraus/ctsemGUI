@@ -17,10 +17,6 @@ ctgui_sync_matrix_inputs_from_spec <- function(
       )
     }
   }
-  shiny::updateSelectInput(
-    session, "model_visual_matrix", choices = ctgui_matrix_names(spec),
-    selected = input$model_visual_matrix %||% "DRIFT"
-  )
   shiny::updateTextInput(
     session, "latent_names", value = paste(spec$latent_names, collapse = ", ")
   )
@@ -234,28 +230,6 @@ ctgui_draw_matrix_network <- function(spec, matrix_name, options) {
     )
 }
 
-ctgui_compose_quick_matrix_value <- function(
-    mode, label, value, matrix_name, row, col, tipred_names = character()) {
-  mode <- mode %||% "fixed"
-  label <- trimws(label %||% "")
-  value <- trimws(value %||% "")
-  if (identical(mode, "fixed")) {
-    return(list(value = suppressWarnings(as.numeric(value)), label = NULL))
-  }
-  if (!nzchar(label)) {
-    label <- ctgui_auto_label(matrix_name, row, col)
-  }
-  if (identical(mode, "free")) return(list(value = NULL, label = label))
-  if (identical(mode, "random")) {
-    return(list(value = NULL, label = paste0(label, "||TRUE")))
-  }
-  if (identical(mode, "ti")) {
-    if (!nzchar(value)) value <- paste(tipred_names, collapse = ",")
-    return(list(value = NULL, label = paste0(label, "||TRUE||", value)))
-  }
-  list(value = NULL, label = label)
-}
-
 ctgui_apply_matrix_batch <- function(spec, matrix_values, metadata_values) {
   updated <- spec
   changed <- character()
@@ -315,7 +289,7 @@ ctgui_matrix_network_controls <- function(matrix_name) {
 
 ctgui_matrix_server <- function(
     input, output, session, current_spec, commit_current_spec,
-    matrix_status, fit_status_value, visual_refresh, register_plot_export,
+    fit_status_value, visual_refresh, register_plot_export,
     plot_cache, arg_label) {
   matrix_group_names <- function(spec, group = input$matrix_group) {
     ctgui_matrix_group_names(spec, group)
@@ -756,69 +730,6 @@ ctgui_matrix_server <- function(
       )
     )
   })
-  output$matrix_quick_editor <- shiny::renderUI({
-    spec <- current_spec()
-    matrix_names <- setdiff(ctgui_matrix_names(spec), "PARS")
-    if (!length(matrix_names)) return(NULL)
-    matrix_name <- input$quick_matrix %||% matrix_names[1L]
-    if (!matrix_name %in% matrix_names) matrix_name <- matrix_names[1L]
-    mat <- ctgui_matrix(spec, matrix_name)
-    row_choices <- rownames(mat) %||% as.character(seq_len(nrow(mat)))
-    col_choices <- colnames(mat) %||% as.character(seq_len(ncol(mat)))
-    shiny::div(
-      class = "control-grid",
-      shiny::selectInput(
-        "quick_matrix", "Structured edit matrix",
-        choices = matrix_names, selected = matrix_name
-      ),
-      shiny::selectInput("quick_row", "Row", choices = row_choices),
-      shiny::selectInput("quick_col", "Column", choices = col_choices),
-      shiny::selectInput(
-        "quick_mode", "Cell mode",
-        choices = c(
-          "Fixed numeric" = "fixed", "Free parameter" = "free",
-          "Free + random effects" = "random",
-          "Free + TI moderation" = "ti", "Custom expression" = "custom"
-        )
-      ),
-      shiny::textInput("quick_label", "Label / expression", value = ""),
-      shiny::textInput(
-        "quick_value", "Fixed value / TI predictors", value = "0"
-      ),
-      shiny::actionButton("quick_apply", "Apply structured edit")
-    )
-  })
-  shiny::observeEvent(input$quick_apply, {
-    spec <- current_spec()
-    if (is.null(input$quick_matrix) ||
-        !input$quick_matrix %in% ctgui_matrix_names(spec)) return()
-    new_value <- ctgui_compose_quick_matrix_value(
-      input$quick_mode, input$quick_label, input$quick_value,
-      input$quick_matrix, input$quick_row, input$quick_col,
-      spec$tipred_names
-    )
-    if (!is.null(new_value$value) &&
-        (length(new_value$value) != 1L || is.na(new_value$value))) {
-      shiny::showNotification("Fixed value must be numeric", type = "error")
-      return()
-    }
-    updated <- tryCatch(
-      ctgui_set_matrix_value(
-        spec, input$quick_matrix, input$quick_row, input$quick_col,
-        value = new_value$value, label = new_value$label
-      ),
-      error = function(e) e
-    )
-    if (inherits(updated, "error")) {
-      shiny::showNotification(conditionMessage(updated), type = "error")
-      return()
-    }
-    commit_current_spec(updated, reason = "matrix_metadata")
-    matrix_status(paste(
-      "Structured edit applied to", input$quick_matrix
-    ))
-  })
-
   matrix_input_values <- function(commit = NULL) {
     spec <- current_spec()
     if (identical(input$matrix_group, "PARS")) {
@@ -902,10 +813,7 @@ ctgui_matrix_server <- function(
       error = function(e) e
     )
     if (inherits(result, "error")) {
-      matrix_status(conditionMessage(result))
-      if (show_notification) {
-        shiny::showNotification(conditionMessage(result), type = "error")
-      }
+      shiny::showNotification(conditionMessage(result), type = "error")
       return(invisible(FALSE))
     }
     if (!length(result$changed)) return(invisible(FALSE))
@@ -915,10 +823,6 @@ ctgui_matrix_server <- function(
     commit_current_spec(result$spec, reason = "matrix_edit")
     visual_refresh(result$spec, input$visual_view %||% "state_space")
     fit_status_value("Model changed. Refit when ready.")
-    matrix_status(paste(
-      "Updated", paste(result$changed, collapse = ", "), "at",
-      format(Sys.time(), "%H:%M:%S")
-    ))
     if (show_notification) {
       shiny::showNotification("Matrix edits applied", type = "message")
     }
@@ -933,7 +837,6 @@ ctgui_matrix_server <- function(
     input$matrix_metadata_commit,
     apply_current_matrix(show_notification = FALSE)
   )
-  output$matrix_status <- shiny::renderText(matrix_status())
   list(
     apply_current_matrix = apply_current_matrix,
     matrix_input_values = matrix_input_values,

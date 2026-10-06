@@ -251,8 +251,6 @@ ctgui_example_catalog <- function() {
   )
 }
 
-ctgui_example_ids <- function() names(ctgui_example_catalog())
-
 ctgui_example <- function(id) {
   catalog <- ctgui_example_catalog()
   if (length(id) != 1L || is.na(id) || !id %in% names(catalog)) {

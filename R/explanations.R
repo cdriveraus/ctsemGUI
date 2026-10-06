@@ -151,15 +151,6 @@ ctgui_explanation_catalog <- function() {
         "the rest can make optimisation harder."
       )
     ),
-    model_visuals = list(
-      brief = "See what the current model structure implies before any fit is run.",
-      detail = paste(
-        "These views are drawn from the specification alone, so they show what you",
-        "have asked for rather than what the data support. Use them to confirm that",
-        "the paths you meant to free are free and that nothing is connected that",
-        "should not be."
-      )
-    ),
     fit_registry = list(
       brief = "Every fit is kept here as it completes, so candidate specifications can be compared.",
       detail = paste(
@@ -278,8 +269,4 @@ ctgui_explanation_ui <- function(key, catalog = ctgui_explanation_catalog()) {
       shiny::tags$p(class = "help-note ctgui-explain-detail", entry$detail)
     }
   )
-}
-
-ctgui_explanation_keys <- function(catalog = ctgui_explanation_catalog()) {
-  names(catalog)
 }

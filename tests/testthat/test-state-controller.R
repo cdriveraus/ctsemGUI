@@ -5,12 +5,11 @@ test_that("matrix schema is the single source for dimensions and visual membersh
   )
   schema <- getFromNamespace("ctgui_matrix_schema", "ctsemGUI")(spec)
   dims <- getFromNamespace("ctgui_matrix_schema_dims", "ctsemGUI")(spec)
-  visual <- getFromNamespace("ctgui_matrix_schema_visual", "ctsemGUI")(spec)
 
   expect_equal(schema$DRIFT$dims, c(2L, 2L))
   expect_equal(schema$TDPREDVAR$dims, c(3L, 3L))
   expect_equal(schema$T0VAR$triangular, "lower")
-  expect_equal(visual[["T0VAR"]], "initial_state")
+  expect_equal(schema$T0VAR$visual, "initial_state")
   expect_equal(dims$TDPREDEFFECT, c(2L, 1L))
   expect_equal(dims$TDPREDMEANS, c(3L, 1L))
 })

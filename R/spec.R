@@ -377,31 +377,7 @@ ctgui_matrix <- function(spec, matrix) {
 }
 
 #' @rdname ctgui_spec
-#' @param value A replacement matrix or a scalar matrix cell value.
-ctgui_set_matrix <- function(spec, matrix, value) {
-  ctgui_check_spec(spec)
-  previous <- spec
-  matrix <- ctgui_match_matrix_name(spec, matrix)
-  if (!is.matrix(value)) stop("value must be a matrix", call. = FALSE)
-
-  expected <- ctgui_expected_dims(spec)[[matrix]]
-  if (!is.null(expected) && !identical(dim(value), expected)) {
-    stop(matrix, " must have dimensions ", paste(expected, collapse = " x "), call. = FALSE)
-  }
-
-  spec$matrices[[matrix]] <- ctgui_apply_dimnames_to_one(
-    matrix, value,
-    latent_names = spec$latent_names,
-    manifest_names = spec$manifest_names,
-    tdpred_names = spec$tdpred_names
-  )
-  ctgui_commit_result(ctgui_commit_spec(
-    previous = previous,
-    updated = spec, reason = "matrix"
-  ))
-}
-
-#' @rdname ctgui_spec
+#' @param value A scalar matrix cell value.
 #' @param row Row index or row name.
 #' @param col Column index or column name.
 #' @param label Free-parameter label for a matrix cell.
@@ -1476,4 +1452,16 @@ ctgui_deparse_matrix <- function(x) {
     out <- paste0(out, ", dimnames = ", dimnames_code)
   }
   paste0(out, ")")
+}
+
+# Whether a matrix cell takes part in the model: a parameter, or a fixed value
+# other than zero.
+ctgui_cell_active <- function(x) {
+  if (length(x) == 0L || is.na(x[1L])) return(FALSE)
+  value <- trimws(as.character(x[1L]))
+  if (!nzchar(value)) return(FALSE)
+  decoded <- ctgui_parameter_annotation_decode(value)
+  if (!is.na(decoded$param)) return(TRUE)
+  numeric <- suppressWarnings(as.numeric(value))
+  !is.na(numeric) && numeric != 0
 }

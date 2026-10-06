@@ -41,35 +41,6 @@ test_that("spec field commits distinguish unchanged and structural edits", {
   expect_equal(dim(deleted$spec$matrices$LAMBDA), c(1L, 1L))
 })
 
-test_that("matrix edits commit matrices metadata and PARS once", {
-  spec <- suppressWarnings(suppressMessages(ctgui_spec(
-    latent_names = "eta", manifest_names = "y",
-    tipred_names = "group", tipredDefault = FALSE
-  )))
-  drift <- spec$matrices$DRIFT
-  drift["eta", "eta"] <- "custom_a"
-  pars <- ctgui_parse_pars_vector("custom_a\ncustom_b")
-  commit <- suppressWarnings(suppressMessages(ctgui_apply_matrix_edits(
-    spec,
-    matrices = list(DRIFT = drift, PARS = pars),
-    metadata = list(list(
-      matrix = "DRIFT", row = "eta", col = "eta",
-      transform = "param", indvarying = TRUE, sdscale = 2,
-      tipred_effects = "group", extra_pars = "custom_a, custom_b"
-    ))
-  )))
-  expect_true(commit$effects$changed)
-  expect_equal(commit$spec$matrices$DRIFT["eta", "eta"], "custom_a")
-  expect_setequal(as.character(commit$spec$matrices$PARS), c("custom_a", "custom_b"))
-  row <- subset(
-    commit$spec$parameter_metadata,
-    matrix == "DRIFT" & row == "eta" & col == "eta"
-  )
-  expect_true(row$indvarying)
-  expect_equal(row$sdscale, 2)
-  expect_true(row$group_effect)
-})
-
 test_that("manifest additions create their latent before the loading", {
   draft <- ctgui_spec(latent_names = character(), manifest_names = character())
   commit <- ctgui_add_spec_variable(draft, "manifest", "y", measuring = "eta")
@@ -176,7 +147,6 @@ test_that("data role and summary services are deterministic", {
     1L
   )
   expect_true("y" %in% ctgui_within_between_summary(data, spec)$variable)
-  expect_equal(nrow(ctgui_tipred_subject_data(data, spec)$values), 2L)
 
   matrix_data <- as.matrix(data)
   roles <- ctgui_data_role_selection(matrix_data, spec)

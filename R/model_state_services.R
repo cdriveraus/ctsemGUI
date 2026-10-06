@@ -385,31 +385,6 @@ ctgui_set_spec_matrix <- function(spec, matrix_name, value) {
   spec
 }
 
-ctgui_apply_matrix_edits <- function(previous, matrices = list(),
-    metadata = list(), reason = "matrix_edit") {
-  ctgui_check_spec(previous)
-  updated <- previous
-  for (matrix_name in names(matrices)) {
-    updated <- ctgui_set_spec_matrix(updated, matrix_name, matrices[[matrix_name]])
-  }
-  for (edit in metadata) {
-    required <- c("matrix", "row", "col")
-    if (!all(required %in% names(edit))) {
-      stop("Each metadata edit must identify matrix, row, and col", call. = FALSE)
-    }
-    args <- edit[setdiff(names(edit), required)]
-    args$sync <- FALSE
-    updated <- do.call(
-      ctgui_set_parameter_metadata,
-      c(list(
-        spec = updated, matrix = edit$matrix,
-        row = edit$row, col = edit$col
-      ), args)
-    )
-  }
-  ctgui_commit_spec(previous, updated, reason = reason)
-}
-
 ctgui_project_spec <- function(object) {
   loaded <- if (inherits(object, "ctsemgui_spec")) {
     object
@@ -473,29 +448,6 @@ ctgui_data_role_selection <- function(data, spec) {
 ctgui_build_manifest_choices <- function(data, spec, mode = c("replace", "extend")) {
   choices <- ctgui_data_role_selection(data, spec)$template_choices
   if (identical(match.arg(mode), "extend")) setdiff(choices, spec$manifest_names) else choices
-}
-
-ctgui_tipred_subject_data <- function(data, spec) {
-  data <- ctgui_data_as_frame(data)
-  if (is.null(data) || !length(spec$tipred_names) ||
-      !spec$id %in% names(data)) return(NULL)
-  present <- intersect(spec$tipred_names, names(data))
-  if (!length(present)) return(NULL)
-  first <- data[
-    !duplicated(data[[spec$id]]),
-    c(spec$id, present),
-    drop = FALSE
-  ]
-  variation <- vapply(present, function(name) {
-    any(vapply(split(data[[name]], data[[spec$id]]), function(x) {
-      length(unique(x[!is.na(x)])) > 1L
-    }, logical(1L)))
-  }, logical(1L))
-  list(
-    values = first,
-    varying = names(variation)[variation],
-    missing = setdiff(spec$tipred_names, present)
-  )
 }
 
 ctgui_data_preview <- function(data, n = 20L) {

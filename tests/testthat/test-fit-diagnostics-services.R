@@ -9,7 +9,7 @@ test_that("condition runner captures messages, warnings, and failures", {
   expect_equal(result$warnings, "careful")
   failure <- ctgui_run_result(function() stop("no fit"))
   expect_s3_class(failure$value, "error")
-  expect_match(ctgui_result_text(failure, "Complete"), "no fit")
+  expect_match(conditionMessage(failure$value), "no fit")
 })
 
 test_that("a counter rewritten with carriage returns is one line, as on a console", {

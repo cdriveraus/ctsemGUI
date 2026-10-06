@@ -7,14 +7,12 @@ ctgui_help_catalog_base <- function() {
     help_fit_priors = list(topic = "ctFit", param = "priors", tooltip = "Which parameters ctFit puts its prior distributions on, if any. The choices depend on the installed ctsem; see its help."),
     help_fit_cores = list(topic = "ctFit", param = "cores", tooltip = "Number of processor cores ctFit may use; the detected host total is shown beside this control."),
     help_ctFit = list(topic = "ctFit", tooltip = "Fit a continuous-time structural equation model."),
-    help_ctOptimUncertainty = list(topic = "ctOptimUncertainty", tooltip = "Recompute uncertainty and approximate parameter draws for an optimized ctsem fit."),
     help_uncertainty_method = list(
       title = "Uncertainty method",
       topic = "ctOptimUncertainty",
       param = "uncertainty",
       tooltip = "How uncertainty is approximated for an optimized fit. Hessian is the usual fast default; importance sampling and bootstrap methods are slower."
     ),
-    help_uncertainty_draws = list(topic = "ctOptimUncertainty", param = "draws", tooltip = "How approximate raw-parameter draws are constructed from the selected uncertainty method."),
     help_uncertainty_samples = list(topic = "ctOptimUncertainty", param = "finishsamples", tooltip = "Number of approximate draws, or number of full bootstrap refits, retained for uncertainty estimation."),
     help_uncertainty_control = list(
       title = "Advanced method controls",

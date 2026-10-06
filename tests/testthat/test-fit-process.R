@@ -5,8 +5,6 @@ ctgui_fit_log_text <- getFromNamespace("ctgui_fit_log_text", "ctsemGUI")
 ctgui_fit_log_warnings <- getFromNamespace("ctgui_fit_log_warnings", "ctsemGUI")
 ctgui_fit_log_collapse <- getFromNamespace("ctgui_fit_log_collapse", "ctsemGUI")
 ctgui_fit_log_read <- getFromNamespace("ctgui_fit_log_read", "ctsemGUI")
-ctgui_fit_log_clean <- getFromNamespace("ctgui_fit_log_clean", "ctsemGUI")
-ctgui_fit_log_tail <- getFromNamespace("ctgui_fit_log_tail", "ctsemGUI")
 ctgui_fit_log_path <- getFromNamespace("ctgui_fit_log_path", "ctsemGUI")
 ctgui_worker <- getFromNamespace("ctgui_worker", "ctsemGUI")
 ctgui_worker_close <- getFromNamespace("ctgui_worker_close", "ctsemGUI")
@@ -48,9 +46,11 @@ test_that("progress rewritten in place stays one line", {
   # return, the way a terminal shows a counter ticking in place. Turning each
   # rewrite into its own line reproduces exactly the flood the console avoids:
   # a single fit rewrites its progress line a few hundred times.
-  expect_equal(ctgui_fit_log_clean("iter 1\riter 2\riter 3"), "iter 3")
-  expect_equal(ctgui_fit_log_clean("line\r\nnext"), "line\nnext")
-  expect_equal(ctgui_fit_log_clean(""), "")
+  state <- ctgui_fit_log_append(ctgui_fit_log_state(), "iter 1\riter 2\riter 3\n")
+  expect_equal(ctgui_fit_log_text(state), "iter 3")
+  state <- ctgui_fit_log_append(ctgui_fit_log_state(), "line\r\nnext\n")
+  expect_equal(ctgui_fit_log_text(state), "line\nnext")
+  expect_equal(ctgui_fit_log_text(ctgui_fit_log_append(ctgui_fit_log_state(), "")), "")
 
   # A shorter rewrite leaves the tail of what it overwrote, as a terminal does.
   expect_equal(ctgui_fit_log_overwrite("abcdef\rXY"), "XYcdef")
@@ -101,15 +101,15 @@ test_that("warnings are pulled out of the output into their own panel", {
 })
 
 test_that("only the recent tail of a long log is kept", {
-  text <- paste(paste0("iteration ", 1:100), collapse = "\n")
-  tailed <- ctgui_fit_log_tail(text, limit = 10L)
+  text <- paste0(paste(paste0("iteration ", 1:100), collapse = "\n"), "\n")
+  lines <- strsplit(ctgui_fit_log_text(
+    ctgui_fit_log_append(ctgui_fit_log_state(), text, limit = 10L)), "\n")[[1L]]
+  expect_length(lines, 10L)
+  expect_equal(lines[10L], "iteration 100")
 
-  expect_match(tailed, "iteration 100", fixed = TRUE)
-  expect_false(grepl("iteration 1\n", tailed, fixed = TRUE))
-  expect_match(tailed, "earlier lines omitted", fixed = TRUE)
-
-  short <- paste(paste0("line ", 1:5), collapse = "\n")
-  expect_equal(ctgui_fit_log_tail(short, limit = 10L), short)
+  short <- paste0(paste(paste0("line ", 1:5), collapse = "\n"), "\n")
+  expect_equal(ctgui_fit_log_text(ctgui_fit_log_append(ctgui_fit_log_state(), short, limit = 10L)),
+    paste(paste0("line ", 1:5), collapse = "\n"))
 })
 
 test_that("log paths do not collide between fits", {

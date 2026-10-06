@@ -70,48 +70,6 @@ test_that("matrix and visual mutations converge on one canonical model state", {
   )
 })
 
-test_that("guided and complete builders converge beyond raw matrix values", {
-  template <- quiet_ctgui(ctgui_build_model(
-    "dynamic_var_trend", "marker",
-    names = list(
-      factor_names = c("affect", "arousal"),
-      tipred_names = "group"
-    ),
-    options = list(
-      n = 2L, indicators_per_factor = 2L,
-      trend_type = "exponential", trend_coupling = "free",
-      free_noise_correlations = TRUE, tipredDefault = FALSE
-    )
-  ))
-  guided <- quiet_ctgui(ctgui_spec(
-    latent_names = template$latent_names,
-    manifest_names = template$manifest_names,
-    tipred_names = "group", tipredDefault = FALSE
-  ))
-  guided <- quiet_ctgui(ctgui_build_matrices(
-    guided, "dynamic_var_trend",
-    list(
-      dynamic_latents = template$builder$dynamic_latents,
-      trend_latents = template$builder$trend_latents,
-      trend_type = "exponential", trend_coupling = "free",
-      free_noise_correlations = TRUE
-    )
-  ))
-  guided <- quiet_ctgui(ctgui_build_measurement_matrices(
-    guided, "marker",
-    list(
-      factor_latents = template$builder$dynamic_latents,
-      trend_latents = template$builder$trend_latents,
-      manifest_blocks = template$builder$manifest_blocks
-    )
-  ))
-
-  expect_equal(
-    ctgui_canonical_snapshot(guided),
-    ctgui_canonical_snapshot(template)
-  )
-})
-
 test_that("commits characterize unchanged and persisted project state", {
   commit_spec <- getFromNamespace("ctgui_commit_spec", "ctsemGUI")
   spec <- quiet_ctgui(ctgui_spec(

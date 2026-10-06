@@ -1,6 +1,6 @@
 ctgui_equation_view <- getFromNamespace("ctgui_equation_view", "ctsemGUI")
-ctgui_equation_blocks <- getFromNamespace("ctgui_equation_blocks", "ctsemGUI")
-ctgui_equation_macros <- getFromNamespace("ctgui_equation_macros", "ctsemGUI")
+ctgui_equation_view <- getFromNamespace("ctgui_equation_view", "ctsemGUI")
+ctgui_equation_blocks <- function(latex) ctgui_equation_view(latex)$blocks
 ctgui_equation_is_known_shape <- getFromNamespace("ctgui_equation_is_known_shape", "ctsemGUI")
 ctgui_equation_view_ui <- getFromNamespace("ctgui_equation_view_ui", "ctsemGUI")
 
@@ -74,7 +74,8 @@ test_that("every macro the fragments use is supplied to the renderer", {
   # every underbrace annotation, so an unsupplied macro is not a cosmetic
   # loss: the row fails to typeset entirely.
   expect_true(grepl("\\vect", tex, fixed = TRUE))
-  expect_true("\\vect" %in% names(ctgui_equation_macros()))
+  script <- readLines(ctgui_test_asset_path("www", "app", "equations.js"), warn = FALSE)
+  expect_true(any(grepl('MACROS["\\\\vect"]', script, fixed = TRUE)))
 })
 
 test_that("an unfamiliar document falls back to source rather than a guess", {

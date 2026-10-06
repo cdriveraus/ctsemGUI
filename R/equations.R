@@ -139,22 +139,3 @@ ctgui_equation_view <- function(latex) {
   }
   list(status = "rows", blocks = blocks, source = latex, message = "")
 }
-
-#' Split ctsem LaTeX equations into labelled, browser-renderable rows
-#'
-#' @param latex A LaTeX string as returned by `ctgui_latex()`.
-#' @return A list of blocks, each with a `label` and a `tex` fragment. An
-#'   unrecognised document yields no blocks; use [ctgui_equation_view()] when
-#'   the caller needs to know why.
-#' @keywords internal
-ctgui_equation_blocks <- function(latex) {
-  ctgui_equation_view(latex)$blocks
-}
-
-# KaTeX has no \vect; ctsem uses it for the bold vector symbols that carry the
-# meaning of every underbrace annotation, so it is supplied to the renderer
-# rather than stripped.  A macro ctsem adds later is not silently lost: KaTeX
-# reports the undefined control sequence and the row shows its own source.
-ctgui_equation_macros <- function() {
-  list("\\vect" = "\\boldsymbol{#1}")
-}

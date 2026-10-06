@@ -2,7 +2,6 @@ ctgui_blueprint <- getFromNamespace("ctgui_blueprint", "ctsemGUI")
 ctgui_blueprint_apply <- getFromNamespace("ctgui_blueprint_apply", "ctsemGUI")
 ctgui_blueprint_summary <- getFromNamespace("ctgui_blueprint_summary", "ctsemGUI")
 ctgui_blueprint_structures <- getFromNamespace("ctgui_blueprint_structures", "ctsemGUI")
-ctgui_blueprint_structure_ids <- getFromNamespace("ctgui_blueprint_structure_ids", "ctsemGUI")
 
 quiet_blueprint <- function(code) suppressWarnings(suppressMessages(force(code)))
 
@@ -15,7 +14,7 @@ free_cells <- function(mat) sum(is.na(suppressWarnings(as.numeric(mat))))
 test_that("every template builds a model ctsem accepts, from nothing", {
   # The point of the rebuilt templates is that they own their variables. A
   # template that needs the right latents to exist first is not a template.
-  for (id in ctgui_blueprint_structure_ids()) {
+  for (id in names(ctgui_blueprint_structures())) {
     blueprint <- ctgui_blueprint(id, processes = c("stress", "sleep"), indicators = 1L)
     spec <- quiet_blueprint(ctgui_blueprint_apply(empty_spec(), blueprint, "replace"))
 

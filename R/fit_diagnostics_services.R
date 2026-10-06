@@ -36,19 +36,6 @@ ctgui_run_result <- function(action, progress_callback = NULL) {
   list(value = value, messages = shown(), warnings = unique(warnings))
 }
 
-ctgui_ctsem_run <- function(name, args = list(), progress_callback = NULL) {
-  if (!is.list(args)) stop("args must be a list", call. = FALSE)
-  ctgui_run_result(function() ctgui_ctsem_call(name, .args = args), progress_callback)
-}
-
-ctgui_result_text <- function(result, success, failure = NULL) {
-  if (inherits(result$value, "error")) {
-    return(paste(c(failure %||% "Action failed.", result$messages,
-      conditionMessage(result$value), result$warnings), collapse = "\n"))
-  }
-  paste(c(success, result$messages, result$warnings), collapse = "\n")
-}
-
 # A ctsem plotting helper can return one plot, an unnamed list, a nested list,
 # a recorded base plot, or a plotting function.  Normalize those variants once
 # before server code assigns dynamic Shiny outputs.
