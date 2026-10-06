@@ -491,17 +491,21 @@ shiny::observe({
 })
 
 # Subjects are too many to choose from a list, so the fields are typed and
-# the fit's subjects are described beneath them. ctPredict takes the data's
-# ids; ctDiscretePars and ctPredictTIP take ctsem's numbering.
-subject_hint <- function(which, label) shiny::renderUI({
+# the fit's subjects are described beneath them. A ctsem function with a
+# realid argument takes the data's ids, as ctPredict always has and the others
+# do from ctsem 3.12; one without takes ctsem's numbering 1..N.
+subject_hint <- function(topic) shiny::renderUI({
   fit <- active_fit()
-  ids <- if (is.null(fit)) character() else ctgui_fit_subjects(fit)[[which]]
+  if (is.null(fit)) return(NULL)
+  realid <- isTRUE(ctgui_ctsem_arg(topic, "realid")$found)
+  ids <- ctgui_fit_subjects(fit)[[if (realid) "original" else "internal"]]
   if (!length(ids)) return(NULL)
-  shiny::helpText(paste0(label, ctgui_describe_ids(ids)))
+  shiny::helpText(paste0(if (realid) "Subject ids in the fitted data: " else "Subjects, numbered by ctsem: ",
+    ctgui_describe_ids(ids)))
 })
-output$kalman_subjects_hint <- subject_hint("original", "Subject ids in the fitted data: ")
-output$dynamic_subjects_hint <- subject_hint("internal", "Subjects, numbered by ctsem: ")
-output$tipred_effects_subject_hint <- subject_hint("internal", "Subjects, numbered by ctsem: ")
+output$kalman_subjects_hint <- subject_hint("ctPredict")
+output$dynamic_subjects_hint <- subject_hint("ctDiscretePars")
+output$tipred_effects_subject_hint <- subject_hint("ctPredictTIP")
 
 generate_from_fit_cores <- function() {
   if (isTRUE(fit_gen_cores_follow_fit())) input$fit_cores else input$fit_gen_cores
