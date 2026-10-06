@@ -36,10 +36,13 @@ test_that("a More argument is passed only when changed from ctsem's default", {
   input[[ctgui_more_args_input_id("dynamics", "call", "standardise")]] <- "FALSE"
   expect_length(ctgui_more_args_values(input, catalog, "dynamics"), 0L)
   input[[ctgui_more_args_input_id("dynamics", "call", "standardise")]] <- "TRUE"
-  input[[ctgui_more_args_input_id("dynamics", "call", "state")]] <- "c(1, 2)"
   values <- ctgui_more_args_values(input, catalog, "dynamics")
   expect_identical(values$standardise, TRUE)
-  expect_identical(values$state, c(1, 2))
+  # Typed text is read as R. state is from ctsem 3.12.
+  if ("state" %in% ctgui_more_args_list("dynamics", "call", ctgui_help_catalog_base())) {
+    input[[ctgui_more_args_input_id("dynamics", "call", "state")]] <- "c(1, 2)"
+    expect_identical(ctgui_more_args_values(input, catalog, "dynamics")$state, c(1, 2))
+  }
   # A role's values are its own.
   input[[ctgui_more_args_input_id("kalman", "plot", "polygonsteps")]] <- "5"
   expect_identical(ctgui_more_args_values(input, catalog, "kalman", "plot")$polygonsteps, 5)

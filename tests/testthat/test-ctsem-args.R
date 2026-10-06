@@ -120,7 +120,8 @@ test_that("a field ctsem says nothing about is blank, and passes only what is ty
   text <- ctgui_arg_text_input("f1", "f1", catalog, "help_unknown")
   expect_false(grepl("placeholder=\"[^\"]", as.character(text)))
   select <- as.character(ctgui_arg_select_input("f2", "f2", catalog, "help_unknown"))
-  expect_false(grepl("<option", select))
+  # Only the empty option that keeps the field blank.
+  expect_false(grepl('<option value="[^"]', select))
   expect_match(select, '"create":true', fixed = TRUE)
   expect_match(as.character(ctgui_arg_checkbox_input("f3", "f3", catalog, "help_unknown", fallback = TRUE)),
     "checked", fixed = TRUE)
