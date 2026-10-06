@@ -152,6 +152,14 @@ ctgui_ctsem_fit_model <- function(fit, default = NULL) {
   ), default)
 }
 
+# A name not yet among `existing`: the name itself, or it with " (2)", " (3)".
+ctgui_unique_name <- function(name, existing) {
+  if (!name %in% existing) return(name)
+  suffix <- 2L
+  while (paste0(name, " (", suffix, ")") %in% existing) suffix <- suffix + 1L
+  paste0(name, " (", suffix, ")")
+}
+
 # A fit's subjects: their ids in the data, which ctPredict takes, against
 # ctsem's own numbering 1..N, which ctDiscretePars and ctPredictTIP take.
 # ctsem 3.12 derives the map for either backend; a stan fit, and every fit

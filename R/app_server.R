@@ -52,6 +52,10 @@ fit_registry <- shiny::reactiveVal(list())
 # stays as it was. Without this the comparison table can only report names and
 # fit statistics, which is not enough to know what is actually being compared.
 fit_specs <- shiny::reactiveVal(list())
+# The specification a running fit was started from: the model can be edited
+# while a background fit runs, and the fit belongs to the one it was given.
+pending_fit_spec <- shiny::reactiveVal(NULL)
+fit_counter <- shiny::reactiveVal(0L)
 output_code_snippets <- shiny::reactiveVal(list())
 diagnostics_status <- shiny::reactiveVal("No fit diagnostics have been run.")
 matrix_status <- shiny::reactiveVal("Matrix edits update the current model spec.")
@@ -530,24 +534,12 @@ cov_check_lags <- function() {
   parse_r_expression(text, 0:3)
 }
 
-parse_extra_args <- function(x) {
-  if (is.null(x) || !nzchar(trimws(x))) return(list())
-  text <- trimws(x)
-  expr <- if (startsWith(text, "list(")) text else paste0("list(", text, ")")
-  value <- tryCatch(eval(parse(text = expr), envir = baseenv()), error = function(e) e)
-  if (inherits(value, "error")) stop(conditionMessage(value), call. = FALSE)
-  if (!is.list(value)) stop("Extra arguments must evaluate to a named list", call. = FALSE)
-  if (length(value) && (is.null(names(value)) || any(!nzchar(names(value))))) {
-    stop("Extra arguments must be named, for example standardisederrors = TRUE", call. = FALSE)
-  }
-  value
-}
-
-append_extra_args <- function(args, extra_text, protected = names(args)) {
-  extra <- parse_extra_args(extra_text)
-  if (!length(extra)) return(args)
-  extra <- extra[!names(extra) %in% protected]
-  c(args, extra)
+# What a panel's More arguments section passes (R/more_args.R); an argument
+# the call already sets is not overridden.
+more_args <- function(panel, role = "call") ctgui_more_args_values(input, help_catalog, panel, role)
+append_more_args <- function(args, panel, role = "call", protected = names(args)) {
+  extra <- more_args(panel, role)
+  c(args, extra[!names(extra) %in% protected])
 }
 
 # Every in-session call renders its messages as the fit log does, carriage
@@ -594,6 +586,31 @@ update_data_choices <- function(selected = NULL) {
 update_fit_choices <- function(selected = NULL) {
   names <- names(fit_registry())
   shiny::updateSelectInput(session, "active_fit_name", choices = names, selected = selected %||% names[1L])
+}
+
+# Every fit joins the list as it completes, with the specification it was
+# started from, and becomes the active one. A refit therefore never loses the
+# last fit, and the comparison table always has both. Fits stay in memory for
+# the session, so the list can be pruned with Remove fit.
+keep_fit <- function(fit, spec, name = NULL) {
+  shiny::isolate({
+    registry <- fit_registry()
+    if (is.null(name)) {
+      number <- fit_counter() + 1L
+      while (paste0("fit", number) %in% names(registry)) number <- number + 1L
+      fit_counter(number)
+      name <- paste0("fit", number)
+    }
+    name <- ctgui_unique_name(name, names(registry))
+    registry[[name]] <- fit
+    fit_registry(registry)
+    specs <- fit_specs()
+    specs[[name]] <- spec
+    fit_specs(specs)
+    current_fit(fit)
+    update_fit_choices(selected = name)
+  })
+  name
 }
 
 active_fit <- function() {
@@ -725,7 +742,10 @@ shiny::observeEvent(input$load_fit_rds, {
   if (inherits(fit, "error") || !ctgui_ctsem_is_fit(fit)) {
     shiny::showNotification(if (inherits(fit, "error")) conditionMessage(fit) else "The RDS does not contain a ctsem fit", type = "error"); return()
   }
-  current_fit(fit); clear_uncertainty_state(); fit_status_value("Loaded fit from RDS."); shiny::showNotification("Loaded fit RDS", type = "message")
+  spec <- tryCatch(ctgui_spec_from_model(ctgui_ctsem_fit_model(fit)), error = function(e) NULL)
+  name <- keep_fit(fit, spec, name = sub("\\.rds$", "", input$load_fit_rds$name %||% "loaded", ignore.case = TRUE))
+  clear_uncertainty_state(); clear_diagnostics()
+  fit_status_value(paste0("Loaded fit from RDS as ", name, ".")); shiny::showNotification("Loaded fit RDS", type = "message")
 })
 clear_diagnostics <- function() {
   generated_fit(NULL)
@@ -1250,7 +1270,7 @@ output_code_options <- function(action) {
       uncertainty_draws = ctgui_uncertainty_default_draws(input$fit_uncertainty_method),
       finishsamples = input$fit_uncertainty_samples,
       uncertainty_control = uncertainty_control(),
-      extra_args = parse_extra_args(input$fit_extra_args)
+      extra_args = more_args("fit")
     ),
     uncertainty = list(
       uncertainty = input$fit_uncertainty_method,
@@ -1271,24 +1291,25 @@ output_code_options <- function(action) {
       nsamples = arg_field("fit_gen_samples", "help_fit_gen_nsamples"),
       fullposterior = input$fit_gen_fullposterior,
       cores = generate_from_fit_cores(),
-      extra_args = parse_extra_args(input$fit_gen_extra_args)
+      extra_args = more_args("generate_from_fit")
     ),
     cov_check = list(
       lags = cov_check_lags(),
       cor = input$cov_cor,
       cores = 1L,
-      extra_args = parse_extra_args(input$cov_extra_args)
+      extra_args = more_args("cov_check")
     ),
     kalman = c(kalman_call_args(), kalman_plot_args(),
-      list(extra_args = parse_extra_args(input$kalman_extra_args))),
+      list(extra_args = more_args("kalman"), plot_extra_args = more_args("kalman", "plot"))),
+    postpred = list(extra_args = more_args("postpred")),
     residual_acf = c(acf_call_args(),
-      list(extra_args = parse_extra_args(input$acf_extra_args))),
+      list(extra_args = more_args("residual_acf"))),
     dynamics = c(dynamics_call_args(), list(
       cores = 1L,
       ylim = input$dynamic_ylim,
-      extra_args = parse_extra_args(input$dynamic_extra_args)
+      extra_args = more_args("dynamics")
     )),
-    tipred = tipred_call_args(),
+    tipred = c(tipred_call_args(), list(extra_args = more_args("tipred"))),
     list()
   )
 }
@@ -1342,11 +1363,11 @@ fit_comparison_stats <- ctgui_fit_comparison_stats
 
 output$fit_comparison <- shiny::renderTable({
   registry <- fit_registry()
-  if (length(registry) == 0L) return(data.frame(message = "No stored fits. Store current fits from the Fit tab."))
+  if (length(registry) == 0L) return(data.frame(message = "No fits yet. Each fit appears here when it completes."))
   record_output_code("fit_comparison", output_code_snippet("fit_comparison"))
   specs <- fit_specs()
   # Comparing fit statistics only tells you which number is larger. The first
-  # stored fit is the baseline and every other row says how its model differs
+  # fit in the list is the baseline and every other row says how its model differs
   # from it, so the reader can see what the difference in fit is buying.
   baseline_name <- names(registry)[1L]
   baseline_spec <- specs[[baseline_name]]
@@ -1764,7 +1785,7 @@ fit_call_args <- function(data) {
     plot = FALSE
   )
   args$priors <- arg_field("fit_priors", "help_fit_priors")
-  extra <- parse_extra_args(input$fit_extra_args)
+  extra <- more_args("fit")
   if (isTRUE(input$fit_optimize)) {
     supplied_optimcontrol <- extra$optimcontrol
     extra$optimcontrol <- NULL
@@ -1775,10 +1796,10 @@ fit_call_args <- function(data) {
 }
 
 fit_succeeded <- function(fit) {
-  current_fit(fit)
+  name <- keep_fit(fit, shiny::isolate(pending_fit_spec()) %||% shiny::isolate(current_spec()))
   clear_diagnostics()
   fit_status_value(paste0(
-    "Fit available (", ctgui_ctsem_fit_backend_name(fit), " backend)."
+    "Fit available as ", name, " (", ctgui_ctsem_fit_backend_name(fit), " backend)."
   ))
   uncertainty_status_value("Uncertainty was estimated as part of fitting.")
   record_output_code("fit", output_code_snippet("fit"))
@@ -1796,14 +1817,14 @@ start_generate_from_fit <- function(fit) {
   if (!requireNamespace("callr", quietly = TRUE)) return(invisible(FALSE))
 
   args <- tryCatch(
-    append_extra_args(
+    append_more_args(
       compact_args(list(
         fit = fit,
         nsamples = arg_field("fit_gen_samples", "help_fit_gen_nsamples"),
         fullposterior = isTRUE(input$fit_gen_fullposterior),
         cores = generate_from_fit_cores()
       )),
-      input$fit_gen_extra_args
+      "generate_from_fit"
     ),
     error = function(e) e
   )
@@ -1963,6 +1984,7 @@ shiny::observeEvent(input$run_fit, {
   }
 
   current_fit(NULL)
+  pending_fit_spec(current_spec())
   clear_uncertainty_state()
   fit_busy(TRUE)
   fit_status_value("Fitting...")
@@ -2101,48 +2123,93 @@ shiny::observeEvent(input$cancel_fit, {
   ctgui_job_cancel(process)
 })
 
-shiny::observeEvent(input$store_fit, {
-  fit <- current_fit()
-  if (is.null(fit)) {
-    shiny::showNotification("No current fit to save", type = "error")
+selected_registry_fit <- function() {
+  name <- input$active_fit_name
+  if (is.null(name) || !nzchar(name) || !name %in% names(fit_registry())) return(NULL)
+  name
+}
+
+shiny::observeEvent(input$rename_fit, {
+  name <- selected_registry_fit()
+  if (is.null(name)) {
+    shiny::showNotification("No fit to rename", type = "error")
     return()
   }
   shiny::showModal(shiny::modalDialog(
-    title = "Store fit for comparison",
-    shiny::textInput(
-      "store_fit_name", "Fit name",
-      value = paste0("fit", length(fit_registry()) + 1L)
-    ),
+    title = paste("Rename", name),
+    shiny::textInput("rename_fit_name", "New name", value = name),
     footer = shiny::tagList(
       shiny::modalButton("Cancel"),
-      shiny::actionButton("confirm_store_fit", "Store fit", class = "btn-primary")
+      shiny::actionButton("confirm_rename_fit", "Rename", class = "btn-primary")
     )
   ))
 })
 
-shiny::observeEvent(input$confirm_store_fit, {
-  fit <- current_fit()
-  if (is.null(fit)) return()
-  name <- trimws(input$store_fit_name %||% "")
-  if (!nzchar(name)) {
+shiny::observeEvent(input$confirm_rename_fit, {
+  old <- selected_registry_fit()
+  new <- trimws(input$rename_fit_name %||% "")
+  if (is.null(old)) return()
+  if (!nzchar(new)) {
     shiny::showNotification("Enter a fit name", type = "error")
     return()
   }
+  if (!identical(new, old) && new %in% names(fit_registry())) {
+    shiny::showNotification(paste("A fit named", new, "already exists"), type = "error")
+    return()
+  }
   registry <- fit_registry()
-  registry[[name]] <- fit
+  names(registry)[names(registry) == old] <- new
   fit_registry(registry)
   specs <- fit_specs()
-  specs[[name]] <- current_spec()
+  names(specs)[names(specs) == old] <- new
   fit_specs(specs)
-  update_fit_choices(selected = name)
+  update_fit_choices(selected = new)
   shiny::removeModal()
-  shiny::showNotification(paste("Saved fit", name), type = "message")
+})
+
+shiny::observeEvent(input$remove_fit, {
+  name <- selected_registry_fit()
+  if (is.null(name)) {
+    shiny::showNotification("No fit to remove", type = "error")
+    return()
+  }
+  shiny::showModal(shiny::modalDialog(
+    title = paste("Remove", name),
+    "The fit is dropped from this session. Save it as an RDS file first to keep it.",
+    footer = shiny::tagList(
+      shiny::modalButton("Cancel"),
+      shiny::actionButton("confirm_remove_fit", "Remove", class = "btn-danger")
+    )
+  ))
+})
+
+shiny::observeEvent(input$confirm_remove_fit, {
+  name <- selected_registry_fit()
+  shiny::removeModal()
+  if (is.null(name)) return()
+  registry <- fit_registry()
+  removed <- registry[[name]]
+  registry[[name]] <- NULL
+  fit_registry(registry)
+  specs <- fit_specs()
+  specs[[name]] <- NULL
+  fit_specs(specs)
+  if (identical(current_fit(), removed)) {
+    current_fit(NULL)
+    clear_uncertainty_state()
+    clear_diagnostics()
+    fit_status_value(paste("Removed", name))
+  }
+  update_fit_choices(selected = if (length(registry)) names(registry)[length(registry)] else character())
 })
 
 shiny::observeEvent(input$active_fit_name, {
   registry <- fit_registry()
   selected <- input$active_fit_name
   if (!is.null(selected) && selected %in% names(registry)) {
+    # Selecting the fit already in use, as keep_fit() and a rename do, keeps
+    # its uncertainty and diagnostics.
+    if (identical(current_fit(), registry[[selected]])) return()
     current_fit(registry[[selected]])
     clear_uncertainty_state()
     clear_diagnostics()
@@ -2257,7 +2324,7 @@ shiny::observeEvent(input$generate_from_fit, {
         fullposterior = input$fit_gen_fullposterior,
         cores = generate_from_fit_cores()
       ))
-      args <- append_extra_args(args, input$fit_gen_extra_args)
+      args <- append_more_args(args, "generate_from_fit")
       ctgui_ctsem_call("ctGenerateFromFit", .args = args)
     })
     shiny::incProgress(0.8, detail = "Generation returned")
@@ -2296,7 +2363,7 @@ shiny::observeEvent(input$run_cov_check, {
         cores = 1
       )
       if (!is.null(lags)) args$lags <- lags
-      append_extra_args(args, input$cov_extra_args)
+      append_more_args(args, "cov_check")
     })
     shiny::incProgress(0.8, detail = "Covariance check returned")
   })
@@ -2321,7 +2388,7 @@ shiny::observeEvent(input$run_kalman, {
   out <- NULL
   shiny::withProgress(message = "Running ctPredict", value = 0.2, {
     out <- run_on_fit("ctPredict", function() {
-      append_extra_args(c(list(fit = fit, plot = FALSE), call_args), input$kalman_extra_args)
+      append_more_args(c(list(fit = fit, plot = FALSE), call_args), "kalman")
     })
     shiny::incProgress(0.8, detail = "ctPredict returned")
   })
@@ -2343,7 +2410,7 @@ shiny::observeEvent(input$run_postpred, {
   postpred_log("Running ctPostPredPlots...")
   out <- NULL
   shiny::withProgress(message = "Running ctPostPredPlots", value = 0.2, {
-    out <- run_on_fit("ctPostPredPlots", function() list(fit))
+    out <- run_on_fit("ctPostPredPlots", function() append_more_args(list(fit = fit), "postpred"))
     shiny::incProgress(0.8, detail = "Posterior predictive plots returned")
   })
   if (inherits(out$value, "error")) {
@@ -2367,7 +2434,7 @@ shiny::observeEvent(input$run_residual_acf, {
   out <- NULL
   shiny::withProgress(message = "Running residual ACF", value = 0.2, {
     out <- run_on_fit("ctACFresiduals", function() {
-      append_extra_args(c(list(fit = fit), call_args, list(plot = FALSE)), input$acf_extra_args)
+      append_more_args(c(list(fit = fit), call_args, list(plot = FALSE)), "residual_acf")
     })
     shiny::incProgress(0.8, detail = "Residual ACF returned")
   })
@@ -2392,7 +2459,7 @@ shiny::observeEvent(input$run_dynamics, {
   out <- NULL
   shiny::withProgress(message = "Plotting dynamics", value = 0.2, {
     out <- run_on_fit("ctDiscretePars", function() {
-      append_extra_args(c(list(fit = fit), call_args, list(plot = TRUE, cores = 1)), input$dynamic_extra_args)
+      append_more_args(c(list(fit = fit), call_args, list(plot = TRUE, cores = 1)), "dynamics")
     })
     shiny::incProgress(0.8, detail = "Dynamics plot returned")
   })
@@ -2420,7 +2487,7 @@ shiny::observeEvent(input$run_tipred_effects, {
   tipred_effects_log("Running ctPredictTIP...")
   out <- NULL
   shiny::withProgress(message = "Running ctPredictTIP", value = 0.2, {
-    out <- run_on_fit("ctPredictTIP", function() c(list(sf = fit), call_args))
+    out <- run_on_fit("ctPredictTIP", function() append_more_args(c(list(sf = fit), call_args), "tipred"))
     shiny::incProgress(0.8, detail = "ctPredictTIP returned")
   })
   if (inherits(out$value, "error")) {
@@ -2491,7 +2558,8 @@ output$kalman_plot <- shiny::renderPlot({
   out <- kalman_result()
   if (is.null(out)) return(invisible(NULL))
   record_output_code("kalman", output_code_snippet("kalman"))
-  plot_result <- try(do.call(plot, c(list(out), kalman_plot_args())), silent = TRUE)
+  plot_result <- try(do.call(plot,
+    append_more_args(c(list(out), kalman_plot_args()), "kalman", "plot")), silent = TRUE)
   if (inherits(plot_result, "try-error")) {
     graphics::plot.new()
     graphics::text(0.5, 0.5, as.character(plot_result), cex = 0.8)

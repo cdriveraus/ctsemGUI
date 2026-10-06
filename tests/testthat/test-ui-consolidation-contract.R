@@ -150,7 +150,7 @@ test_that("approved consolidation retains substantive workflows", {
   )
 
   static_ids <- c(
-    "store_fit", "active_fit_name",
+    "rename_fit", "remove_fit", "active_fit_name",
     "fit_comparison", "raw_plot", "raw_plot_png", "raw_plot_pdf",
     "assign_model", "assign_fit", "download_model_rds",
     "download_fit_rds", "load_model_rds", "load_fit_rds",
@@ -163,12 +163,13 @@ test_that("approved consolidation retains substantive workflows", {
   }
   expect_equal(ui_id_count(html, "fit_object_name"), 0L)
   expect_equal(ui_id_count(html, "fit_save_name"), 0L)
-  expect_match(html, "Store fit for comparison", fixed = TRUE)
+  # Every fit is kept as it completes; the list is managed, not filled by hand.
+  expect_equal(ui_id_count(html, "store_fit"), 0L)
   expect_match(html, "choose_fit_rds", fixed = TRUE)
   expect_match(html, 'id="fit_gen_cores"', fixed = TRUE)
   expect_false(grepl("Follow fit cores", html, fixed = TRUE))
   expect_match(source, "assign_fit_object_name", fixed = TRUE)
-  expect_match(source, "store_fit_name", fixed = TRUE)
+  expect_match(source, "keep_fit(fit", fixed = TRUE)
   expect_match(source, "progress_callback = function(lines)", fixed = TRUE)
   expect_equal(ui_id_count(html, "fit_uncertainty_draws"), 0L,
     info = "draw construction is chosen automatically from the uncertainty method")

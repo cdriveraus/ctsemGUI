@@ -106,13 +106,22 @@ ctgui_help_arg <- function(help_catalog, help_id) {
   ctgui_ctsem_arg(help$topic, help$param)
 }
 
+# The value ctsem uses when the argument is not given. A match.arg() vector
+# default is the set of choices, and the first is used; any other vector
+# default, such as kalmanvec's, is used whole.
+ctgui_arg_effective_default <- function(arg) {
+  if (is.null(arg)) return(NULL)
+  if (length(arg$default) > 1L && identical(as.character(arg$default), arg$choices)) {
+    return(arg$default[1L])
+  }
+  arg$default
+}
+
 ctgui_arg_placeholder <- function(arg) {
   if (is.null(arg) || !isTRUE(arg$found)) return("")
   if (!nzchar(arg$default_text)) return("no default")
-  # A match.arg() vector default is the set of choices, and the first is
-  # used; any other vector default, such as kalmanvec's, is used whole.
-  if (length(arg$default) > 1L && identical(as.character(arg$default), arg$choices)) {
-    return(paste0("default: \"", arg$default[1L], "\""))
+  if (length(arg$default) > 1L && length(ctgui_arg_effective_default(arg)) == 1L) {
+    return(paste0("default: \"", ctgui_arg_effective_default(arg), "\""))
   }
   paste("default:", arg$default_text)
 }
@@ -175,10 +184,27 @@ ctgui_arg_select_input <- function(id, label, help_catalog, help_id, session_cho
     multiple = FALSE, choices = character()) {
   arg <- ctgui_help_arg(help_catalog, help_id)
   options <- unique(c(ctgui_arg_options(arg), choices))
-  if (!session_choices && !multiple && length(options)) {
-    return(shiny::selectInput(id, label, choices = options, selected = options[1L]))
+  # A plain dropdown starts on ctsem's default, so it can only be one where
+  # that default is among the options; otherwise its first option would be
+  # passed as though chosen. Without one, the field is free entry, blank.
+  default <- ctgui_arg_effective_default(arg)
+  shows_default <- length(default) == 1L && !is.na(default) && as.character(default) %in% options
+  if (!session_choices && !multiple && shows_default) {
+    # Closed only where ctsem's code declares the whole set. A logical, or a
+    # default beside TRUE and FALSE, says nothing of what else is accepted --
+    # intoverpop takes 'laplace' beside 'auto', TRUE and FALSE -- so other
+    # values can be typed.
+    if (length(arg$choices)) {
+      return(shiny::selectInput(id, label, choices = options, selected = as.character(default)))
+    }
+    return(shiny::selectizeInput(id, label, choices = options, selected = as.character(default),
+      options = list(create = TRUE, persist = FALSE)))
   }
-  shiny::selectizeInput(id, label, choices = options, selected = character(), multiple = multiple,
+  # A single select with nothing chosen takes its first option in the browser,
+  # which would then be passed as though chosen; an empty first option keeps
+  # it blank, showing the placeholder.
+  shiny::selectizeInput(id, label, choices = if (multiple) options else c("", options),
+    selected = character(), multiple = multiple,
     options = list(create = TRUE, persist = FALSE, placeholder = ctgui_arg_placeholder(arg)))
 }
 
@@ -222,12 +248,13 @@ ctgui_dynamics_impulse_input <- function(help_catalog) {
 ctgui_arg_value <- function(value, arg = NULL) {
   if (is.null(value) || !length(value)) return(NULL)
   if (length(value) == 1L && (is.na(value) || (is.character(value) && !nzchar(trimws(value))))) return(NULL)
+  default <- ctgui_arg_effective_default(arg)
   if (!is.character(value)) {
-    if (!is.null(arg) && identical(value, arg$default)) return(NULL)
+    if (!is.null(arg) && identical(value, default)) return(NULL)
     return(value)
   }
-  if (!is.null(arg) && length(arg$default) == 1L && length(value) == 1L &&
-      identical(trimws(value), as.character(arg$default))) return(NULL)
+  if (!is.null(arg) && length(default) == 1L && length(value) == 1L &&
+      identical(trimws(value), as.character(default))) return(NULL)
   if (length(value) > 1L) {
     numbers <- suppressWarnings(as.numeric(value))
     return(if (all(!is.na(numbers))) numbers else value)

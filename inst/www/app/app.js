@@ -10,6 +10,16 @@
       event.stopPropagation();
     });
 
+    // A More arguments section can hold twenty fields; the filter keeps those
+    // whose name or help text contains what is typed.
+    app.on("input", ".ctgui-more-filter", function () {
+      var query = this.value.trim().toLowerCase();
+      $(this).closest(".ctgui-more-args").find(".ctgui-more-arg").each(function () {
+        var text = this.getAttribute("data-search") || "";
+        this.style.display = !query || text.indexOf(query) !== -1 ? "" : "none";
+      });
+    });
+
     // Explanations are shown by default because the interface is meant to be
     // followable by someone new to continuous-time models. Anyone who does not
     // need them says so once: the choice is remembered, so an experienced user
@@ -223,14 +233,14 @@
     // the fit under way are disabled.
     app.on("click", "#run_fit", function () {
       app.find("#run_fit").prop("disabled", true).text("Fitting...");
-      app.find("#store_fit, #assign_fit, #run_uncertainty").prop("disabled", true);
+      app.find("#assign_fit, #run_uncertainty").prop("disabled", true);
       app.find("#cancel_fit").prop("disabled", false);
     });
 
     if (window.Shiny) {
       Shiny.addCustomMessageHandler("ctgui-fit-finished", function (message) {
         app.find("#run_fit").prop("disabled", false).text("Fit model");
-        app.find("#store_fit, #assign_fit, #run_uncertainty").prop("disabled", false);
+        app.find("#assign_fit, #run_uncertainty").prop("disabled", false);
         app.find("#cancel_fit").prop("disabled", true);
         if (message.beep) {
           try {

@@ -135,6 +135,13 @@ pre { background: #111827; color: #e5e7eb; border: 0; border-radius: 6px; white-
 .ctgui-disclosure[open] > summary::before { transform: rotate(90deg); }
 .ctgui-disclosure > summary:hover { text-decoration: underline; }
 .ctgui-disclosure > summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+/* A panel's More arguments take the whole row of its grid, and their own grid
+   when open, so the main controls keep their places. */
+.control-grid > .ctgui-more-args { grid-column: 1 / -1; }
+.ctgui-more-args[open] { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px 12px 10px; }
+.ctgui-more-args .help-note { margin: 4px 0 8px; }
+.ctgui-more-filter { max-width: 320px; margin: 0 0 10px; }
+.ctgui-more-heading { margin: 10px 0 4px; font-family: monospace; }
 @media (prefers-reduced-motion: reduce) {
   .ctgui-disclosure > summary::before { transition: none; }
 }

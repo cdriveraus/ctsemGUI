@@ -161,9 +161,10 @@ ctgui_explanation_catalog <- function() {
       )
     ),
     fit_registry = list(
-      brief = "Store fitted models here to compare several candidate specifications.",
+      brief = "Every fit is kept here as it completes, so candidate specifications can be compared.",
       detail = paste(
-        "Each stored fit keeps the specification that produced it, so the comparison",
+        "Fits stay in memory for the session; remove those no longer needed.",
+        "Each fit keeps the specification that produced it, so the comparison",
         "table can show what actually differs between candidates rather than only",
         "their names and fit statistics. Likelihoods and information criteria are",
         "comparable only between models fitted to the same data and variables;",

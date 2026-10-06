@@ -191,8 +191,8 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
     "dynamics", "tipred"), options = list()) {
   diagnostic <- match.arg(diagnostic)
   value <- function(name, default = NULL) ctgui_code_option(options, name, default)
-  extra_args <- function(protected) {
-    extra <- value("extra_args", list())
+  extra_args <- function(protected, option = "extra_args") {
+    extra <- value(option, list())
     if (!is.list(extra) || (length(extra) &&
         (is.null(names(extra)) || any(!nzchar(names(extra)))))) {
       stop("extra_args must be a named list", call. = FALSE)
@@ -261,6 +261,7 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
       args <- c(args, extra_args(c(names(args), "plot")), list(plot = FALSE))
       plot_args <- list(kalmanvec = value("kalmanvec"), errorvec = value("errorvec"))
       plot_args <- plot_args[!vapply(plot_args, is.null, logical(1L))]
+      plot_args <- c(plot_args, extra_args(c(names(plot_args), "x"), "plot_extra_args"))
       c(
         "# Prediction plots using ctPredict",
         "prediction <- ctsem::ctPredict(",
@@ -273,11 +274,16 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
         }
       )
     },
-    postpred = c(
-      "# Posterior predictive checks",
-      "postpred_plots <- ctsem::ctPostPredPlots(fit)",
-      "lapply(postpred_plots, print)"
-    ),
+    postpred = {
+      args <- c(list(fit = ctgui_code_symbol("fit")), extra_args("fit"))
+      c(
+        "# Posterior predictive checks",
+        "postpred_plots <- ctsem::ctPostPredPlots(",
+        ctgui_code_arg_lines(args),
+        ")",
+        "lapply(postpred_plots, print)"
+      )
+    },
     residual_acf = {
       args <- list(
         fit = ctgui_code_symbol("fit"),
@@ -333,7 +339,7 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
         TIPvalues = ctgui_code_optional_expression(value("TIPvalues"))
       )
       args <- args[!vapply(args, is.null, logical(1L))]
-      lines <- ctgui_code_arg_lines(args)
+      lines <- ctgui_code_arg_lines(c(args, extra_args(names(args))))
       c(
         "# TI predictor effects",
         "tip_plots <- ctsem::ctPredictTIP(",

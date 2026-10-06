@@ -1,4 +1,4 @@
-ctgui_help_catalog <- function() {
+ctgui_help_catalog_base <- function() {
   list(
     help_gui_time_model = list(title = "Time model", text = "Continuous time models the process between observations and uses the actual intervals; discrete time treats each observation step as one unit of time."),
     help_gui_logdtsd = list(title = "Generated logdtsd", text = "The standard deviation of log time intervals in generated data. Use 0 for equal intervals."),
@@ -61,11 +61,18 @@ ctgui_help_catalog <- function() {
   )
 }
 
+# The GUI's own entries, and one for every More argument of the installed
+# ctsem (R/more_args.R).
+ctgui_help_catalog <- function() {
+  base <- ctgui_help_catalog_base()
+  c(base, ctgui_more_args_help(base))
+}
+
 ctgui_help_tooltip <- function(help) {
   help$tooltip %||% help$text %||% paste("Show help for", help$title %||% help$topic)
 }
 
-# The lias entries of one Rd page. A page documents every name it aliases,
+# The \alias entries of one Rd page. A page documents every name it aliases,
 # and those names are not derivable from its filename.
 ctgui_rd_aliases <- function(rd) {
   tags <- vapply(rd, function(part) attr(part, "Rd_tag") %||% "", character(1L))
@@ -114,8 +121,20 @@ ctgui_rd_argument_text <- function(rd, param) {
   NULL
 }
 
-ctgui_ctsem_help_text <- function(topic, param = NULL) {
+# ctsem's Rd pages, read once per installed version: the More arguments
+# sections ask for the help of every argument they show when the app starts.
+ctgui_rd_db_cache <- new.env(parent = emptyenv())
+ctgui_ctsem_rd_db <- function() {
+  version <- tryCatch(as.character(utils::packageVersion("ctsem")), error = function(e) "none")
+  cached <- get0(version, envir = ctgui_rd_db_cache, inherits = FALSE)
+  if (!is.null(cached)) return(cached)
   rd_db <- tryCatch(tools::Rd_db("ctsem"), error = function(e) e)
+  if (!inherits(rd_db, "error")) assign(version, rd_db, envir = ctgui_rd_db_cache)
+  rd_db
+}
+
+ctgui_ctsem_help_text <- function(topic, param = NULL) {
+  rd_db <- ctgui_ctsem_rd_db()
   if (inherits(rd_db, "error")) return(paste("No ctsem help found for", topic))
   topic_file <- ctgui_ctsem_rd_file(rd_db, topic)
   if (is.null(topic_file)) return(paste("No ctsem help found for", topic))
