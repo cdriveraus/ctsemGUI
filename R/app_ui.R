@@ -498,7 +498,7 @@ ui <- shiny::fluidPage(
             shiny::uiOutput("explain_kalman"),
             shiny::div(
               class = "control-grid",
-              ctgui_arg_select_input("kalman_subjects", arg_label("subjects", "help_kalman_subjects", "ctPredict argument: subjects"), help_catalog, "help_kalman_subjects", session_choices = TRUE, multiple = TRUE),
+              shiny::div(ctgui_arg_text_input("kalman_subjects", arg_label("subjects", "help_kalman_subjects", "ctPredict argument: subjects"), help_catalog, "help_kalman_subjects"), shiny::uiOutput("kalman_subjects_hint")),
               ctgui_arg_text_input("kalman_timerange", arg_label("timerange", "help_kalman_timerange", "ctPredict argument: timerange"), help_catalog, "help_kalman_timerange"),
               ctgui_arg_text_input("kalman_timestep", arg_label("timestep", "help_kalman_timestep", "ctPredict argument: timestep"), help_catalog, "help_kalman_timestep"),
               ctgui_arg_select_input("kalman_remove_obs", arg_label("removeObs", "help_kalman_removeObs", "ctPredict argument: removeObs"), help_catalog, "help_kalman_removeObs"),
@@ -546,7 +546,7 @@ ui <- shiny::fluidPage(
             shiny::uiOutput("explain_dynamics"),
             shiny::div(
               class = "control-grid",
-              ctgui_arg_select_input("dynamic_subjects", arg_label("subjects", "help_dynamic_subjects", "ctDiscretePars argument: subjects"), help_catalog, "help_dynamic_subjects", session_choices = TRUE, multiple = TRUE),
+              shiny::div(ctgui_arg_text_input("dynamic_subjects", arg_label("subjects", "help_dynamic_subjects", "ctDiscretePars argument: subjects"), help_catalog, "help_dynamic_subjects"), shiny::uiOutput("dynamic_subjects_hint")),
               ctgui_arg_text_input("dynamic_times", arg_label("times", "help_dynamic_times", "ctDiscretePars argument: times"), help_catalog, "help_dynamic_times"),
               ctgui_arg_numeric_input("dynamic_samples", arg_label("nsamples", "help_dynamic_nsamples", "ctDiscretePars argument: nsamples"), help_catalog, "help_dynamic_nsamples", min = 1, step = 1),
               ctgui_dynamics_impulse_input(help_catalog),
@@ -565,7 +565,7 @@ ui <- shiny::fluidPage(
             shiny::div(
               class = "control-grid",
               ctgui_arg_select_input("tipred_effects_preds", arg_label("tipreds", "help_tipred_tipreds", "ctPredictTIP argument: tipreds"), help_catalog, "help_tipred_tipreds", session_choices = TRUE, multiple = TRUE),
-              ctgui_arg_select_input("tipred_effects_subject", arg_label("subject", "help_tipred_subject", "ctPredictTIP argument: subject"), help_catalog, "help_tipred_subject", session_choices = TRUE),
+              shiny::div(ctgui_arg_text_input("tipred_effects_subject", arg_label("subject", "help_tipred_subject", "ctPredictTIP argument: subject"), help_catalog, "help_tipred_subject"), shiny::uiOutput("tipred_effects_subject_hint")),
               ctgui_arg_text_input("tipred_effects_timestep", arg_label("timestep", "help_tipred_timestep", "ctPredictTIP argument: timestep"), help_catalog, "help_tipred_timestep"),
               ctgui_arg_text_input("tipred_effects_tipvalues", arg_label("TIPvalues", "help_tipred_tipvalues", "ctPredictTIP argument: TIPvalues"), help_catalog, "help_tipred_tipvalues"),
               shiny::actionButton("run_tipred_effects", "Run ctPredictTIP", class = "btn-primary")

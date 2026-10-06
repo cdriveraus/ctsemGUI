@@ -139,3 +139,12 @@ test_that("subject choices keep the data's ids apart from ctsem's numbering", {
   expect_identical(subjects$original, as.character(fit$standata$idmap[, 1L]))
   expect_identical(ctgui_fit_subjects(list())$original, character())
 })
+
+test_that("subject ids are described in a line", {
+  expect_identical(ctgui_describe_ids(1:30), "1\u201330")
+  expect_identical(ctgui_describe_ids(c(3, 1, 2, 7, 10, 11)), "1\u20133, 7, 10\u201311")
+  expect_identical(ctgui_describe_ids(c("a", "b")), "a, b")
+  expect_identical(ctgui_describe_ids(paste0("p", 1:20), max_items = 3),
+    "p1, p2, p3, \u2026 (20 subjects)")
+  expect_identical(ctgui_describe_ids(character()), "")
+})

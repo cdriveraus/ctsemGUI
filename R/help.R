@@ -47,7 +47,8 @@ ctgui_help_catalog <- function() {
     help_dynamic_times = list(topic = "ctDiscretePars", param = "times", tooltip = "Times at which discrete-time parameters are evaluated."),
     help_dynamic_nsamples = list(topic = "ctDiscretePars", param = "nsamples", tooltip = "Number of posterior samples used for uncertainty summaries."),
     help_dynamic_observational = list(topic = "ctDiscretePars", param = "observational", tooltip = "Unticked, the starting change is in one process alone. Ticked, it brings the changes in the other processes that accompany it in the fitted model's stationary covariance (impulseType = 'observed')."),
-    help_dynamic_impulseType = list(topic = "ctDiscretePars", param = "impulseType", tooltip = "What a unit change in one process brings with it. 'unit' changes that process alone; the other types also move other processes, in ways ctDiscretePars' help describes."),
+    # From ctsem 3.12; the field is shown only where ctsem has the argument.
+    help_dynamic_impulseType = list(topic = "ctDiscretePars", param = "impulseType", optional = TRUE, tooltip = "What a unit change in one process brings with it. 'unit' changes that process alone; the other types also move other processes, in ways ctDiscretePars' help describes."),
     help_ctPredictTIP = list(topic = "ctPredictTIP", tooltip = "Predict trajectories and dynamics at selected time-independent-predictor values."),
     help_tipred_tipreds = list(topic = "ctPredictTIP", param = "tipreds", tooltip = "Time-independent predictors whose values are varied."),
     help_tipred_subject = list(topic = "ctPredictTIP", param = "subject", tooltip = "Subject whose parameters are used for the prediction."),

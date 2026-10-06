@@ -11,6 +11,9 @@ test_that("every ctsem help dialog is sourced from readable Rd text", {
   skip_if_not_installed("ctsem")
   help <- ctgui_help_catalog()
   rd_help <- Filter(function(x) !is.null(x$topic), help)
+  # An entry for an argument newer ctsem versions add is shown only where the
+  # installed ctsem has it.
+  rd_help <- Filter(function(x) !isTRUE(x$optional) || isTRUE(ctgui_ctsem_arg(x$topic, x$param)$found), rd_help)
 
   for (entry in rd_help) {
     text <- ctgui_ctsem_help_text(entry$topic, entry$param %||% NULL)

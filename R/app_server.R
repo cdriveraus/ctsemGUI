@@ -475,16 +475,12 @@ tipred_call_args <- function() compact_args(list(
   TIPvalues = arg_field("tipred_effects_tipvalues", "help_tipred_tipvalues")
 ))
 
-# Fields whose choices come from the session: subject numbers and names from
-# the active fit.
+# Fields whose choices come from the active fit: its manifest and TI
+# predictor names.
 shiny::observe({
   fit <- active_fit()
   model <- if (is.null(fit)) NULL else ctgui_ctsem_fit_model(fit, NULL)
-  subjects <- if (is.null(fit)) list() else ctgui_fit_subjects(fit)
   fields <- list(
-    kalman_subjects = list("help_kalman_subjects", subjects$original),
-    dynamic_subjects = list("help_dynamic_subjects", subjects$internal),
-    tipred_effects_subject = list("help_tipred_subject", subjects$internal),
     acf_vars = list("help_acf_varnames", model$manifestNames %||% current_spec()$manifest_names),
     tipred_effects_preds = list("help_tipred_tipreds", model$TIpredNames %||% current_spec()$tipred_names)
   )
@@ -493,6 +489,19 @@ shiny::observe({
       ctgui_help_arg(help_catalog, fields[[id]][[1L]]))
   }
 })
+
+# Subjects are too many to choose from a list, so the fields are typed and
+# the fit's subjects are described beneath them. ctPredict takes the data's
+# ids; ctDiscretePars and ctPredictTIP take ctsem's numbering.
+subject_hint <- function(which, label) shiny::renderUI({
+  fit <- active_fit()
+  ids <- if (is.null(fit)) character() else ctgui_fit_subjects(fit)[[which]]
+  if (!length(ids)) return(NULL)
+  shiny::helpText(paste0(label, ctgui_describe_ids(ids)))
+})
+output$kalman_subjects_hint <- subject_hint("original", "Subject ids in the fitted data: ")
+output$dynamic_subjects_hint <- subject_hint("internal", "Subjects, numbered by ctsem: ")
+output$tipred_effects_subject_hint <- subject_hint("internal", "Subjects, numbered by ctsem: ")
 
 generate_from_fit_cores <- function() {
   if (isTRUE(fit_gen_cores_follow_fit())) input$fit_cores else input$fit_gen_cores

@@ -165,6 +165,27 @@ ctgui_fit_subjects <- function(fit) {
   list(original = as.character(map[, 1L]), internal = as.character(map[, 2L]))
 }
 
+# Subject ids in a line: runs of consecutive integers become ranges, and a
+# long list is cut short with the count.
+ctgui_describe_ids <- function(ids, max_items = 8L) {
+  ids <- unique(as.character(ids))
+  if (!length(ids)) return("")
+  numbers <- suppressWarnings(as.numeric(ids))
+  items <- ids
+  if (all(!is.na(numbers)) && all(numbers == round(numbers))) {
+    numbers <- sort(numbers)
+    ends <- c(which(diff(numbers) != 1), length(numbers))
+    starts <- c(1L, utils::head(ends, -1L) + 1L)
+    show <- function(x) format(x, scientific = FALSE, trim = TRUE)
+    items <- ifelse(starts == ends, show(numbers[starts]),
+      paste0(show(numbers[starts]), "\u2013", show(numbers[ends])))
+  }
+  if (length(items) > max_items) {
+    items <- c(items[seq_len(max_items)], paste0("\u2026 (", length(ids), " subjects)"))
+  }
+  paste(items, collapse = ", ")
+}
+
 ctgui_ctsem_fit_generated <- function(fit, default = NULL) {
   ctgui_ctsem_fit_value(fit, list(
     c("generated"), c("stanfit", "generated"), c("generateddata")
