@@ -330,8 +330,8 @@ ui <- shiny::fluidPage(
             shiny::uiOutput("fit_expression_warning"),
             shiny::div(
               class = "control-grid",
-              shiny::checkboxInput("fit_optimize", arg_label("optimize", "help_fit_optimize", "Whether to optimize, or to sample the full posterior (much slower)"), value = TRUE),
-              shiny::checkboxInput("fit_priors", arg_label("priors", "help_fit_priors", "ctFit argument: priors"), value = FALSE),
+              ctgui_arg_checkbox_input("fit_optimize", arg_label("optimize", "help_fit_optimize", "Whether to optimize, or to sample the full posterior (much slower)"), help_catalog, "help_fit_optimize", fallback = TRUE),
+              ctgui_arg_select_input("fit_priors", arg_label("priors", "help_fit_priors", "ctFit argument: priors"), help_catalog, "help_fit_priors"),
               shiny::numericInput("fit_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_cores", "ctFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
               shiny::textAreaInput("fit_extra_args", arg_label("Extra ctFit arguments", "help_ctFit", "Full ctFit help"), value = "", height = "70px"),
               # Stan alone until the background check confirms Julia; the
@@ -462,9 +462,9 @@ ui <- shiny::fluidPage(
             class = "control-band",
             shiny::div(
               class = "control-grid",
-              shiny::numericInput("fit_gen_samples", arg_label("nsamples", "help_fit_gen_nsamples", "ctGenerateFromFit argument: nsamples"), value = 200, min = 1, step = 1),
+              ctgui_arg_numeric_input("fit_gen_samples", arg_label("nsamples", "help_fit_gen_nsamples", "ctGenerateFromFit argument: nsamples"), help_catalog, "help_fit_gen_nsamples", min = 1, step = 1),
               shiny::numericInput("fit_gen_cores", arg_label(ctgui_core_label("cores", available_cores), "help_fit_gen_cores", "ctGenerateFromFit argument: cores"), value = default_cores, min = 1, max = available_cores, step = 1),
-              shiny::checkboxInput("fit_gen_fullposterior", arg_label("fullposterior", "help_fit_gen_fullposterior", "ctGenerateFromFit argument: fullposterior"), value = FALSE),
+              ctgui_arg_checkbox_input("fit_gen_fullposterior", arg_label("fullposterior", "help_fit_gen_fullposterior", "ctGenerateFromFit argument: fullposterior"), help_catalog, "help_fit_gen_fullposterior"),
               shiny::textAreaInput("fit_gen_extra_args", arg_label("Extra ctGenerateFromFit arguments", "help_ctGenerateFromFit", "Full ctGenerateFromFit help"), value = "", height = "70px"),
               shiny::actionButton("generate_from_fit", "Generate from fit", class = "btn-primary"),
               shiny::actionButton("cancel_generate", "Stop generating", class = "btn-warning")
@@ -482,8 +482,8 @@ ui <- shiny::fluidPage(
             class = "control-band",
             shiny::div(
               class = "control-grid",
-              shiny::textInput("cov_lags", arg_label("lags", "help_cov_lags", "ctFitCovCheck argument: lags"), value = ""),
-              shiny::checkboxInput("cov_cor", arg_label("cor", "help_cov_cor", "ctFitCovCheck argument: cor"), value = TRUE),
+              ctgui_arg_text_input("cov_lags", arg_label("lags", "help_cov_lags", "ctFitCovCheck argument: lags"), help_catalog, "help_cov_lags"),
+              ctgui_arg_checkbox_input("cov_cor", arg_label("cor", "help_cov_cor", "ctFitCovCheck argument: cor"), help_catalog, "help_cov_cor", fallback = TRUE),
               shiny::textAreaInput("cov_extra_args", arg_label("Extra ctFitCovCheck arguments", "help_ctFitCovCheck", "Full ctFitCovCheck help"), value = "", height = "70px"),
               shiny::actionButton("run_cov_check", "Run ctFitCovCheck", class = "btn-primary")
             )
@@ -498,10 +498,14 @@ ui <- shiny::fluidPage(
             shiny::uiOutput("explain_kalman"),
             shiny::div(
               class = "control-grid",
-              shiny::uiOutput("kalman_default_controls"),
-              shiny::textInput("kalman_remove_obs", arg_label("removeObs", "help_kalman_removeObs", "ctPredict argument: removeObs"), value = "FALSE"),
-              shiny::textInput("kalman_vec", arg_label("kalmanvec", "help_kalmanvec", "Prediction plot argument: kalmanvec"), value = "y,yprior"),
-              shiny::textInput("kalman_error_vec", arg_label("errorvec", "help_errorvec", "Prediction plot argument: errorvec"), value = "auto"),
+              ctgui_arg_select_input("kalman_subjects", arg_label("subjects", "help_kalman_subjects", "ctPredict argument: subjects"), help_catalog, "help_kalman_subjects", session_choices = TRUE, multiple = TRUE),
+              ctgui_arg_text_input("kalman_timerange", arg_label("timerange", "help_kalman_timerange", "ctPredict argument: timerange"), help_catalog, "help_kalman_timerange"),
+              ctgui_arg_text_input("kalman_timestep", arg_label("timestep", "help_kalman_timestep", "ctPredict argument: timestep"), help_catalog, "help_kalman_timestep"),
+              ctgui_arg_select_input("kalman_remove_obs", arg_label("removeObs", "help_kalman_removeObs", "ctPredict argument: removeObs"), help_catalog, "help_kalman_removeObs"),
+              ctgui_arg_select_input("kalman_vec", arg_label("kalmanvec", "help_kalmanvec", "Prediction plot argument: kalmanvec"), help_catalog, "help_kalmanvec", multiple = TRUE),
+              # errorvec names kalmanvec elements to draw bands for.
+              ctgui_arg_select_input("kalman_error_vec", arg_label("errorvec", "help_errorvec", "Prediction plot argument: errorvec"), help_catalog, "help_errorvec", multiple = TRUE,
+                choices = ctgui_help_arg(help_catalog, "help_kalmanvec")$choices),
               shiny::textAreaInput("kalman_extra_args", arg_label("Extra ctPredict arguments", "help_ctPredict", "Full ctPredict help"), value = "", height = "70px"),
               shiny::actionButton("run_kalman", "Run prediction plots", class = "btn-primary")
             )
@@ -526,8 +530,8 @@ ui <- shiny::fluidPage(
             shiny::uiOutput("explain_acf"),
             shiny::div(
               class = "control-grid",
-              shiny::textInput("acf_vars", arg_label("varnames", "help_acf_varnames", "ctACFresiduals argument: varnames"), value = "auto"),
-              shiny::numericInput("acf_boot", arg_label("nboot", "help_acf_nboot", "ctACFresiduals argument: nboot"), value = 100, min = 0, step = 1),
+              ctgui_arg_select_input("acf_vars", arg_label("varnames", "help_acf_varnames", "ctACFresiduals argument: varnames"), help_catalog, "help_acf_varnames", session_choices = TRUE, multiple = TRUE),
+              ctgui_arg_numeric_input("acf_boot", arg_label("nboot", "help_acf_nboot", "ctACFresiduals argument: nboot"), help_catalog, "help_acf_nboot", min = 0, step = 1),
               shiny::textAreaInput("acf_extra_args", arg_label("Extra ctACFresiduals arguments", "help_ctACFresiduals", "Full ctACFresiduals help"), value = "", height = "70px"),
               shiny::actionButton("run_residual_acf", "Run residual ACF", class = "btn-primary")
             )
@@ -542,10 +546,10 @@ ui <- shiny::fluidPage(
             shiny::uiOutput("explain_dynamics"),
             shiny::div(
               class = "control-grid",
-              shiny::textInput("dynamic_subjects", arg_label("subjects", "help_dynamic_subjects", "ctDiscretePars argument: subjects"), value = "popmean"),
-              shiny::textInput("dynamic_times", arg_label("times", "help_dynamic_times", "ctDiscretePars argument: times"), value = "seq(from = 0, to = 10, by = 0.1)"),
-              shiny::textInput("dynamic_samples", arg_label("nsamples", "help_dynamic_nsamples", "ctDiscretePars argument: nsamples"), value = "200"),
-              shiny::checkboxInput("dynamic_observational", arg_label("observational", "help_dynamic_observational", "ctDiscretePars argument: observational"), value = FALSE),
+              ctgui_arg_select_input("dynamic_subjects", arg_label("subjects", "help_dynamic_subjects", "ctDiscretePars argument: subjects"), help_catalog, "help_dynamic_subjects", session_choices = TRUE, multiple = TRUE),
+              ctgui_arg_text_input("dynamic_times", arg_label("times", "help_dynamic_times", "ctDiscretePars argument: times"), help_catalog, "help_dynamic_times"),
+              ctgui_arg_numeric_input("dynamic_samples", arg_label("nsamples", "help_dynamic_nsamples", "ctDiscretePars argument: nsamples"), help_catalog, "help_dynamic_nsamples", min = 1, step = 1),
+              ctgui_dynamics_impulse_input(help_catalog),
               shiny::textInput("dynamic_ylim", "Y axis limits", value = ""),
               shiny::textAreaInput("dynamic_extra_args", arg_label("Extra ctDiscretePars arguments", "help_ctDiscretePars", "Full ctDiscretePars help"), value = "", height = "70px"),
               shiny::actionButton("run_dynamics", "Plot dynamics", class = "btn-primary")
@@ -560,10 +564,10 @@ ui <- shiny::fluidPage(
             class = "control-band",
             shiny::div(
               class = "control-grid",
-              shiny::textInput("tipred_effects_preds", arg_label("tipreds", "help_tipred_tipreds", "ctPredictTIP argument: tipreds"), value = ""),
-              shiny::textInput("tipred_effects_subject", arg_label("subject", "help_tipred_subject", "ctPredictTIP argument: subject"), value = ""),
-              shiny::textInput("tipred_effects_timestep", arg_label("timestep", "help_tipred_timestep", "ctPredictTIP argument: timestep"), value = ""),
-              shiny::textInput("tipred_effects_tipvalues", arg_label("TIPvalues", "help_tipred_tipvalues", "ctPredictTIP argument: TIPvalues"), value = ""),
+              ctgui_arg_select_input("tipred_effects_preds", arg_label("tipreds", "help_tipred_tipreds", "ctPredictTIP argument: tipreds"), help_catalog, "help_tipred_tipreds", session_choices = TRUE, multiple = TRUE),
+              ctgui_arg_select_input("tipred_effects_subject", arg_label("subject", "help_tipred_subject", "ctPredictTIP argument: subject"), help_catalog, "help_tipred_subject", session_choices = TRUE),
+              ctgui_arg_text_input("tipred_effects_timestep", arg_label("timestep", "help_tipred_timestep", "ctPredictTIP argument: timestep"), help_catalog, "help_tipred_timestep"),
+              ctgui_arg_text_input("tipred_effects_tipvalues", arg_label("TIPvalues", "help_tipred_tipvalues", "ctPredictTIP argument: TIPvalues"), help_catalog, "help_tipred_tipvalues"),
               shiny::actionButton("run_tipred_effects", "Run ctPredictTIP", class = "btn-primary")
             )
           ),

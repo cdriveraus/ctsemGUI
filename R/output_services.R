@@ -3,6 +3,8 @@
 # These helpers deliberately accept ordinary lists rather than Shiny inputs.
 # The server is responsible only for translating controls into an options list;
 # code assembly and formatting remain deterministic and directly testable.
+# An argument absent from the options was left at ctsem's default, and is left
+# out of the code too rather than written as a value copied from ctsem.
 
 ctgui_code_symbol <- function(x) structure(as.character(x)[1L], class = "ctgui_code_symbol")
 
@@ -123,9 +125,10 @@ ctgui_output_fit_code <- function(options = list()) {
     datalong = ctgui_code_symbol("data"),
     model = ctgui_code_symbol("model"),
     optimize = optimize,
-    priors = isTRUE(ctgui_code_option(options, "priors", TRUE)),
+    priors = ctgui_code_option(options, "priors"),
     cores = as.integer(ctgui_code_option(options, "cores", 1L))
   )
+  args <- args[!vapply(args, is.null, logical(1L))]
   extra <- ctgui_code_option(options, "extra_args", list())
   if (!is.list(extra)) stop("extra_args must be a named list", call. = FALSE)
   if (length(extra) && (is.null(names(extra)) || any(!nzchar(names(extra))))) {
@@ -201,10 +204,11 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
     generate_from_fit = {
       args <- list(
         fit = ctgui_code_symbol("fit"),
-        nsamples = value("nsamples", 1L),
+        nsamples = value("nsamples"),
         fullposterior = isTRUE(value("fullposterior", FALSE)),
         cores = as.integer(value("cores", 1L))
       )
+      args <- args[!vapply(args, is.null, logical(1L))]
       c(
         "# Generate from fit for diagnostics",
         "fit <- ctsem::ctGenerateFromFit(",
@@ -255,16 +259,18 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
       optional <- optional[!vapply(optional, is.null, logical(1L))]
       args <- c(list(fit = ctgui_code_symbol("fit")), optional)
       args <- c(args, extra_args(c(names(args), "plot")), list(plot = FALSE))
+      plot_args <- list(kalmanvec = value("kalmanvec"), errorvec = value("errorvec"))
+      plot_args <- plot_args[!vapply(plot_args, is.null, logical(1L))]
       c(
         "# Prediction plots using ctPredict",
         "prediction <- ctsem::ctPredict(",
         ctgui_code_arg_lines(args),
         ")",
-        "plot(",
-        "  prediction,",
-        paste0("  kalmanvec = ", ctgui_code_value(value("kalmanvec", c("y", "yprior"))), ","),
-        paste0("  errorvec = ", ctgui_code_value(value("errorvec", "auto"))),
-        ")"
+        if (length(plot_args)) {
+          c("plot(", "  prediction,", ctgui_code_arg_lines(plot_args), ")")
+        } else {
+          "plot(prediction)"
+        }
       )
     },
     postpred = c(
@@ -275,10 +281,11 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
     residual_acf = {
       args <- list(
         fit = ctgui_code_symbol("fit"),
-        varnames = value("varnames", "auto"),
-        nboot = as.integer(value("nboot", 100L)),
+        varnames = value("varnames"),
+        nboot = if (!is.null(value("nboot"))) as.integer(value("nboot")),
         plot = FALSE
       )
+      args <- args[!vapply(args, is.null, logical(1L))]
       c(
         "# Residual autocorrelation",
         "residual_acf <- ctsem::ctACFresiduals(",
@@ -291,7 +298,10 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
       optional <- list(
         subjects = ctgui_code_optional_expression(value("subjects")),
         times = ctgui_code_optional_expression(value("times")),
-        nsamples = ctgui_code_optional_expression(value("nsamples"))
+        nsamples = ctgui_code_optional_expression(value("nsamples")),
+        # impulseType from ctsem 3.12, observational before it.
+        impulseType = value("impulseType"),
+        observational = value("observational")
       )
       optional <- optional[!vapply(optional, is.null, logical(1L))]
       ylim <- ctgui_code_optional_expression(value("ylim"))
@@ -299,7 +309,6 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
         list(fit = ctgui_code_symbol("fit")),
         optional,
         list(
-          observational = isTRUE(value("observational", FALSE)),
           plot = TRUE,
           cores = as.integer(value("cores", 1L))
         )
@@ -318,9 +327,9 @@ ctgui_output_diagnostic_code <- function(diagnostic = c(
     tipred = {
       args <- list(
         sf = ctgui_code_symbol("fit"),
-        tipreds = ctgui_code_optional_expression(value("tipreds", "all")),
+        tipreds = ctgui_code_optional_expression(value("tipreds")),
         subject = ctgui_code_optional_expression(value("subject")),
-        timestep = ctgui_code_optional_expression(value("timestep", "auto")),
+        timestep = ctgui_code_optional_expression(value("timestep")),
         TIPvalues = ctgui_code_optional_expression(value("TIPvalues"))
       )
       args <- args[!vapply(args, is.null, logical(1L))]

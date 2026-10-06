@@ -436,22 +436,63 @@ parse_optional_expression <- function(x) {
   value
 }
 
-parse_keyword_or_expression <- function(x, keywords = character()) {
-  if (is.null(x) || !nzchar(trimws(x))) return(structure(list(), class = "ctgui_omitted_arg"))
-  text <- trimws(x)
-  if (tolower(text) %in% tolower(keywords)) return(text)
-  parse_optional_expression(text)
-}
-
-parse_text_vector <- function(x, default = character()) {
-  if (is.null(x) || !nzchar(trimws(x))) return(default)
-  parsed <- tryCatch(eval(parse(text = x), envir = baseenv()), error = function(e) e)
-  if (!inherits(parsed, "error")) return(parsed)
-  values <- trimws(unlist(strsplit(x, ","), use.names = FALSE))
-  values[nzchar(values)]
-}
-
 is_omitted_arg <- function(x) inherits(x, "ctgui_omitted_arg")
+
+# An argument field, as the value to pass, or NULL when it is left to ctsem.
+arg_field <- function(id, help_id) ctgui_arg_value(input[[id]], ctgui_help_arg(help_catalog, help_id))
+compact_args <- function(args) args[!vapply(args, is.null, logical(1L))]
+
+# What each diagnostic is called with. The run handler and the reproducible
+# code both read these, so the code shows what ran.
+kalman_call_args <- function() compact_args(list(
+  subjects = arg_field("kalman_subjects", "help_kalman_subjects"),
+  timerange = arg_field("kalman_timerange", "help_kalman_timerange"),
+  timestep = arg_field("kalman_timestep", "help_kalman_timestep"),
+  removeObs = arg_field("kalman_remove_obs", "help_kalman_removeObs")
+))
+kalman_plot_args <- function() compact_args(list(
+  kalmanvec = arg_field("kalman_vec", "help_kalmanvec"),
+  errorvec = arg_field("kalman_error_vec", "help_errorvec")
+))
+acf_call_args <- function() compact_args(list(
+  varnames = arg_field("acf_vars", "help_acf_varnames"),
+  nboot = arg_field("acf_boot", "help_acf_nboot")
+))
+dynamics_call_args <- function() {
+  impulse <- ctgui_dynamics_impulse_param()
+  args <- list(
+    subjects = arg_field("dynamic_subjects", "help_dynamic_subjects"),
+    times = arg_field("dynamic_times", "help_dynamic_times"),
+    nsamples = arg_field("dynamic_samples", "help_dynamic_nsamples")
+  )
+  args[[impulse]] <- arg_field("dynamic_impulse", paste0("help_dynamic_", impulse))
+  compact_args(args)
+}
+tipred_call_args <- function() compact_args(list(
+  tipreds = arg_field("tipred_effects_preds", "help_tipred_tipreds"),
+  subject = arg_field("tipred_effects_subject", "help_tipred_subject"),
+  timestep = arg_field("tipred_effects_timestep", "help_tipred_timestep"),
+  TIPvalues = arg_field("tipred_effects_tipvalues", "help_tipred_tipvalues")
+))
+
+# Fields whose choices come from the session: subject numbers and names from
+# the active fit.
+shiny::observe({
+  fit <- active_fit()
+  model <- if (is.null(fit)) NULL else ctgui_ctsem_fit_model(fit, NULL)
+  subjects <- if (is.null(fit)) list() else ctgui_fit_subjects(fit)
+  fields <- list(
+    kalman_subjects = list("help_kalman_subjects", subjects$original),
+    dynamic_subjects = list("help_dynamic_subjects", subjects$internal),
+    tipred_effects_subject = list("help_tipred_subject", subjects$internal),
+    acf_vars = list("help_acf_varnames", model$manifestNames %||% current_spec()$manifest_names),
+    tipred_effects_preds = list("help_tipred_tipreds", model$TIpredNames %||% current_spec()$tipred_names)
+  )
+  for (id in names(fields)) {
+    ctgui_update_arg_choices(session, id, fields[[id]][[2L]], shiny::isolate(input[[id]]),
+      ctgui_help_arg(help_catalog, fields[[id]][[1L]]))
+  }
+})
 
 generate_from_fit_cores <- function() {
   if (isTRUE(fit_gen_cores_follow_fit())) input$fit_cores else input$fit_gen_cores
@@ -1038,14 +1079,6 @@ output$fit_equation_blocks <- shiny::renderUI({
 output$fit_equation_source <- shiny::renderText(fit_latex_source())
 output$validation_table_spec <- shiny::renderTable(ctgui_validate(current_spec()), rownames = FALSE)
 
-output$kalman_default_controls <- shiny::renderUI({
-  shiny::tagList(
-    shiny::textInput("kalman_subjects", arg_label("subjects", "help_kalman_subjects", "ctPredict argument: subjects"), value = ""),
-    shiny::textInput("kalman_timerange", arg_label("timerange", "help_kalman_timerange", "ctPredict argument: timerange"), value = ""),
-    shiny::textInput("kalman_timestep", arg_label("timestep", "help_kalman_timestep", "ctPredict argument: timestep"), value = "")
-  )
-})
-
 output$model_visual_controls <- shiny::renderUI({
   spec <- current_spec()
   choices <- c(
@@ -1198,7 +1231,7 @@ output_code_options <- function(action) {
   switch(action,
     fit = list(
       optimize = input$fit_optimize,
-      priors = input$fit_priors,
+      priors = arg_field("fit_priors", "help_fit_priors"),
       cores = input$fit_cores,
       uncertainty = input$fit_uncertainty_method,
       uncertainty_draws = ctgui_uncertainty_default_draws(input$fit_uncertainty_method),
@@ -1222,7 +1255,7 @@ output_code_options <- function(action) {
     ),
     model_visual = list(visual_type = input$model_visual_type),
     generate_from_fit = list(
-      nsamples = input$fit_gen_samples,
+      nsamples = arg_field("fit_gen_samples", "help_fit_gen_nsamples"),
       fullposterior = input$fit_gen_fullposterior,
       cores = generate_from_fit_cores(),
       extra_args = parse_extra_args(input$fit_gen_extra_args)
@@ -1233,35 +1266,16 @@ output_code_options <- function(action) {
       cores = 1L,
       extra_args = parse_extra_args(input$cov_extra_args)
     ),
-    kalman = list(
-      subjects = input$kalman_subjects,
-      timerange = input$kalman_timerange,
-      timestep = input$kalman_timestep,
-      removeObs = input$kalman_remove_obs,
-      kalmanvec = parse_text_vector(input$kalman_vec, c("y", "yprior")),
-      errorvec = parse_text_vector(input$kalman_error_vec, "auto"),
-      extra_args = parse_extra_args(input$kalman_extra_args)
-    ),
-    residual_acf = list(
-      varnames = parse_text_vector(input$acf_vars, "auto"),
-      nboot = input$acf_boot,
-      extra_args = parse_extra_args(input$acf_extra_args)
-    ),
-    dynamics = list(
-      subjects = input$dynamic_subjects,
-      times = input$dynamic_times,
-      nsamples = input$dynamic_samples,
-      observational = input$dynamic_observational,
+    kalman = c(kalman_call_args(), kalman_plot_args(),
+      list(extra_args = parse_extra_args(input$kalman_extra_args))),
+    residual_acf = c(acf_call_args(),
+      list(extra_args = parse_extra_args(input$acf_extra_args))),
+    dynamics = c(dynamics_call_args(), list(
       cores = 1L,
       ylim = input$dynamic_ylim,
       extra_args = parse_extra_args(input$dynamic_extra_args)
-    ),
-    tipred = list(
-      tipreds = input$tipred_effects_preds,
-      subject = input$tipred_effects_subject,
-      timestep = input$tipred_effects_timestep,
-      TIPvalues = input$tipred_effects_tipvalues
-    ),
+    )),
+    tipred = tipred_call_args(),
     list()
   )
 }
@@ -1732,11 +1746,11 @@ fit_call_args <- function(data) {
     datalong = data,
     model = ctgui_to_ctsem_model(spec, silent = TRUE),
     optimize = input$fit_optimize,
-    priors = input$fit_priors,
     cores = input$fit_cores,
     backend = engine$backend,
     plot = FALSE
   )
+  args$priors <- arg_field("fit_priors", "help_fit_priors")
   extra <- parse_extra_args(input$fit_extra_args)
   if (isTRUE(input$fit_optimize)) {
     supplied_optimcontrol <- extra$optimcontrol
@@ -1770,12 +1784,12 @@ start_generate_from_fit <- function(fit) {
 
   args <- tryCatch(
     append_extra_args(
-      list(
+      compact_args(list(
         fit = fit,
-        nsamples = input$fit_gen_samples %||% 200,
+        nsamples = arg_field("fit_gen_samples", "help_fit_gen_nsamples"),
         fullposterior = isTRUE(input$fit_gen_fullposterior),
         cores = generate_from_fit_cores()
-      ),
+      )),
       input$fit_gen_extra_args
     ),
     error = function(e) e
@@ -2224,12 +2238,12 @@ shiny::observeEvent(input$generate_from_fit, {
   out <- NULL
   shiny::withProgress(message = "Generating from fit", value = 0.2, {
     out <- capture_conditions({
-      args <- list(
+      args <- compact_args(list(
         fit = fit,
-        nsamples = input$fit_gen_samples,
+        nsamples = arg_field("fit_gen_samples", "help_fit_gen_nsamples"),
         fullposterior = input$fit_gen_fullposterior,
         cores = generate_from_fit_cores()
-      )
+      ))
       args <- append_extra_args(args, input$fit_gen_extra_args)
       ctgui_ctsem_call("ctGenerateFromFit", .args = args)
     })
@@ -2289,20 +2303,12 @@ shiny::observeEvent(input$run_kalman, {
     shiny::showNotification("Fit the model first", type = "error")
     return()
   }
-  subjects <- parse_optional_expression(input$kalman_subjects)
-  timerange <- parse_optional_expression(input$kalman_timerange)
-  timestep <- parse_optional_expression(input$kalman_timestep)
-  remove_obs <- parse_optional_expression(input$kalman_remove_obs)
+  call_args <- kalman_call_args()
   diagnostics_status("Running prediction plots with ctPredict...")
   out <- NULL
   shiny::withProgress(message = "Running ctPredict", value = 0.2, {
     out <- run_on_fit("ctPredict", function() {
-      args <- list(fit = fit, plot = FALSE)
-      if (!is_omitted_arg(subjects)) args$subjects <- subjects
-      if (!is_omitted_arg(timerange)) args$timerange <- timerange
-      if (!is_omitted_arg(timestep)) args$timestep <- timestep
-      if (!is_omitted_arg(remove_obs)) args$removeObs <- remove_obs
-      append_extra_args(args, input$kalman_extra_args)
+      append_extra_args(c(list(fit = fit, plot = FALSE), call_args), input$kalman_extra_args)
     })
     shiny::incProgress(0.8, detail = "ctPredict returned")
   })
@@ -2343,13 +2349,12 @@ shiny::observeEvent(input$run_residual_acf, {
     shiny::showNotification("Fit the model first", type = "error")
     return()
   }
-  vars <- parse_text_vector(input$acf_vars, "auto")
+  call_args <- acf_call_args()
   residual_acf_log("Running ctACFresiduals...")
   out <- NULL
   shiny::withProgress(message = "Running residual ACF", value = 0.2, {
     out <- run_on_fit("ctACFresiduals", function() {
-      args <- list(fit = fit, varnames = vars, nboot = input$acf_boot, plot = FALSE)
-      append_extra_args(args, input$acf_extra_args)
+      append_extra_args(c(list(fit = fit), call_args, list(plot = FALSE)), input$acf_extra_args)
     })
     shiny::incProgress(0.8, detail = "Residual ACF returned")
   })
@@ -2369,18 +2374,12 @@ shiny::observeEvent(input$run_dynamics, {
     shiny::showNotification("Fit the model first", type = "error")
     return()
   }
-  subjects <- parse_optional_expression(input$dynamic_subjects)
-  times <- parse_optional_expression(input$dynamic_times)
-  nsamples <- parse_optional_expression(input$dynamic_samples)
+  call_args <- dynamics_call_args()
   dynamics_log("Running ctDiscretePars...")
   out <- NULL
   shiny::withProgress(message = "Plotting dynamics", value = 0.2, {
     out <- run_on_fit("ctDiscretePars", function() {
-      args <- list(fit = fit, observational = input$dynamic_observational, plot = TRUE, cores = 1)
-      if (!is_omitted_arg(subjects)) args$subjects <- subjects
-      if (!is_omitted_arg(times)) args$times <- times
-      if (!is_omitted_arg(nsamples)) args$nsamples <- nsamples
-      append_extra_args(args, input$dynamic_extra_args)
+      append_extra_args(c(list(fit = fit), call_args, list(plot = TRUE, cores = 1)), input$dynamic_extra_args)
     })
     shiny::incProgress(0.8, detail = "Dynamics plot returned")
   })
@@ -2404,21 +2403,11 @@ shiny::observeEvent(input$run_tipred_effects, {
     shiny::showNotification("Add TI predictors before plotting TI effects", type = "error")
     return()
   }
-  tipreds <- parse_keyword_or_expression(input$tipred_effects_preds, keywords = "all")
-  subject <- parse_optional_expression(input$tipred_effects_subject)
-  timestep <- parse_keyword_or_expression(input$tipred_effects_timestep, keywords = "auto")
-  tipvalues <- parse_optional_expression(input$tipred_effects_tipvalues)
+  call_args <- tipred_call_args()
   tipred_effects_log("Running ctPredictTIP...")
   out <- NULL
   shiny::withProgress(message = "Running ctPredictTIP", value = 0.2, {
-    out <- run_on_fit("ctPredictTIP", function() {
-      args <- list(sf = fit)
-      if (!is_omitted_arg(tipreds)) args$tipreds <- tipreds
-      if (!is_omitted_arg(subject)) args$subject <- subject
-      if (!is_omitted_arg(timestep)) args$timestep <- timestep
-      if (!is_omitted_arg(tipvalues)) args$TIPvalues <- tipvalues
-      args
-    })
+    out <- run_on_fit("ctPredictTIP", function() c(list(sf = fit), call_args))
     shiny::incProgress(0.8, detail = "ctPredictTIP returned")
   })
   if (inherits(out$value, "error")) {
@@ -2489,9 +2478,7 @@ output$kalman_plot <- shiny::renderPlot({
   out <- kalman_result()
   if (is.null(out)) return(invisible(NULL))
   record_output_code("kalman", output_code_snippet("kalman"))
-  kalmanvec <- parse_text_vector(input$kalman_vec, c("y", "yprior"))
-  errorvec <- parse_text_vector(input$kalman_error_vec, "auto")
-  plot_result <- try(plot(out, kalmanvec = kalmanvec, errorvec = errorvec), silent = TRUE)
+  plot_result <- try(do.call(plot, c(list(out), kalman_plot_args())), silent = TRUE)
   if (inherits(plot_result, "try-error")) {
     graphics::plot.new()
     graphics::text(0.5, 0.5, as.character(plot_result), cex = 0.8)

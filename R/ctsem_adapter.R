@@ -152,6 +152,19 @@ ctgui_ctsem_fit_model <- function(fit, default = NULL) {
   ), default)
 }
 
+# A fit's subjects: their ids in the data, which ctPredict takes, against
+# ctsem's own numbering 1..N, which ctDiscretePars and ctPredictTIP take.
+# ctsem 3.12 derives the map for either backend; a stan fit, and every fit
+# before 3.12, stores it.
+ctgui_fit_subjects <- function(fit) {
+  none <- list(original = character(), internal = character())
+  derive <- ctgui_ctsem_function(".ctFitIdMap")
+  map <- if (is.null(derive)) NULL else tryCatch(derive(fit), error = function(e) NULL)
+  if (is.null(map)) map <- ctgui_ctsem_fit_value(fit, list(c("standata", "idmap"), c("stanfit", "standata", "idmap")), NULL)
+  if (!is.data.frame(map) && !is.matrix(map) || ncol(map) < 2L || !nrow(map)) return(none)
+  list(original = as.character(map[, 1L]), internal = as.character(map[, 2L]))
+}
+
 ctgui_ctsem_fit_generated <- function(fit, default = NULL) {
   ctgui_ctsem_fit_value(fit, list(
     c("generated"), c("stanfit", "generated"), c("generateddata")
