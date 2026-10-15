@@ -3,8 +3,9 @@ test_that("optimized uncertainty controls use their ctsem Rd entries", {
 
   expect_null(help$help_uncertainty_method$text)
   expect_null(help$help_uncertainty_control$text)
-  expect_match(ctgui_ctsem_help_text("ctOptimUncertainty", "uncertainty"), "Uncertainty approximation", fixed = TRUE)
-  expect_match(ctgui_ctsem_help_text("ctOptimUncertainty", "control"), "method-specific options", fixed = TRUE)
+  # Each argument's own Rd entry, whatever ctsem's wording is this week.
+  expect_match(ctgui_ctsem_help_text("ctOptimUncertainty", "uncertainty"), "^uncertainty: \\S")
+  expect_match(ctgui_ctsem_help_text("ctOptimUncertainty", "control"), "^control: \\S")
 })
 
 test_that("every ctsem help dialog is sourced from readable Rd text", {
